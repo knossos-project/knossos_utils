@@ -878,7 +878,65 @@ class knossosDataset(object):
             scipy.misc.imsave(output_path+"/"+name+"_%d."+output_format,
                               data[:, :, z])
 
-    def from_matrix_to_cubes(self, offset, mags=1, data=None,data_path=None,
+
+    def export_to_image_stack(self, out_format='png', out_path='', mag=1):
+        """
+        Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
+        Make sure to have enough RAM available. There is still a bug at the
+        final layers, tifs containing no image data are written out at the end.
+
+        :param out_format: string
+        :param out_path: string
+        :return:
+        """
+
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
+
+        z_coord_cnt = 0
+
+        scaled_cube_layer_size = (self.boundary[0]/mag,
+                                  self.boundary[1]/mag,
+                                  self._edgelength)
+
+        for curr_z_cube in range(0, 1+int(np.ceil(self._number_of_cubes[
+            2])/float(mag))):
+
+            layer = self.from_raw_cubes_to_matrix(size=scaled_cube_layer_size,
+                                                  offset=[0,0,
+                                                          curr_z_cube *
+                                                          self._edgelength],
+                                                  mag=mag)
+
+            for curr_z_coord in range(0, self._edgelength):
+
+                file_path = "{0}_{1}_{2:06d}.{3}".format(out_path,
+                                                         self.experiment_name,
+                                                         z_coord_cnt,
+                                                         out_format)
+
+                # the swap is necessary to have the same visual
+                # appearence in knossos and the resulting image stack
+                swapped = np.swapaxes(layer[:,:,curr_z_coord], 0,0)
+                if out_format == 'png':
+                    scipy.misc.imsave(file_path, swapped)
+                    # this_img = Image.fromarray(swapped)
+                    # this_img.save(file_path)
+                elif out_format == 'raw':
+                    swapped.tofile(file_path)
+
+                print("Writing layer {0} of {1} in total.".format(z_coord_cnt,
+                                                              self.boundary[
+                                                                  2]/mag))
+
+                z_coord_cnt += 1
+
+
+
+        return
+
+
+    def from_matrix_to_cubes(self, offset, mags=1, data=None, data_path=None,
                              hdf5_names=None, datatype=np.uint64,
                              force_unique_labels=False, verbose=False,
                              overwrite=True, kzip_path=None, as_raw=False,
@@ -950,16 +1008,23 @@ class knossosDataset(object):
                     os.makedirs(folder_path)
 
                 wait_time = time.time()
-                while os.path.exists(folder_path+"block"):
-                    time.sleep(0.1)
-                    if time.time()-wait_time < 2:
+                while True:
+                    try:
+                        os.makedirs(folder_path+"block")# Semaphore --------------------
                         break
-                os.makedirs(folder_path+"block")# Semaphore --------------------
+                    except:
+                        print "wait", folder_path
+                        if time.time()-os.stat(folder_path+"block").st_mtime > 5:
+                            os.rmdir(folder_path+"block")
+                            os.makedirs(folder_path+"block")
+                            break
+                        time.sleep(1)
+
 
                 if (not overwrite) and os.path.isfile(path) and as_raw:
                     existing_cube = np.fromfile(path, dtype=datatype)
                     indices = np.where(cube == 0)
-                    print len(indices[0])
+
                     cube[indices] = existing_cube[indices]
 
                 elif (not overwrite) and os.path.isfile(path+".zip") and \
@@ -980,7 +1045,7 @@ class knossosDataset(object):
                         zf.writestr(arc_path, snappy.compress(cube),
                                     compress_type=zipfile.ZIP_DEFLATED)
 
-                os.removedirs(folder_path+"block")#---------------------------–-
+                os.rmdir(folder_path+"block")#---------------------------–-
 
             else:
                 f = open(path, "wb")
@@ -1047,7 +1112,7 @@ class knossosDataset(object):
             data = np.array(data)
         else:
             for ii in range(len(data)):
-                data[ii] = np.array(data)
+                data[ii] = np.array(data[ii])
 
             if force_unique_labels:
                 max_label_so_far = np.max(data[0])
