@@ -540,7 +540,7 @@ class knossosDataset(object):
                             sys.stdout.write('\rProgress: finished\n')
 
                     if from_raw:
-                        path = self._knossos_path+self._name_mag_folder+\
+                        path = self._name_mag_folder+\
                                str(mag) + "/x%04d/y%04d/z%04d/" \
                                % (current[0], current[1], current[2]) + \
                                self._experiment_name + '_mag' + str(mag) + \
@@ -569,7 +569,7 @@ class knossosDataset(object):
                                       "only assigned"
 
                     else:
-                        path = self._knossos_path+"/"+self._name_mag_folder+\
+                        path = self._name_mag_folder+\
                                str(mag)+"/x%04d/y%04d/z%04d/" \
                                % (current[0], current[1], current[2]) + \
                                self._experiment_name + '_mag' + str(mag) + \
@@ -1154,7 +1154,7 @@ class knossosDataset(object):
                     current[0] = start[0]
                     while current[0] < end[0]:
                         this_cube_info = []
-                        path = self._knossos_path+self._name_mag_folder+\
+                        path = self._name_mag_folder+\
                                str(mag)+"/"+"x%04d/y%04d/z%04d/" \
                                % (current[0], current[1], current[2])
 
@@ -1255,10 +1255,10 @@ class knossosDataset(object):
         """
         multi_params = []
         for mag in range(32):
-            if os.path.exists(self.knossos_path+self._name_mag_folder+
+            if os.path.exists(self._name_mag_folder+
                               str(2**mag)):
                 for x_cube in range(self._number_of_cubes[0]/2**mag+1):
-                    glob_input = self.knossos_path+self._name_mag_folder+\
+                    glob_input = self._name_mag_folder+\
                                  str(2**mag)+"/x%04d/y*/z*/" % x_cube + \
                                  self._experiment_name + "*seg*"
                     multi_params.append([glob_input, verbose])
