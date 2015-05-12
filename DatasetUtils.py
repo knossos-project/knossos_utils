@@ -52,32 +52,44 @@ import time
 import os
 import zipfile
 
-_noprint = False
+module_wide = {"init":False,"noprint":False,"snappy":False,"fadvise":False}
+
 def _print(s):
-    if not _noprint:
+    global module_wide
+    if not module_wide["noprint"]:
         print s
     return
 
+def _set_noprint(noprint):
+    global module_wide
+    module_wide["noprint"] = noprint
+    return
+
 def _stdout(s):
-    if not _noprint:
+    global module_wide
+    if not module_wide["noprint"]:
         sys.stdout.write(s)
         sys.stdout.flush()
     return
 
-def do_imports():
+def moduleInit():
+    global module_wide
+    if module_wide["init"]:
+        return
+    module_wide["init"] = True
     try:
         import snappy
-        snappy_available = True
+        module_wide["snappy"] = True
     except:
-        snappy_available = False
+        module_wide["snappy"] = False
         _print("snappy is not available - you won't be able to write/read " \
               "overlaycubes and k.zips. Reference for snappy: " \
               "https://pypi.python.org/pypi/python-snappy/")
     try:
         import fadvise
-        fadvise_available = True
+        module_wide["fadvise"] = True
     except:
-        fadvise_available = False
+        module_wide["fadvise"] = False
     return
 
 def get_first_block(dim, offset, edgelength):
@@ -231,7 +243,9 @@ class knossosDataset(object):
         initialization status
     """
     def __init__(self):
-        do_imports()
+        moduleInit()
+        global module_wide
+        self.module_wide = module_wide
         self._knossos_path = None
         self._experiment_name = None
         self._mag = []
@@ -562,7 +576,7 @@ class knossosDataset(object):
                                % (current[0], current[1], current[2])
 
                         try:
-                            if fadvise_available:
+                            if self.module_wide["fadvise"]:
                                 fadvise.willneed(path)
 
                             content = ''
@@ -758,7 +772,7 @@ class knossosDataset(object):
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        if not snappy_available:
+        if not self.module_wide["snappy"]:
             raise Exception("Snappy is not available - you cannot read "
                             "overlaycubes or kzips.")
         archive = zipfile.ZipFile(path, 'r')
@@ -1067,7 +1081,7 @@ class knossosDataset(object):
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        if not (as_raw or snappy_available):
+        if not (as_raw or self.module_wide["snappy"]):
             raise Exception("Snappy is not available - you cannot write "
                             "overlaycubes or kzips.")
 
