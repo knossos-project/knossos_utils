@@ -579,13 +579,13 @@ class knossosDataset(object):
                             if self.module_wide["fadvise"]:
                                 fadvise.willneed(path)
 
-                            content = ''
+                            l = []
                             buffersize = 32768
                             fd = io.open(path, 'rb',
                                          buffering=buffersize)
-                            for i in range(0,
-                                           (self._edgelength**3/buffersize)+1):
-                                content += fd.read(buffersize)
+                            for i in range(0,(self._edgelength**3/buffersize)+1):
+                                l.append(fd.read(buffersize))
+                            content = "".join(l)
                             fd.close()
 
                             values = np.fromstring(content, dtype=np.uint8)
