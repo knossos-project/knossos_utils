@@ -51,20 +51,34 @@ import sys
 import time
 import os
 import zipfile
-try:
-    import snappy
-    snappy_available = True
-except:
-    snappy_available = False
-    print "snappy is not available - you won't be able to write/read " \
-          "overlaycubes and k.zips. Reference for snappy: " \
-          "https://pypi.python.org/pypi/python-snappy/"
-try:
-    import fadvise
-    fadvise_available = True
-except:
-    fadvise_available = False
 
+_noprint = False
+def _print(s):
+    if not _noprint:
+        print s
+    return
+
+def _stdout(s):
+    if not _noprint:
+        sys.stdout.write(s)
+        sys.stdout.flush()
+    return
+
+def do_imports():
+    try:
+        import snappy
+        snappy_available = True
+    except:
+        snappy_available = False
+        _print("snappy is not available - you won't be able to write/read " \
+              "overlaycubes and k.zips. Reference for snappy: " \
+              "https://pypi.python.org/pypi/python-snappy/")
+    try:
+        import fadvise
+        fadvise_available = True
+    except:
+        fadvise_available = False
+    return
 
 def get_first_block(dim, offset, edgelength):
     """ Helper for iterating over cubes """
@@ -188,7 +202,7 @@ def _find_and_delete_cubes_process(args):
     """ Function which is called by an multiprocessing call
         from delete_all_overlaycubes"""
     if args[1]:
-        print args[0]
+        _print(args[0])
     all_files = glob.glob(args[0])
     for f in all_files:
         os.remove(f)
@@ -217,6 +231,7 @@ class knossosDataset(object):
         initialization status
     """
     def __init__(self):
+        do_imports()
         self._knossos_path = None
         self._experiment_name = None
         self._mag = []
@@ -326,7 +341,7 @@ class knossosDataset(object):
                 parsed_dict[match["key"]] = val
             except:
                 if verbose:
-                    print "Unreadable line in knossos.conf - ignored."
+                    _print("Unreadable line in knossos.conf - ignored.")
 
         self._boundary[0] = parsed_dict['boundary x ']
         self._boundary[1] = parsed_dict['boundary y ']
@@ -343,7 +358,7 @@ class knossosDataset(object):
                                          dtype=np.int)
 
         if verbose:
-            print "Initialization finished successfully"
+            _print("Initialization finished successfully")
         self._initialized = True
 
     def initialize_without_conf(self, path, boundary, scale, experiment_name,
@@ -433,7 +448,7 @@ class knossosDataset(object):
                     f.write('scale z %.2f;\n' % scale[2])
                     f.write('magnification %s;' % this_mag)
         if verbose:
-            print "Initialization finished successfully"
+            _print("Initialization finished successfully")
         self._initialized = True
 
     def from_cubes_to_matrix(self, size, offset, type, mag=1, datatype=np.uint8,
@@ -480,8 +495,8 @@ class knossosDataset(object):
 
         if verbose and show_progress:
             show_progress = False
-            print "when choosing verbose, show_progress is automatically set " \
-                  "to False"
+            _print("when choosing verbose, show_progress is automatically set " \
+                  "to False")
 
         if type == 'raw':
             from_raw = True
@@ -534,10 +549,9 @@ class knossosDataset(object):
                     if show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         if progress < 100:
-                            sys.stdout.write('\rProgress: %.2f%%' % progress)
-                            sys.stdout.flush()
+                            _stdout('\rProgress: %.2f%%' % progress)
                         else:
-                            sys.stdout.write('\rProgress: finished\n')
+                            _stdout('\rProgress: finished\n')
 
                     if from_raw:
                         path = self._name_mag_folder+\
@@ -565,8 +579,8 @@ class knossosDataset(object):
                         except:
                             values = np.zeros([self.edgelength,]*3)
                             if verbose:
-                                print "Cube does not exist, cube with zeros " \
-                                      "only assigned"
+                                _print("Cube does not exist, cube with zeros " \
+                                      "only assigned")
 
                     else:
                         path = self._name_mag_folder+\
@@ -584,8 +598,8 @@ class knossosDataset(object):
                         except:
                             values = np.zeros([self.edgelength,]*3)
                             if verbose:
-                                print "Cube does not exist, cube with zeros " \
-                                      "only assigned"
+                                _print("Cube does not exist, cube with zeros " \
+                                      "only assigned")
 
                     pos = (current-start)*self.edgelength
 
@@ -608,7 +622,7 @@ class knossosDataset(object):
                             output.shape)
         else:
             if verbose:
-                print "Correct shape"
+                _print("Correct shape")
 
         if mirror_oob and np.any(mirror_overlap!=0):
             output = np.lib.pad(output, mirror_overlap, 'symmetric')
@@ -778,8 +792,7 @@ class knossosDataset(object):
                 while current[0] < end[0]:
                     if not verbose:
                         progress = 100*cnt/float(nb_cubes_to_process)
-                        sys.stdout.write('\rProgress: %.2f%%' % progress)
-                        sys.stdout.flush()
+                        _stdout('\rProgress: %.2f%%' % progress)
 
                     this_path = self._experiment_name +\
                                 '_mag1_mag1x%dy%dz%d.seg.sz' % \
@@ -796,8 +809,8 @@ class knossosDataset(object):
                             archive.read(this_path)), dtype=datatype)
                     except:
                         if verbose:
-                            print "Cube does not exist, cube with %d only " \
-                                  "assigned" % fill_empty_cubes
+                            _print("Cube does not exist, cube with %d only " \
+                                  "assigned" % fill_empty_cubes)
                         values = np.ones([self.edgelength,]*3)*fill_empty_cubes
 
                     pos = (current-start)*self.edgelength
@@ -820,7 +833,7 @@ class knossosDataset(object):
                             output.shape)
         else:
             if verbose:
-                print "Correct shape"
+                _print("Correct shape")
 
         return output
 
@@ -863,7 +876,7 @@ class knossosDataset(object):
                             "allowed.")
         elif delete_dir_first:
             if verbose:
-                print "Deleting directory"
+                _print("Deleting directory")
             shutil.rmtree(output_path)
             os.makedirs(output_path)
 
@@ -873,7 +886,7 @@ class knossosDataset(object):
             data = np.swapaxes(data, 0, 1)
 
         if verbose:
-            print "Writing Images"
+            _print("Writing Images")
         for z in range(data.shape[2]):
             scipy.misc.imsave(output_path+"/"+name+"_%d."+output_format,
                               data[:, :, z])
@@ -925,9 +938,7 @@ class knossosDataset(object):
                 elif out_format == 'raw':
                     swapped.tofile(file_path)
 
-                print("Writing layer {0} of {1} in total.".format(z_coord_cnt,
-                                                              self.boundary[
-                                                                  2]/mag))
+                _print("Writing layer {0} of {1} in total.".format(z_coord_cnt, self.boundary[2]/mag))
 
                 z_coord_cnt += 1
 
@@ -1013,7 +1024,7 @@ class knossosDataset(object):
                         os.makedirs(folder_path+"block")# Semaphore --------------------
                         break
                     except:
-                        print "wait", folder_path
+                        _print("wait", folder_path)
                         if time.time()-os.stat(folder_path+"block").st_mtime > 5:
                             os.rmdir(folder_path+"block")
                             os.makedirs(folder_path+"block")
@@ -1078,8 +1089,8 @@ class knossosDataset(object):
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
             if verbose:
-                print "kzip path created, notice that kzips can only be " \
-                      "created in mag1"
+                _print("kzip path created, notice that kzips can only be " \
+                      "created in mag1")
 
             mags = [1]
             if not 1 in self.mag\
@@ -1132,8 +1143,8 @@ class knossosDataset(object):
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
             if verbose:
-                print "box_offset:", offset_mag
-                print "box_size:", size_mag
+                _print("box_offset:", offset_mag)
+                _print("box_size:", size_mag)
 
             start = np.array([get_first_block(dim, offset_mag, self._edgelength)
                               for dim in xrange(3)])
@@ -1142,8 +1153,8 @@ class knossosDataset(object):
                             for dim in xrange(3)])
 
             if verbose:
-                print "start_cube:", start
-                print "end_cube:", end
+                _print("start_cube:", start)
+                _print("end_cube:", end)
 
             current = np.array([start[dim] for dim in range(3)])
             multithreading_params = []
