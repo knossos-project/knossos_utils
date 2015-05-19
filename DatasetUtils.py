@@ -54,6 +54,12 @@ import zipfile
 
 module_wide = {"init":False,"noprint":False,"snappy":False,"fadvise":False}
 
+def our_glob(s):
+    l = []
+    for g in glob.glob(s):
+        l.append(g.replace(os.path.sep,"/"))
+    return l
+
 def _print(s):
     global module_wide
     if not module_wide["noprint"]:
@@ -128,7 +134,7 @@ def load_from_h5py(path, hdf5_names, as_dict=False):
     """ Helper for loading h5-files
 
     :param path: str
-        path to h5-file
+        forward-slash separated path to h5-file
     :param hdf5_names: list of str
         names of sets that should be loaded
     :param as_dict: bool
@@ -161,7 +167,7 @@ def save_to_h5py(data, path, hdf5_names=None, compression=False,
     :param data: list or dict of arrays
         if list, hdf5_names has to be set.
     :param path: str
-        path to file
+        forward-slash separated path to file
     :param hdf5_names: list of str
         same order as data
     :param compression: bool
@@ -215,32 +221,13 @@ def _find_and_delete_cubes_process(args):
         from delete_all_overlaycubes"""
     if args[1]:
         _print(args[0])
-    all_files = glob.glob(args[0])
+    all_files = our_glob(args[0])
     for f in all_files:
         os.remove(f)
 
 
 class knossosDataset(object):
     """ Class that contains information and operations for a Knossos-Dataset
-
-    :param knossos_path : str
-        path to the knossos dataset folder, not mag folder
-    :param experiment_name: str
-        name of the experiment
-    :param mag: sequence of ints
-        available magnifications of the knossos dataset
-    :param name_mag_folder:
-        name of mag folder - without number
-    :param boundary: 3 sequence of ints
-        boundaries of the knossos dataset
-    :param scale: 3 sequence of floats
-        scaling between original data and knossos data
-    :param number_of_cubes: 3 sequence of int
-        number of cubes in knossos dataset in each dimension
-    :param edgelength: int
-        length of each edge of a cube in the knossos dataset
-    :param initialized: bool
-        initialization status
     """
     def __init__(self):
         moduleInit()
@@ -296,7 +283,7 @@ class knossosDataset(object):
         """ Initializes the dataset by parsing the knossos.conf in path + "mag1"
 
         :param path: str
-            path to the datasetfolder - not .../mag !
+            forward-slash separated path to the datasetfolder - not .../mag !
         :param fixed_mag: int
             fixes available mag to one specific value
         :param verbose: bool
@@ -308,7 +295,7 @@ class knossosDataset(object):
         self.__init__()
 
         self._knossos_path = path
-        all_mag_folders = glob.glob(path+"*mag*")
+        all_mag_folders = our_glob(path+"*mag*")
 
         if fixed_mag > 0:
             self._mag.append(fixed_mag)
@@ -319,7 +306,7 @@ class knossosDataset(object):
                         self._mag.append(2**mag_test_nb)
                         break
 
-        mag_folder = glob.glob(path+"*mag*")[0].split("/")
+        mag_folder = our_glob(path+"*mag*")[0].split("/")
         if len(mag_folder[-1]) > 1:
             mag_folder = mag_folder[-1]
         else:
@@ -329,7 +316,7 @@ class knossosDataset(object):
             mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
 
         try:
-            f = open(glob.glob(path+"*mag1")[0]+"/knossos.conf")
+            f = open(our_glob(path+"*mag1")[0]+"/knossos.conf")
             lines = f.readlines()
             f.close()
         except:
@@ -384,7 +371,7 @@ class knossosDataset(object):
             Hence it can be used to create a new dataset from scratch.
 
         :param path: str
-            path to the datasetfolder - not .../mag !
+            forward-slash separated path to the datasetfolder - not .../mag !
         :param boundary: 3 sequence of ints
             boundaries of the knossos dataset
         :param scale: 3 sequence of floats
@@ -406,7 +393,7 @@ class knossosDataset(object):
         self.__init__()
 
         self._knossos_path = path
-        all_mag_folders = glob.glob(path+"*mag*")
+        all_mag_folders = our_glob(path+"*mag*")
 
         if not mags is None:
             self._mag = mags
@@ -430,7 +417,7 @@ class knossosDataset(object):
                         self._mag.append(2**mag_test_nb)
                         break
 
-        mag_folder = glob.glob(path+"*mag*")[0].split("/")
+        mag_folder = our_glob(path+"*mag*")[0].split("/")
         if len(mag_folder[-1]) > 1:
             mag_folder = mag_folder[-1]
         else:
@@ -448,7 +435,7 @@ class knossosDataset(object):
                                          dtype=np.int)
 
         if create_knossos_conf:
-            all_mag_folders = glob.glob(path+"*mag*")
+            all_mag_folders = our_glob(path+"*mag*")
             for mag_folder in all_mag_folders:
                 this_mag = re.findall("[\d]+", mag_folder)[-1]
                 with open(mag_folder+"/knossos.conf", "w") as f:
@@ -756,7 +743,7 @@ class knossosDataset(object):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
-            path to kzip file
+            forward-slash separated path to kzip file
         :param size: 3 sequence of ints
             size of requested data block
         :param offset: 3 sequence of ints
