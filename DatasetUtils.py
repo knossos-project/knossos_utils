@@ -52,7 +52,7 @@ import time
 import os
 import zipfile
 
-module_wide = {"init":False,"noprint":False,"snappy":False,"fadvise":False}
+module_wide = {"init":False,"noprint":False,"snappy":None,"fadvise":None}
 
 def our_glob(s):
     l = []
@@ -85,17 +85,16 @@ def moduleInit():
     module_wide["init"] = True
     try:
         import snappy
-        module_wide["snappy"] = True
+        module_wide["snappy"] = snappy
     except:
-        module_wide["snappy"] = False
         _print("snappy is not available - you won't be able to write/read " \
               "overlaycubes and k.zips. Reference for snappy: " \
               "https://pypi.python.org/pypi/python-snappy/")
     try:
         import fadvise
-        module_wide["fadvise"] = True
+        module_wide["fadvise"] = fadvise
     except:
-        module_wide["fadvise"] = False
+        pass
     return
 
 def get_first_block(dim, offset, edgelength):
@@ -564,7 +563,7 @@ class knossosDataset(object):
 
                         try:
                             if self.module_wide["fadvise"]:
-                                fadvise.willneed(path)
+                                self.module_wide["fadvise"].willneed(path)
 
                             l = []
                             buffersize = 32768
@@ -592,7 +591,7 @@ class knossosDataset(object):
                                % (current[0], current[1], current[2])
                         try:
                             with zipfile.ZipFile(path+".zip", "r") as zf:
-                                values = np.fromstring(snappy.decompress(
+                                values = np.fromstring(self.module_wide["snappy"].decompress(
                                     zf.read(os.path.basename(path))),
                                                        dtype=datatype)
 
@@ -806,7 +805,7 @@ class knossosDataset(object):
                                     (current[0], current[1], current[2])
 
                     try:
-                        values = np.fromstring(snappy.decompress(
+                        values = np.fromstring(module_wide["snappy"].decompress(
                             archive.read(this_path)), dtype=datatype)
                     except:
                         if verbose:
@@ -1042,7 +1041,7 @@ class knossosDataset(object):
                 elif (not overwrite) and os.path.isfile(path+".zip") and \
                         not as_raw:
                     with zipfile.ZipFile(path+".zip", "r") as zf:
-                        existing_cube = np.fromstring(snappy.decompress(
+                        existing_cube = np.fromstring(self.module_wide["snappy"].decompress(
                             zf.read(os.path.basename(path))), dtype=np.uint64)
                     indices = np.where(cube == 0)
                     cube[indices] = existing_cube[indices]
@@ -1054,14 +1053,14 @@ class knossosDataset(object):
                 else:
                     arc_path = os.path.basename(path)
                     with zipfile.ZipFile(path + ".zip", "w") as zf:
-                        zf.writestr(arc_path, snappy.compress(cube),
+                        zf.writestr(arc_path, self.module_wide["snappy"].compress(cube),
                                     compress_type=zipfile.ZIP_DEFLATED)
 
                 os.rmdir(folder_path+"block")#---------------------------–-
 
             else:
                 f = open(path, "wb")
-                f.write(snappy.compress(cube))
+                f.write(self.module_wide["snappy"].compress(cube))
                 f.close()
 
         # Main Function
