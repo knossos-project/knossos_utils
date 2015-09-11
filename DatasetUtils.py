@@ -42,6 +42,7 @@ import h5py
 import io
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
+import mergelist_tools
 import numpy as np
 import re
 import scipy.misc
@@ -737,7 +738,7 @@ class knossosDataset(object):
                                              invert_data, verbose,
                                              show_progress)
 
-    def from_kzip_to_matrix(self, path, size, offset, fill_empty_cubes=0,
+    def from_kzip_to_matrix(self, path, size, offset, empty_cube_label=0,
                             datatype=np.uint64, verbose=False):
         """ Extracts a 3D matrix from a kzip file
 
@@ -747,7 +748,7 @@ class knossosDataset(object):
             size of requested data block
         :param offset: 3 sequence of ints
             coordinate of the corner closest to (0, 0, 0)
-        :param fill_empty_cubes: int
+        :param empty_cube_label: int
             label for empty cubes
         :param datatype: numpy datatype
             typically np.uint8
@@ -810,8 +811,8 @@ class knossosDataset(object):
                     except:
                         if verbose:
                             _print("Cube does not exist, cube with %d only " \
-                                  "assigned" % fill_empty_cubes)
-                        values = np.ones([self.edgelength,]*3)*fill_empty_cubes
+                                  "assigned" % empty_cube_label)
+                        values = np.ones([self.edgelength,]*3)*empty_cube_label
 
                     pos = (current-start)*self.edgelength
 
@@ -827,6 +828,7 @@ class knossosDataset(object):
 
         output = cut_matrix(output, offset_start, offset_end, self.edgelength,
                             start, end)
+        mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
 
         if False in [output.shape[dim] == size[dim] for dim in xrange(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",
@@ -946,7 +948,6 @@ class knossosDataset(object):
 
         return
 
-
     def from_matrix_to_cubes(self, offset, mags=1, data=None, data_path=None,
                              hdf5_names=None, datatype=np.uint64,
                              force_unique_labels=False, verbose=False,
@@ -992,7 +993,6 @@ class knossosDataset(object):
         :return:
             nothing
         """
-
         def _write_cubes(args):
             """ Helper function for multithreading """
             folder_path = args[0]
@@ -1224,12 +1224,13 @@ class knossosDataset(object):
             else:
                 map(_write_cubes, multithreading_params)
 
-        if not kzip_path is None:
+        if kzip_path is not None:
             with zipfile.ZipFile(kzip_path+".k.zip", "w",
                                  zipfile.ZIP_DEFLATED) as zf:
                 for root, dirs, files in os.walk(kzip_path):
                     for file in files:
                         zf.write(os.path.join(root, file), file)
+                zf.writestr("mergelist.txt", mergelist_tools.generate_mergelist(data, offsets=np.array(offset, dtype=np.uint64)))
             shutil.rmtree(kzip_path)
 
     def from_overlaycubes_to_kzip(self, size, offset, output_path, mag=1):
