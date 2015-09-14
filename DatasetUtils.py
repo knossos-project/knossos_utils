@@ -42,7 +42,10 @@ import h5py
 import io
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
-import mergelist_tools
+try:
+    import mergelist_tools
+except:
+    print('mergelist_tools not available, using slow python fallback. Try to build the cython version of it.')
 import numpy as np
 import re
 import scipy.misc
@@ -828,7 +831,10 @@ class knossosDataset(object):
 
         output = cut_matrix(output, offset_start, offset_end, self.edgelength,
                             start, end)
-        mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
+        try:
+            mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
+        except:
+            print('Merglist could not be applied. The label data might not appear in the matrix as in knossos.')
 
         if False in [output.shape[dim] == size[dim] for dim in xrange(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",
@@ -1230,7 +1236,10 @@ class knossosDataset(object):
                 for root, dirs, files in os.walk(kzip_path):
                     for file in files:
                         zf.write(os.path.join(root, file), file)
-                zf.writestr("mergelist.txt", mergelist_tools.generate_mergelist(data, offsets=np.array(offset, dtype=np.uint64)))
+                try:
+                    zf.writestr("mergelist.txt", mergelist_tools.generate_mergelist(data, offsets=np.array(offset, dtype=np.uint64)))
+                except:
+                    print('Could not write mergelist.')
             shutil.rmtree(kzip_path)
 
     def from_overlaycubes_to_kzip(self, size, offset, output_path, mag=1):
