@@ -955,7 +955,7 @@ class knossosDataset(object):
     def from_matrix_to_cubes(self, offset, mags=1, data=None, data_path=None,
                              hdf5_names=None, datatype=np.uint64,
                              force_unique_labels=False, verbose=False,
-                             overwrite=True, kzip_path=None, as_raw=False,
+                             overwrite=True, kzip_path=None, annotation_str=None, as_raw=False,
                              nb_threads=10):
         """ Cubes data for viewing and editing in KNOSSOS
             one can choose from
@@ -990,6 +990,8 @@ class knossosDataset(object):
                  won't overwrite the output of the first one.
         :param kzip_path: str
             is not None: overlay data is written as kzip to this path
+        :param annotation_str: str
+            is not None: if writing to k.zip, include this as annotation.xml
         :param as_raw: bool
             True: outputs data as normal KNOSSOS raw cubes
         :param nb_threads: int
@@ -1235,6 +1237,8 @@ class knossosDataset(object):
                     for file in files:
                         zf.write(os.path.join(root, file), file)
                 zf.writestr("mergelist.txt", mergelist_tools.generate_mergelist(data, offsets=np.array(offset, dtype=np.uint64)))
+                if annotation_str is not None:
+                    zf.writestr("annotation.xml", annotation_str)
             shutil.rmtree(kzip_path)
 
     def from_overlaycubes_to_kzip(self, size, offset, output_path, mag=1):
