@@ -1236,7 +1236,7 @@ class knossosDataset(object):
                 for root, dirs, files in os.walk(kzip_path):
                     for file in files:
                         zf.write(os.path.join(root, file), file)
-                zf.writestr("mergelist.txt", mergelist_tools.generate_mergelist(data, offsets=np.array(offset, dtype=np.uint64)))
+                zf.writestr("mergelist.txt", mergelist_tools.gen_mergelist_from_segmentation(data, offsets=np.array(offset, dtype=np.uint64)))
                 if annotation_str is not None:
                     zf.writestr("annotation.xml", annotation_str)
             shutil.rmtree(kzip_path)
