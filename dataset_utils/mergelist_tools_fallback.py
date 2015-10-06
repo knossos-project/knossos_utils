@@ -55,7 +55,7 @@ def apply_mergelist(segmentation, mergelist_content, background_id=0, pad=0):
     return segmentation
 
 
-def generate_mergelist(segmentation, background_id=0, pad=0, offsets=np.array([0, 0, 0], dtype=np.uint64)):
+def gen_mergelist_from_segmentation(segmentation, background_id=0, pad=0, offsets=np.array([0, 0, 0], dtype=np.uint64)):
     """
     Generates a mergelist from a segmentation in which each subobject is contained in its own object.
     The object's coordinate is the first coordinate of the subobject.
