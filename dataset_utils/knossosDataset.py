@@ -18,11 +18,6 @@
 #  For further information feel free to contact
 #  Sven.Dorkenwald@mpimf-heidelberg.mpg.de
 #
-#  Authors:
-#       Sven Dorkenwald
-#       Julia Buhmann
-#       Lukas Schott
-#       Jörgen Kornfeld
 #
 ################################################################################
 
