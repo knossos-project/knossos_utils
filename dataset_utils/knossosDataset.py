@@ -230,7 +230,7 @@ def _find_and_delete_cubes_process(args):
         os.remove(f)
 
 
-class knossosDataset(object):
+class KnossosDataset(object):
     """ Class that contains information and operations for a Knossos-Dataset
     """
     def __init__(self):
@@ -456,6 +456,26 @@ class knossosDataset(object):
             _print("Initialization finished successfully")
         self._initialized = True
 
+    def from_raw_cubes_to_list(self, vx_list):
+        """ Read voxel values vectorized
+        WARNING: voxels have to be clustered, otherwise: runtime -> inf
+
+        :param vx_list:  list or array of 3 sequence of int
+            list of voxels which values should be returned
+        :return: array of int
+            array of voxel values corresponding to vx_list
+        """
+        vx_list = np.array(vx_list, dtype=np.int)
+        boundary_box = [np.min(vx_list, axis=0),
+                        np.max(vx_list, axis=0)]
+        size = boundary_box[1] - boundary_box[0] + np.array([1,1,1])
+
+        block = self.from_raw_cubes_to_matrix(size, boundary_box[0], show_progress=False)
+
+        vx_list -= boundary_box[0]
+
+        return block[vx_list[:, 0], vx_list[:, 1], vx_list[:, 2]]
+        
     def from_cubes_to_matrix(self, size, offset, type, mag=1, datatype=np.uint8,
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
