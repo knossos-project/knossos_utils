@@ -451,6 +451,72 @@ class KnossosDataset(object):
             _print("Initialization finished successfully")
         self._initialized = True
 
+    def initialize_from_matrix(self, path, scale, experiment_name,
+                               offset=None, boundary=None, fast_downsampling=True,
+                               data=None, data_path=None, hdf5_names=None,
+                               mags=None, verbose=False):
+        """ Initializes the dataset with matrix
+            Only for use with "small" matrices (~10^3 edgelength)
+
+            This function creates mag folders and knossos.conf's.
+
+        :param path: str
+            forward-slash separated path to the datasetfolder - not .../mag !
+        :param scale: 3 sequence of floats
+            scaling between original data and knossos data
+        :param experiment_name: str
+            name of the experiment
+        :param offset: 3 sequence of ints or None
+            offset of the given data
+            if None offset is set to [0, 0, 0]
+        :param boundary: 3 sequence of ints or None
+            boundary of the knossos dataset
+            if None boundary is calculated from offset and data
+        :param fast_downsampling: bool
+            True: uses order 1 downsampling(striding)
+            False: uses order 3 downsampling
+        :param data: 3D numpy array or list of 3D numpy arrays of ints
+            exported data
+            if list: data is combined to a single array by np.maximum()
+        :param data_path: str
+            path for loading data (hdf5 and pickle files are supported)
+        :param hdf5_names: str or list of str
+            hdf5 setnames in data_path
+        :param mags: sequence of ints
+            available magnifications of the knossos dataset
+        :param verbose:
+            True: prints several information
+        :return:
+            nothing
+        """
+
+        if (data is None) and (data_path is None or hdf5_names is None):
+            raise Exception("No data given")
+
+        if data is None:
+            data = load_from_h5py(data_path, hdf5_names, False)[0]
+
+        if offset is None:
+            offset = np.array([0, 0, 0], dtype=np.int)
+        else:
+            offset = np.array(offset, dtype=np.int)
+
+        if boundary is None:
+            boundary = np.array(data.shape) + offset
+        else:
+            if np.any(boundary < np.array(data.shape) + offset):
+                raise Exception("Given size is too small for data")
+
+        if mags is None:
+            mags = [1]
+
+        self.initialize_without_conf(path, boundary, scale, experiment_name,
+                                     mags=mags, make_mag_folders=True,
+                                     create_knossos_conf=True, verbose=verbose)
+
+        self.from_matrix_to_cubes(offset, mags=mags, data=data, datatype=np.uint8,
+                                  fast_downsampling=fast_downsampling, as_raw=True)
+
     def from_raw_cubes_to_list(self, vx_list):
         """ Read voxel values vectorized
         WARNING: voxels have to be clustered, otherwise: runtime -> inf
@@ -968,7 +1034,7 @@ class KnossosDataset(object):
         return
 
     def from_matrix_to_cubes(self, offset, mags=1, data=None, data_path=None,
-                             hdf5_names=None, datatype=np.uint64,
+                             hdf5_names=None, datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=False,
                              overwrite=True, kzip_path=None, annotation_str=None, as_raw=False,
                              nb_threads=10):
@@ -992,6 +1058,9 @@ class KnossosDataset(object):
         :param datatype: numpy dtype
             typically:  raw = np.uint8
                         overlays = np.uint64
+        :param fast_downsampling: bool
+            True: uses order 1 downsampling (striding)
+            False: uses order 3 downsampling
         :param force_unique_labels: bool
             True and len(data) > 0: Assures unique data before combining all
             list entries
@@ -1039,13 +1108,11 @@ class KnossosDataset(object):
                 if not os.path.exists(folder_path):
                     os.makedirs(folder_path)
 
-                wait_time = time.time()
                 while True:
                     try:
                         os.makedirs(folder_path+"block")# Semaphore --------------------
                         break
                     except:
-                        _print("wait", folder_path)
                         if time.time()-os.stat(folder_path+"block").st_mtime > 5:
                             os.rmdir(folder_path+"block")
                             os.makedirs(folder_path+"block")
@@ -1156,7 +1223,10 @@ class KnossosDataset(object):
 
         for mag in mags:
             if mag > 1:
-                data_inter = np.array(data[::mag, ::mag, ::mag], dtype=datatype)
+                if fast_downsampling:
+                    data_inter = np.array(data[::mag, ::mag, ::mag], dtype=datatype)
+                else:
+                    data_inter = np.array(scipy.ndimage.zoom(data, 1./mag, order=3), dtype=datatype)
             else:
                 data_inter = np.array(np.copy(data), dtype=datatype)
 
@@ -1308,3 +1378,4 @@ class KnossosDataset(object):
             pool.join()
         else:
             map(_find_and_delete_cubes_process, multi_params)
+ 
