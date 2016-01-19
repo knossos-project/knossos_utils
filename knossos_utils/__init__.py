@@ -1,3 +1,4 @@
-__all__ = ["knossosDataset"]
+__all__ = ["knossosdataset", "chunky"]
 
-from knossosDataset import *
+from knossosdataset import *
+from chunky import *
