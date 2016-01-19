@@ -14,13 +14,13 @@ import os
 extensions = []
 if have_cython:
     extensions.append(Extension("mergelist_tools",
-                                ['dataset_utils/mergelist_tools.pyx'],
+                                ['knossos_utils/mergelist_tools.pyx'],
                                 include_dirs = [numpy.get_include()],
                                 language="c++",
                                 extra_compile_args=["-std=c++0x", "-include", "cmath"]))
 else:
     extensions.append(Extension('mergelist_tools',
-                                ['dataset_utils/mergelist_tools.cpp'],
+                                ['knossos_utils/mergelist_tools.cpp'],
                                 include_dirs = [numpy.get_include()],
                                 language="c++",
                                 extra_compile_args=["-std=c++0x", "-include", "cmath"]))
@@ -37,7 +37,7 @@ setup (
     url = "https://github.com/knossos-project/knossos_python_tools",
     license = "GPL",
     long_description = read("README.md"),
-    packages = ["dataset_utils"],
+    packages = ["knossos_utils"],
     data_files = [("", ["LICENSE"])],
     ext_modules = extensions,
     cmdclass = {"build_ext": build_ext},
