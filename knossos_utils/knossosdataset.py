@@ -40,7 +40,8 @@ from multiprocessing import Pool
 try:
     import mergelist_tools
 except ImportError:
-    print('mergelist_tools not available, using slow python fallback. Try to build the cython version of it.')
+    print('mergelist_tools not available, using slow python fallback. '
+          'Try to build the cython version of it.')
     import mergelist_tools_fallback as mergelist_tools
 import numpy as np
 import re
@@ -294,7 +295,7 @@ class KnossosDataset(object):
         self.__init__()
 
         self._knossos_path = path
-        all_mag_folders = our_glob(path+"*mag*")
+        all_mag_folders = our_glob(path+"/*mag*")
 
         if fixed_mag > 0:
             self._mag.append(fixed_mag)
@@ -305,7 +306,7 @@ class KnossosDataset(object):
                         self._mag.append(2**mag_test_nb)
                         break
 
-        mag_folder = our_glob(path+"*mag*")[0].split("/")
+        mag_folder = our_glob(path+"/*mag*")[0].split("/")
         if len(mag_folder[-1]) > 1:
             mag_folder = mag_folder[-1]
         else:
@@ -1378,4 +1379,3 @@ class KnossosDataset(object):
             pool.join()
         else:
             map(_find_and_delete_cubes_process, multi_params)
- 
