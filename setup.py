@@ -40,7 +40,10 @@ setup(
         "cython",
         "h5py",
         "numpy",
-        "python-snappy",
         "scipy",
-    ]
+    ],
+    extras_require={
+        "snappy": ["python-snappy"],
+    },
 )
+
