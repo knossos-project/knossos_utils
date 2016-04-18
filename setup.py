@@ -1,8 +1,10 @@
 #!/usr/bin/env python2
 
-from setuptools import setup, Extension
 import os
 import sys
+import setuptools
+from setuptools import setup, Extension
+from pkg_resources import parse_version
 
 if sys.version_info[:2] != (2, 7):
     print('\nSorry, only Python 2.7 is currently supported.')
@@ -50,14 +52,14 @@ setup(
     setup_requires=[
         "cython>=0.23",
     ],
-    install_requires=[  # TODO: Determine minimum requirement versions
-        "cython",
-        "h5py",
-        "numpy",
-        "scipy",
+    install_requires=[
+        "cython>=0.23",
+        "h5py>=2.5",
+        "numpy>=1.10",
+        "scipy>=0.16",
     ],
     extras_require={
-        "snappy": ["python-snappy"],
+        "snappy": ["python-snappy>=0.5"],
     },
 )
 
