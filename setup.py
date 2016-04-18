@@ -1,50 +1,65 @@
-#!/usr/bin/env python
-have_cython = False
-try:
-    from Cython.Build import cythonize
-    from Cython.Distutils import build_ext as build_ext
-    have_cython = True
-except ImportError:
-    from distutils.command.build_ext import build_ext as build_ext
-from setuptools import setup
-from setuptools import Extension
-import numpy
-import os
+#!/usr/bin/env python2
 
-extensions = []
-if have_cython:
-    extensions.append(Extension("mergelist_tools",
-                                ['knossos_utils/mergelist_tools.pyx'],
-                                include_dirs = [numpy.get_include()],
-                                language="c++",
-                                extra_compile_args=["-std=c++0x", "-include", "cmath"]))
-else:
-    extensions.append(Extension('mergelist_tools',
-                                ['knossos_utils/mergelist_tools.cpp'],
-                                include_dirs = [numpy.get_include()],
-                                language="c++",
-                                extra_compile_args=["-std=c++0x", "-include", "cmath"]))
+import os
+import sys
+import setuptools
+from setuptools import setup, Extension
+from pkg_resources import parse_version
+
+if sys.version_info[:2] != (2, 7):
+    print('\nSorry, only Python 2.7 is currently supported.')
+    print('\nYour current Python version is {}'.format(sys.version))
+    sys.exit(1)
+
+# Setuptools >=18.0 is needed for Cython to work correctly.
+if parse_version(setuptools.__version__) < parse_version('18.0'):
+    print('\nYour installed Setuptools version is too old.')
+    print('Please upgrade it to at least 18.0, e.g. by running')
+    print('$ python2 -m pip install --upgrade setuptools')
+    print('If this fails, try additionally passing the "--user" switch to the install command, or use Anaconda2.')
+    sys.exit(1)
+
+try:
+    import numpy
+except ImportError:
+    print("Numpy not found. Please install Numpy manually: http://www.scipy.org/install.html")
+    sys.exit(1)
+
+extensions = [Extension(
+    "mergelist_tools",
+    ["knossos_utils/mergelist_tools.pyx"],
+    include_dirs=[numpy.get_include()],
+    language="c++",
+    extra_compile_args=["-std=c++0x", "-include", "cmath"])
+]
+
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-setup (
-    name = "knossos_python_tools",
-    version = "1.0",
-    description = "Tools for generating or manipulating knossos datasets and annotation files",
-    author = "Sven Dorkenwald, KNOSSOS team",
-    author_email = "knossos-team@mpimf-heidelberg.mpg.de",
-    url = "https://github.com/knossos-project/knossos_python_tools",
-    license = "GPL",
-    long_description = read("README.md"),
-    packages = ["knossos_utils"],
-    data_files = [("", ["LICENSE"])],
-    ext_modules = extensions,
-    cmdclass = {"build_ext": build_ext},
+setup(
+    name="knossos_python_tools",
+    version="1.0",
+    description="Tools for generating or manipulating knossos datasets and annotation files",
+    author="Sven Dorkenwald, KNOSSOS team",
+    author_email="knossos-team@mpimf-heidelberg.mpg.de",
+    url="https://github.com/knossos-project/knossos_python_tools",
+    license="GPL",
+    long_description=read("README.md"),
+    packages=["knossos_utils"],
+    data_files=[("", ["LICENSE"])],
+    ext_modules=extensions,
+    setup_requires=[
+        "cython>=0.23",
+    ],
     install_requires=[
-        "h5py",
-        "numpy",
-        "python-snappy",
-        "scipy",
-    ]
+        "cython>=0.23",
+        "h5py>=2.5",
+        "numpy>=1.10",
+        "scipy>=0.16",
+    ],
+    extras_require={
+        "snappy": ["python-snappy>=0.5"],
+    },
 )
+

@@ -1,1 +1,9 @@
 *.pyc
+*.cpp
+*.o
+*.so
+build/
+dist/
+.eggs/
+.idea/
+
