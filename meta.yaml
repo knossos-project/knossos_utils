@@ -12,19 +12,17 @@ requirements:
     - cython >=0.23
     - h5py >=2.5
     - numpy >=1.10
-    - scipy >=0.17
+    - scipy >=0.17.1
     - python-snappy >=0.5
     - gcc >=4.8
-    - libgfortran <3.0
 
   run:
     - python >=2.7,<3
     - cython >=0.23
     - h5py >=2.5
     - numpy >=1.10
-    - scipy >=0.16
+    - scipy >=0.17.1
     - python-snappy >=0.5
-    - libgfortran <3.0  # https://github.com/ContinuumIO/anaconda-issues/issues/686
 
 about:
   home: https://github.com/knossos-project/knossos_python_tools
