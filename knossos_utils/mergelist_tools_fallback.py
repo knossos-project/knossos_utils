@@ -18,7 +18,7 @@ def subobject_map_from_mergelist(mergelist_content):
     return subobjects_map
 
 
-def apply_mergelist(segmentation, mergelist_content, background_id=0, pad=0):
+def apply_mergelist(segmentation, mergelist_content, background_id=0, pad=0, missing_subobjects_to_background=False):
     """
     Merges subobjects using a dictionary of (subobject, object) pairs. So each subobject can only be member of one object.
     The resulting segmentation for each merged group contains only the first ID of that group
@@ -43,8 +43,10 @@ def apply_mergelist(segmentation, mergelist_content, background_id=0, pad=0):
                 if subobject_id == background_id:
                     continue
                 object_id = subobject_map[subobject_id]
+                if object_id == background_id and missing_subobjects_to_background:
+                    segmentation[x, y, z] = background_id
+                    continue
                 new_subobject_id = subobject_id
-
                 if object_id in object_map.keys():
                     new_subobject_id = object_map[object_id]
                 else:

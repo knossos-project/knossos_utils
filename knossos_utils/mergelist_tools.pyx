@@ -3,6 +3,7 @@ import networkx as nx
 import numpy as np
 cimport numpy as np
 from cython.operator cimport dereference
+from libcpp cimport bool
 from libcpp.unordered_map cimport unordered_map
 from libcpp.unordered_set cimport unordered_set
 from libcpp.vector cimport vector
@@ -42,7 +43,7 @@ def subobject_map_from_mergelist(mergelist_content):
 
 
 @cython.boundscheck(False)
-def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_content, np.uint64_t background_id=0, np.uint64_t pad=0):
+def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_content, np.uint64_t background_id=0, np.uint64_t pad=0, bool missing_subobjects_to_background=False):
     """
     Merges subobjects using a dictionary of (subobject, object) pairs. So each subobject can only be member of one object.
     The resulting segmentation for each merged group contains only the first ID of that group
@@ -71,9 +72,12 @@ def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_cont
                 if subobject_id == background_id:
                     continue
                 object_id = subobject_map[subobject_id]
+                if object_id == background_id and missing_subobjects_to_background:
+                    segmentation[x, y, z] = background_id
+                    continue
                 new_subobject_id = subobject_id
-                object_map_it = object_map.find(object_id)
 
+                object_map_it = object_map.find(object_id)
                 if object_map_it != object_map.end():
                     new_subobject_id =  dereference(object_map_it).second
                 else:
