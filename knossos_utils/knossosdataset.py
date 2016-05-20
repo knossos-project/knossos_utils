@@ -914,6 +914,8 @@ class KnossosDataset(object):
 
         output = cut_matrix(output, offset_start, offset_end, self.edgelength,
                             start, end)
+        if verbose:
+            _print("applying mergelist now")
         mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
 
         if False in [output.shape[dim] == size[dim] for dim in xrange(3)]:
@@ -1235,8 +1237,8 @@ class KnossosDataset(object):
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
             if verbose:
-                _print("box_offset:", offset_mag)
-                _print("box_size:", size_mag)
+                _print("box_offset: {0}".format(offset_mag))
+                _print("box_size: {0}".format(size_mag))
 
             start = np.array([get_first_block(dim, offset_mag, self._edgelength)
                               for dim in xrange(3)])
@@ -1245,8 +1247,8 @@ class KnossosDataset(object):
                             for dim in xrange(3)])
 
             if verbose:
-                _print("start_cube:", start)
-                _print("end_cube:", end)
+                _print("start_cube: {0}".format(start))
+                _print("end_cube: {0}".format(end))
 
             current = np.array([start[dim] for dim in range(3)])
             multithreading_params = []
