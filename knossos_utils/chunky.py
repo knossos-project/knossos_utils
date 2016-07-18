@@ -424,12 +424,12 @@ class ChunkDataset(object):
                                "/chunky_%d/%s.h5" % (nb_current_chunk, name)
 
                         f = h5py.File(path, 'r')
-                        for hdf5_name in hdf5names:
+                        for hdf5_name in setnames:
                             values_dict[hdf5_name] = f[hdf5_name].value
                         f.close()
                     except Exception, e:
                         print "Exception:", e,
-                        for hdf5_name in hdf5names:
+                        for hdf5_name in setnames:
                             values_dict[hdf5_name] = np.zeros((
                                 self.chunk_size[0]*interpolated_data[0],
                                 self.chunk_size[1]*interpolated_data[1],
@@ -442,7 +442,7 @@ class ChunkDataset(object):
                     sub = np.subtract(np.array(current), np.array(start)) * \
                           np.array(self.chunk_size) * interpolated_data
 
-                    for hdf5_name in hdf5names:
+                    for hdf5_name in setnames:
                         values = np.copy(values_dict[hdf5_name])
                         values_dict[hdf5_name] = []
                         if binary:
@@ -481,7 +481,7 @@ class ChunkDataset(object):
                 current[1] += 1
             current[2] += 1
 
-        for hdf5_name in hdf5names:
+        for hdf5_name in setnames:
             output_matrix[hdf5_name] = knossosdataset.cut_matrix(
                 output_matrix[hdf5_name], offset_start, offset_end,
                 self.chunk_size*interpolated_data, start, end)
@@ -497,7 +497,7 @@ class ChunkDataset(object):
 
         if not outputpath is None:
             f = h5py.File(outputpath)
-            for hdf5_name in hdf5names:
+            for hdf5_name in setnames:
                 f.create_dataset(hdf5_name, data=output_matrix[hdf5_name],
                                  compression="gzip")
             f.close()
