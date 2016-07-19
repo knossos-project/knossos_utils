@@ -212,7 +212,7 @@ class ChunkDataset(object):
 
     @property
     def dataset():
-        assert len(self._dataset_path) > 0
+        assert os.path.exists(self._dataset_path)
         kd = knossosdataset.KnossosDataset()
         kd.initialize_from_knossos_path(self._dataset_path)
         return kd
@@ -282,7 +282,7 @@ class ChunkDataset(object):
                 np.array([box_coords[0]+coord[0],
                           box_coords[1]+coord[1],
                           box_coords[2]+coord[2]])
-            new_chunk.dataset = knossos_dataset_object
+            new_chunk._dataset_path = knossos_dataset_object.knossos_path
             new_chunk.size = chunk_size
             new_chunk.overlap = overlap
             new_chunk.folder_name = 'chunky_%i/' % nb_coord
@@ -604,12 +604,19 @@ class Chunk(object):
         self.coordinates = np.zeros(3)
         self.size = np.zeros(3)
         self.number = None
-        self.dataset = None
+        self._dataset_path = ""
         self.overlap = np.zeros(3)
         self.path_head_folder = None
         self.folder = None
         self.box_size = None
         self.feature_file = ''
+
+    @property
+    def dataset():
+        assert os.path.exists(self._dataset_path)
+        kd = knossosdataset.KnossosDataset()
+        kd.initialize_from_knossos_path(self._dataset_path)
+        return kd
 
     def raw_data(self, overlap=None, show_progress=False):
         """ Uses DatasetUtils.knossosDataset for getting the real data
