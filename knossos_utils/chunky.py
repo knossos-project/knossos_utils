@@ -206,10 +206,17 @@ class ChunkDataset(object):
         self.chunk_size = []
         self.feature_file_path = ''
         self.ann_dic = None
-        self.dataset = None
+        self._dataset_path = ''
         self.box_size = None
         self.overlap = None
 
+    @property
+    def dataset():
+        assert len(self._dataset_path) > 0
+        kd = knossosdataset.KnossosDataset()
+        kd.initialize_from_knossos_path(self._dataset_path)
+        return kd
+        
     def initialize(self, knossos_dataset_object, box_size,
                    chunk_size, path_head_folder, overlap=np.zeros(3),
                    list_of_coords=[], box_coords=None, fit_box_size=False):
@@ -245,7 +252,7 @@ class ChunkDataset(object):
         self.path_head_folder = path_head_folder
         self.chunk_size = chunk_size
         self.box_coords = box_coords
-        self.dataset = knossos_dataset_object
+        self._dataset_path = knossos_dataset_object.knossos_path
         self.box_size = box_size
         self.overlap = overlap
         if not os.path.exists(self.path_head_folder):
