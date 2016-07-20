@@ -211,7 +211,7 @@ class ChunkDataset(object):
         self.overlap = None
 
     @property
-    def dataset():
+    def dataset(self):
         assert os.path.exists(self._dataset_path)
         kd = knossosdataset.KnossosDataset()
         kd.initialize_from_knossos_path(self._dataset_path)
@@ -364,7 +364,6 @@ class ChunkDataset(object):
             chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
         return chunk_rep
 
-    # TODO: Fix hdf5names <-> setnames bug in this function.
     def from_chunky_to_matrix(self, size, offset, name, setnames,
                               dtype=np.uint32, outputpath=None,
                               binary=False,
@@ -613,7 +612,7 @@ class Chunk(object):
         self.feature_file = ''
 
     @property
-    def dataset():
+    def dataset(self):
         assert os.path.exists(self._dataset_path)
         kd = knossosdataset.KnossosDataset()
         kd.initialize_from_knossos_path(self._dataset_path)
