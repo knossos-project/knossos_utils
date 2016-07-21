@@ -31,6 +31,9 @@
 ################################################################################
 
 
+# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
+from builtins import range  # TODO: Import all other necessary builtins after testing
+
 import cPickle as pickle
 import glob
 import h5py
@@ -609,9 +612,9 @@ class KnossosDataset(object):
                 raise Exception("Given block is totally out ouf bounce!")
 
         start = np.array([get_first_block(dim, offset, self._edgelength)
-                          for dim in xrange(3)])
+                          for dim in range(3)])
         end = np.array([get_last_block(dim, size, offset, self._edgelength)+1
-                        for dim in xrange(3)])
+                        for dim in range(3)])
 
         #TODO: Describe method
         uncut_matrix_size = (end - start)*self.edgelength
@@ -704,7 +707,7 @@ class KnossosDataset(object):
         output = cut_matrix(output, offset_start, offset_end, self.edgelength,
                             start, end)
 
-        if False in [output.shape[dim] == size[dim] for dim in xrange(3)]:
+        if False in [output.shape[dim] == size[dim] for dim in range(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",
                             output.shape)
         else:
@@ -854,9 +857,9 @@ class KnossosDataset(object):
         offset = np.array(offset, dtype=np.int)
 
         start = np.array([get_first_block(dim, offset, self._edgelength)
-                          for dim in xrange(3)])
+                          for dim in range(3)])
         end = np.array([get_last_block(dim, size, offset, self._edgelength)+1
-                        for dim in xrange(3)])
+                        for dim in range(3)])
 
         matrix_size = (end - start)*self.edgelength
         output = np.zeros(matrix_size, dtype=datatype)
@@ -918,7 +921,7 @@ class KnossosDataset(object):
             _print("applying mergelist now")
         mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
 
-        if False in [output.shape[dim] == size[dim] for dim in xrange(3)]:
+        if False in [output.shape[dim] == size[dim] for dim in range(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",
                             output.shape)
         else:
@@ -1241,10 +1244,10 @@ class KnossosDataset(object):
                 _print("box_size: {0}".format(size_mag))
 
             start = np.array([get_first_block(dim, offset_mag, self._edgelength)
-                              for dim in xrange(3)])
+                              for dim in range(3)])
             end = np.array([get_last_block(dim, size_mag, offset_mag,
                                            self._edgelength)+1
-                            for dim in xrange(3)])
+                            for dim in range(3)])
 
             if verbose:
                 _print("start_cube: {0}".format(start))

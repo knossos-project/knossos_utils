@@ -28,6 +28,7 @@ setup(
     install_requires=[
         'numpy>=1.10',
         'scipy>=0.16',
+        'future>=0.15',  # only required for Python 2
         'Pillow',
         # 'PyQt4',  # (no packages on PyPi)
     ],

@@ -1,3 +1,6 @@
+# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
+from builtins import range  # TODO: Import all other necessary builtins after testing
+
 cimport cython
 import networkx as nx
 import numpy as np
@@ -65,9 +68,9 @@ def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_cont
 
     cdef unordered_map[np.uint64_t, np.uint64_t] object_map
 
-    for z in xrange(pad, depth - pad):
-        for y in xrange(pad, height - pad):
-            for x in xrange(pad, width - pad):
+    for z in range(pad, depth - pad):
+        for y in range(pad, height - pad):
+            for x in range(pad, width - pad):
                 subobject_id = segmentation[x, y, z]
                 if subobject_id == background_id:
                     continue
@@ -111,9 +114,9 @@ def gen_mergelist_from_segmentation(np.ndarray[np.uint64_t, ndim=3] segmentation
 
     cdef unordered_set[np.uint64_t] seen_subobjects
     new_mergelist = ""
-    for z in xrange(pad, depth - pad):
-        for y in xrange(pad, height - pad):
-            for x in xrange(pad, width - pad):
+    for z in range(pad, depth - pad):
+        for y in range(pad, height - pad):
+            for x in range(pad, width - pad):
                 next_id = segmentation[x, y, z]
                 if next_id == background_id or next_id == so_cache or seen_subobjects.find(next_id) != seen_subobjects.end():
                     continue
@@ -148,4 +151,3 @@ def merge_objects(vector[unordered_set[np.uint64_t]] objects):
             obj.erase(obj.begin())
             G.add_edge(first, second)
     return nx.connected_components(G)
-    

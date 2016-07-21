@@ -22,6 +22,9 @@
 ################################################################################
 
 
+# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
+from builtins import range  # TODO: Import all other necessary builtins after testing
+
 import cPickle as pkl
 import glob
 import h5py
@@ -322,7 +325,7 @@ class ChunkDataset(object):
         """
 
         if not chunklist:
-            chunklist = range(len(self.chunk_dict))
+            chunklist = list(range(len(self.chunk_dict)))
             print self.chunklist
         if self.chunklist:
             print 'in loop'
@@ -376,11 +379,11 @@ class ChunkDataset(object):
         start = [knossosdataset.get_first_block(dim,
                                                 np.array(offset)-dataset_offset,
                                                 self.chunk_size)
-                 for dim in xrange(3)]
+                 for dim in range(3)]
         end = [knossosdataset.get_last_block(dim, size,
                                              np.array(offset)-dataset_offset,
                                              self.chunk_size)+1
-               for dim in xrange(3)]
+               for dim in range(3)]
 
         output_matrix = {}
         for hdf5_name in setnames:
@@ -496,7 +499,7 @@ class ChunkDataset(object):
         for this_key in output_matrix.keys():
             if False in [output_matrix[this_key].shape[dim] ==
                          np.array(size[dim])*interpolated_data[dim]
-                         for dim in xrange(3)]:
+                         for dim in range(3)]:
                 raise Exception("Incorrect shape! Should be", size, "; got:",
                                 output_matrix[this_key].shape)
         else:
