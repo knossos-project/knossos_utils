@@ -21,14 +21,13 @@
 #
 ################################################################################
 
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range  # TODO: Import all other necessary builtins after testing
 
 import cPickle as pkl
 import glob
 import h5py
-import knossosdataset
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 import numpy as np
@@ -40,6 +39,8 @@ try:
     fadvise_available = True
 except:
     fadvise_available = False
+
+from knossos_utils import knossosdataset
 
 
 def wrapper(func, args, kwargs):

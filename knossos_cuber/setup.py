@@ -1,14 +1,19 @@
 # -*- coding: UTF-8 -*-
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 
 from setuptools import setup
 
 setup(
     name='knossos_cuber',
     packages=['knossos_cuber'],
-    scripts=[
-        'knossos_cuber/knossos_cuber.py',  # TODO: Wrap or rename script
-    ],
+    entry_points={
+        'console_scripts': [
+            'knossos_cuber = knossos_cuber.knossos_cuber:main',
+        ],
+        'gui_scripts': [
+            'knossos_cuber_gui = knossos_cuber.knossos_cuber_gui:main',  # TODO: Fix config loading
+        ]
+    },
     version='1.0',
     description='A script that converts images into a KNOSSOS-readable format.',
     author='Jörgen Kornfeld, Fabian Svara',

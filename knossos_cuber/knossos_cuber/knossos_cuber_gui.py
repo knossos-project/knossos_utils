@@ -1,8 +1,10 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
 """knossos_cuber_gui.py
 """
 
-from __future__ import print_function
-
+from __future__ import absolute_import, print_function
 
 import sys
 import argparse
@@ -10,12 +12,12 @@ from ast import literal_eval
 
 from PyQt4.QtGui import *
 # from PyQt4.QtCore import *
-from knossos_cuber_widgets import Ui_Dialog
-from knossos_cuber_widgets_log import Ui_dialog_log
-from knossos_cuber import knossos_cuber, validate_config
+from knossos_cuber.knossos_cuber_widgets import Ui_Dialog
+from knossos_cuber.knossos_cuber_widgets_log import Ui_dialog_log
+from knossos_cuber.knossos_cuber import knossos_cuber, validate_config
 
-from knossos_cuber import SOURCE_FORMAT_FILES
-from knossos_cuber import read_config_file
+from knossos_cuber.knossos_cuber import SOURCE_FORMAT_FILES
+from knossos_cuber.knossos_cuber import read_config_file
 
 
 
@@ -365,13 +367,13 @@ class KnossosCuberUI(Ui_Dialog):
             knossos_cuber(self.config, log_fn)
 
 
-if __name__ == '__main__':
+def main():
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument(
         '--config', '-c',
         help="A configuration file. If no file is specified, "
              "`config.ini' from knossos_cuber's installation directory is used.",
-        default='config.ini'
+        default='config.ini'  # TODO: Fix default config access for package
     )
 
     ARGS = PARSER.parse_args()
@@ -389,3 +391,6 @@ if __name__ == '__main__':
     WINDOW.show()
 
     sys.exit(APP.exec_())
+
+if __name__ == '__main__':
+    main()

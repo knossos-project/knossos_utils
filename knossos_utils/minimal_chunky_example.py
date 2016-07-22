@@ -1,6 +1,7 @@
-import knossosdataset
-import chunky
+from __future__ import absolute_import, print_function
 
+from knossos_utils import knossosdataset
+from knossos_utils import chunky
 kd = knossosdataset.KnossosDataset()
 kd.initialize_from_knossos_path("/path/to/knossosdir/")
 

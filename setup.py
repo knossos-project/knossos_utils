@@ -1,6 +1,5 @@
 #!/usr/bin/env python2
-
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 
 import os
 import sys
@@ -40,7 +39,7 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 setup(
-    name="knossos_python_tools",
+    name="knossos_utils",
     version="1.0",
     description="Tools for generating or manipulating knossos datasets and annotation files",
     author="Sven Dorkenwald, KNOSSOS team",

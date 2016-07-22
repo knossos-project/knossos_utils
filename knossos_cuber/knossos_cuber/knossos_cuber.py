@@ -1,4 +1,6 @@
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
+
 """A Python script that converts images into a **Knossos**-readable
 format."
 
@@ -1152,7 +1154,7 @@ def validate_args(args):
     return True
 
 
-if __name__ == '__main__':
+def main():
     PARSER = create_parser()
     ARGS = PARSER.parse_args()
 
@@ -1167,3 +1169,6 @@ if __name__ == '__main__':
 
     if validate_config(CONFIG):
         knossos_cuber(CONFIG, lambda x: sys.stdout.write(str(x) + '\n'))
+
+if __name__ == '__main__':
+    main()
