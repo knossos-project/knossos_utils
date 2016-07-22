@@ -30,7 +30,7 @@
 #
 ################################################################################
 
-
+from __future__ import print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range  # TODO: Import all other necessary builtins after testing
 
@@ -67,7 +67,7 @@ def our_glob(s):
 def _print(s):
     global module_wide
     if not module_wide["noprint"]:
-        print s
+        print(s)
     return
 
 def _set_noprint(noprint):

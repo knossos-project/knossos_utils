@@ -21,7 +21,7 @@
 #
 ################################################################################
 
-
+from __future__ import print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range  # TODO: Import all other necessary builtins after testing
 
@@ -73,7 +73,7 @@ def _export_cset_as_kd_thread(args):
         if coords[dim] + size[dim] > cset.box_size[dim]:
             size[dim] = cset.box_size[dim] - coords[dim]
 
-    print coords
+    print(coords)
     data_dict = cset.from_chunky_to_matrix(size, coords, name, hdf5names)
 
     data_list = []
@@ -164,7 +164,7 @@ def load_dataset(path_head_folder, update_paths=False):
         this_cd = pkl.load(f)
 
     if update_paths:
-        print "Updating paths..."
+        print("Updating paths...")
         this_cd.path_head_folder = path_head_folder + '/'
         for key in this_cd.chunk_dict.keys():
             this_cd.chunk_dict[key].path_head_folder = path_head_folder + '/'
@@ -173,7 +173,7 @@ def load_dataset(path_head_folder, update_paths=False):
             else:
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-1]
             this_cd.chunk_dict[key].folder = path_head_folder + '/' + rel_path + '/'
-        print "... finished. Saving."
+        print("... finished. Saving.")
         save_dataset(this_cd)
 
     return this_cd
@@ -260,7 +260,7 @@ class ChunkDataset(object):
         self.overlap = overlap
         if not os.path.exists(self.path_head_folder):
             os.makedirs(self.path_head_folder)
-            print 'folder created at %s' % path_head_folder
+            print('folder created at %s' % path_head_folder)
 
         if len(list_of_coords) == 0:
             if False in np.equal(np.mod(box_size, chunk_size), np.zeros(3)):
@@ -326,9 +326,9 @@ class ChunkDataset(object):
 
         if not chunklist:
             chunklist = list(range(len(self.chunk_dict)))
-            print self.chunklist
+            print(self.chunklist)
         if self.chunklist:
-            print 'in loop'
+            print('in loop')
             chunklist = self.chunklist
 
         for i in chunklist:
@@ -438,14 +438,14 @@ class ChunkDataset(object):
                             values_dict[hdf5_name] = f[hdf5_name].value
                         f.close()
                     except Exception, e:
-                        print "Exception:", e,
+                        print("Exception:", e)
                         for hdf5_name in setnames:
                             values_dict[hdf5_name] = np.zeros((
                                 self.chunk_size[0]*interpolated_data[0],
                                 self.chunk_size[1]*interpolated_data[1],
                                 self.chunk_size[2]*interpolated_data[2]))
-                        print "Cube does not exist, cube with zeros only " \
-                              "assigned:", current_coordinate
+                        print("Cube does not exist, cube with zeros only " \
+                              "assigned:", current_coordinate)
 
                     cnt += 1
 
@@ -518,7 +518,7 @@ class ChunkDataset(object):
         def _find_and_delete_cubes(file):
             if folder:
                 os.rmdir(file)
-                print file
+                print(file)
             else:
                 os.remove(file)
 
@@ -674,7 +674,7 @@ class Chunk(object):
             coords = np.array(np.array(self.coordinates),
                   dtype=np.int)
 
-        print 'getting seg data', size, coords
+        print('getting seg data', size, coords)
         seg = self.dataset.from_overlaycubes_to_matrix(size,
                                          coords,dytpe_opt=dytpe_opt)
 
@@ -705,7 +705,7 @@ class Chunk(object):
 
         if labels_data is None:
             labels_data = self.load_chunk(seg_name, seg_set_name)
-            print np.max(labels_data), np.min(labels_data)
+            print(np.max(labels_data), np.min(labels_data))
         coord = self.coordinates-self.overlap
 
         if without_overlap:
@@ -713,9 +713,9 @@ class Chunk(object):
                                       self.overlap[1]:-self.overlap[1],
                                       self.overlap[2]:-self.overlap[2]]
             coord = self.coordinates
-        print labels_data.shape
+        print(labels_data.shape)
         if not write_pathlist:
-            print overwrite
+            print(overwrite)
             self.dataset.from_matrix_to_overlaycubes(coord,
                                                  labels_data=[labels_data],
                                                  swapaxes_option=swap_axes,
@@ -756,7 +756,7 @@ class Chunk(object):
             if set True, existing HDF5 file is overwritten
         """
         path = self.folder + name + '.h5'
-        print 'writing to ', path
+        print('writing to ', path)
         if not os.path.exists(self.path_head_folder):
             os.makedirs(self.path_head_folder)
 
@@ -807,18 +807,18 @@ class Chunk(object):
         path = self.folder + name + '.h5'
 
         if not os.path.exists(self.path_head_folder):
-            print self.path_head_folder
+            print(self.path_head_folder)
             raise Exception('path_head_folder to correct, check "/" at the end')
         if not os.path.exists(self.folder):
-            print self.folder
+            print(self.folder)
             raise Exception('chunky folder does not exist')
         if verbose:
-            print 'loading:', path
+            print('loading:', path)
 
         f = h5py.File(path, 'r')
         if verbose:
-            print 'file has following setnames:', f.keys()
-            print 'setname(s)', setname
+            print('file has following setnames:', f.keys())
+            print('setname(s)', setname)
         if type(setname) == list or type(setname) == np.ndarray:
             data = []
             for this_setname in setname:
@@ -828,13 +828,3 @@ class Chunk(object):
         f.close()
 
         return data
-
-
-
-
-
-
-
-
-
-
