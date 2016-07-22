@@ -30,7 +30,7 @@
 #
 ################################################################################
 
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range  # TODO: Import all other necessary builtins after testing
 
@@ -41,11 +41,11 @@ import io
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 try:
-    import mergelist_tools
+    from knossos_utils import mergelist_tools
 except ImportError:
     print('mergelist_tools not available, using slow python fallback. '
           'Try to build the cython version of it.')
-    import mergelist_tools_fallback as mergelist_tools
+    from knossos_utils import mergelist_tools_fallback as mergelist_tools
 import numpy as np
 import re
 import scipy.misc

@@ -6,10 +6,11 @@ format."
 
 """
 
-__author__ = 'Joergen Kornfeld'
-
+from __future__ import absolute_import, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range  # TODO: Import all other necessary builtins after testing
+
+__author__ = 'Joergen Kornfeld'
 
 import threading
 import re
@@ -617,7 +618,7 @@ def write_cube(cube_data, prefix, cube_full_path):
         #print("writing took: {0}s".format(time.time()-ref_time))
     except IOError:
         # no log_fn due to multithreading
-        print "Could not write cube: {0}".format(cube_full_path)
+        print("Could not write cube: {0}".format(cube_full_path))
 
     return
 
@@ -655,7 +656,7 @@ def init_from_source_dir(config, log_fn):
     all_source_files = [source_path + '/' + s for s in source_files]
 
     if all_source_files == []:
-        print "No image files of format " + source_format + " was found."
+        print("No image files of format " + source_format + " was found.")
         sys.exit()
 
 
@@ -1073,9 +1074,9 @@ def read_config_file(config_file):
     try:
         config.readfp(open(config_file))
     except IOError:
-        print "Could not open config file `" + config_file + "'."
-        print "An IOError has appeared. Please check whether the " \
-              "configuration file exists and permissions are set."
+        print("Could not open config file `" + config_file + "'.")
+        print("An IOError has appeared. Please check whether the "
+              "configuration file exists and permissions are set.")
 
         sys.exit()
 
@@ -1147,8 +1148,7 @@ def validate_args(args):
     """
 
     if args.format not in SOURCE_FORMAT_FILES.keys():
-        print ("Error: " + args.format +
-               " was not found in the list of supported formats!")
+        print("Error: " + args.format + " was not found in the list of supported formats!")
         return False
 
     return True
