@@ -34,6 +34,17 @@ extensions = [Extension(
     extra_compile_args=["-std=c++0x", "-include", "cmath"])
 ]
 
+install_requires = [
+    "cython>=0.23",
+    "h5py>=2.5",
+    "numpy>=1.10",
+    "scipy>=0.16",
+    "networkx",
+]
+
+if sys.version_info[0] < 3:
+    install_requires.append("future>=0.15")
+
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
@@ -53,14 +64,7 @@ setup(
     setup_requires=[
         "cython>=0.23",
     ],
-    install_requires=[
-        "cython>=0.23",
-        "h5py>=2.5",
-        "numpy>=1.10",
-        "scipy>=0.16",
-        "networkx",
-        "future>=0.15",   # only required for Python 2
-    ],
+    install_requires=install_requires,
     extras_require={
         "snappy": ["python-snappy>=0.5"],
     },

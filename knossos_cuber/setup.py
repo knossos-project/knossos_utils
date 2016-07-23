@@ -1,7 +1,18 @@
 # -*- coding: UTF-8 -*-
 from __future__ import absolute_import, division, print_function
 
+import sys
 from setuptools import setup
+
+install_requires = [
+    'numpy>=1.10',
+    'scipy>=0.16',
+    'Pillow',
+    # 'PyQt4',  # (no packages on PyPi)  # TODO: Maybe port to PyQt5, which has wheels on PyPi for all platforms.
+]
+
+if sys.version_info[0] < 3:
+    install_requires.append("future>=0.15")
 
 setup(
     name='knossos_cuber',
@@ -32,11 +43,5 @@ setup(
         'Topic :: Scientific/Engineering :: Information Analysis',
         'Topic :: Scientific/Engineering :: Visualization',
     ],
-    install_requires=[
-        'numpy>=1.10',
-        'scipy>=0.16',
-        'future>=0.15',  # only required for Python 2
-        'Pillow',
-        # 'PyQt4',  # (no packages on PyPi)
-    ],
+    install_requires=install_requires,
 )
