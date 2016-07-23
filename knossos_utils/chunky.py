@@ -25,7 +25,10 @@ from __future__ import absolute_import, print_function  # TODO: division (Carefu
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range  # TODO: Import all other necessary builtins after testing
 
-import cPickle as pkl
+try:
+    import cPickle as pkl
+except ImportError:
+    import pickle as pkl
 import glob
 import h5py
 from multiprocessing.pool import ThreadPool

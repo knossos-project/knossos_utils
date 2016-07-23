@@ -58,6 +58,7 @@ setup(
         "h5py>=2.5",
         "numpy>=1.10",
         "scipy>=0.16",
+        "networkx",
         "future>=0.15",   # only required for Python 2
     ],
     extras_require={

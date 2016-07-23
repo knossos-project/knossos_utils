@@ -28,7 +28,7 @@ from PIL import Image
 import os
 import itertools
 import scipy.special
-import StringIO
+import StringIO  # TODO: StringIO module was removed. Use io.BytesIO for Pillow instead (will need additional testing)
 import time
 try:
     import fadvise
@@ -39,7 +39,11 @@ except ImportError:
 import sys
 from ast import literal_eval
 from collections import OrderedDict, namedtuple
-import ConfigParser, argparse
+try:
+    from ConfigParser import SafeConfigParser as ConfigParser
+except ImportError:
+    from configparser import ConfigParser
+import argparse
 
 
 SOURCE_FORMAT_FILES = OrderedDict({
@@ -1069,7 +1073,7 @@ def read_config_file(config_file):
         A ConfigParser object holding the contents of config_file.
     """
 
-    config = ConfigParser.SafeConfigParser(allow_no_value=True)
+    config = ConfigParser(allow_no_value=True)
 
     try:
         config.readfp(open(config_file))
