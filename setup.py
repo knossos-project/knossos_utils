@@ -27,7 +27,7 @@ except ImportError:
     sys.exit(1)
 
 extensions = [Extension(
-    "mergelist_tools",
+    "knossos_utils.mergelist_tools",
     ["knossos_utils/mergelist_tools.pyx"],
     include_dirs=[numpy.get_include()],
     language="c++",
