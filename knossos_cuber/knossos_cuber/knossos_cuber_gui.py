@@ -12,12 +12,23 @@ from ast import literal_eval
 
 from PyQt4.QtGui import *
 # from PyQt4.QtCore import *
-from knossos_cuber.knossos_cuber_widgets import Ui_Dialog
-from knossos_cuber.knossos_cuber_widgets_log import Ui_dialog_log
-from knossos_cuber.knossos_cuber import knossos_cuber, validate_config
 
-from knossos_cuber.knossos_cuber import SOURCE_FORMAT_FILES
-from knossos_cuber.knossos_cuber import read_config_file
+try:
+    # Assume knossos_cuber is installed as a package or executed from the parent directory
+    from knossos_cuber.knossos_cuber_widgets import Ui_Dialog
+    from knossos_cuber.knossos_cuber_widgets_log import Ui_dialog_log
+    from knossos_cuber.knossos_cuber import knossos_cuber, validate_config
+
+    from knossos_cuber.knossos_cuber import SOURCE_FORMAT_FILES
+    from knossos_cuber.knossos_cuber import read_config_file
+except ImportError:
+    # Assume the user wants to simply run "$ python2 knossos_cuber_gui.py" as a script inside the directory
+    from knossos_cuber_widgets import Ui_Dialog
+    from knossos_cuber_widgets_log import Ui_dialog_log
+    from knossos_cuber import knossos_cuber, validate_config
+
+    from knossos_cuber import SOURCE_FORMAT_FILES
+    from knossos_cuber import read_config_file
 
 
 
