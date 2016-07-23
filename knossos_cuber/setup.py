@@ -12,19 +12,27 @@ install_requires = [
 ]
 
 if sys.version_info[0] < 3:
-    install_requires.append("future>=0.15")
+    install_requires.append('future>=0.15')
+
+entry_points = {
+    'console_scripts': [
+        'knossos_cuber = knossos_cuber.knossos_cuber:main',
+    ],
+    'gui_scripts': [
+        'knossos_cuber_gui = knossos_cuber.knossos_cuber_gui:main',  # TODO: Fix config loading
+    ]
+}
+
+try:
+    import PyQt4
+except ImportError:
+    print('PyQt4 not found. knossos_cuber_gui will not be available.')
+    del entry_points['gui_scripts']
 
 setup(
     name='knossos_cuber',
     packages=['knossos_cuber'],
-    entry_points={
-        'console_scripts': [
-            'knossos_cuber = knossos_cuber.knossos_cuber:main',
-        ],
-        'gui_scripts': [
-            'knossos_cuber_gui = knossos_cuber.knossos_cuber_gui:main',  # TODO: Fix config loading
-        ]
-    },
+    entry_points=entry_points,
     version='1.0',
     description='A script that converts images into a KNOSSOS-readable format.',
     author='Jörgen Kornfeld, Fabian Svara',
