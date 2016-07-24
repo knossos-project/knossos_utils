@@ -32,7 +32,7 @@
 
 from __future__ import absolute_import, print_function  # TODO: division (Careful with old semantics!)
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from builtins import range  # TODO: Import all other necessary builtins after testing
+from builtins import range, map  # TODO: Import all other necessary builtins after testing
 
 try:
     import cPickle as pickle
@@ -1322,7 +1322,8 @@ class KnossosDataset(object):
                 pool.close()
                 pool.join()
             else:
-                map(_write_cubes, multithreading_params)
+                for params in multithreading_params:
+                    _write_cubes(params)
 
         if kzip_path is not None:
             with zipfile.ZipFile(kzip_path+".k.zip", "w",
@@ -1386,4 +1387,5 @@ class KnossosDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_find_and_delete_cubes_process, multi_params)
+            for params in multi_params:
+                _find_and_delete_cubes_process(params)

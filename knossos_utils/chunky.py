@@ -23,7 +23,7 @@
 
 from __future__ import absolute_import, print_function  # TODO: division (Careful with old semantics!)
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from builtins import range  # TODO: Import all other necessary builtins after testing
+from builtins import range, map  # TODO: Import all other necessary builtins after testing
 
 try:
     import cPickle as pkl
@@ -594,7 +594,8 @@ class ChunkDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_write_chunks, multithreading_params)
+            for params in multithreading_params:
+                _write_chunks(params)
 
     def delete_all_cubes_by_name(self, fullname, nb_threads=10, folder=False):
         def _find_and_delete_cubes(file):
@@ -624,7 +625,8 @@ class ChunkDataset(object):
             pool.map(_export_cset_to_tiff_stack_thread, multi_params)
             pool.close()
         else:
-            map(_export_cset_to_tiff_stack_thread, multi_params)
+            for params in multi_params:
+                _export_cset_to_tiff_stack_thread(params)
 
     def export_cset_to_kd(self, kd, name, hdf5names, nb_threads,
                           coordinate=None, size=None,
@@ -655,7 +657,8 @@ class ChunkDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_export_cset_as_kd_thread, multi_params)
+            for params in multi_params:
+                _export_cset_as_kd_thread(params)
 
         if nb_threads[0] > 1:
             pool = Pool(processes=nb_threads[0])
@@ -663,7 +666,8 @@ class ChunkDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_export_cset_as_kd_control_thread, multi_params)
+            for params in multi_params:
+                _export_cset_as_kd_control_thread(params)
 
 
 class Chunk(object):
