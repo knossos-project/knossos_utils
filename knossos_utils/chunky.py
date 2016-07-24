@@ -511,6 +511,84 @@ class ChunkDataset(object):
         else:
             return output_matrix
 
+    def from_matrix_to_chunky(self, offset, chunk_offset, data, name, h5_name,
+                              n_threads=16):
+        def _write_chunks(args):
+            path = args[0]
+            h5_name = args[1]
+            low = args[2]
+            high = args[3]
+            low_cut = args[4]
+            high_cut = args[5]
+
+            if os.path.exists(path):
+                with h5py.File(path, "r") as f:
+                    chunk_data = f[h5_name].value
+            else:
+                chunk_data = np.zeros(chunk_offset*2 + self.chunk_size,
+                                      dtype=np.uint8)
+
+            chunk_data[low[0]: high[0], low[1]: high[1], low[2]: high[2]] = \
+                                data[low_cut[0]: high_cut[0],
+                                     low_cut[1]: high_cut[1],
+                                     low_cut[2]: high_cut[2]]
+
+            with h5py.File(path, "w") as f:
+                f.create_dataset(h5_name, data=chunk_data, compression="gzip")
+
+        chunk_offset = np.array(chunk_offset)
+
+        start = np.floor(np.array([(offset[dim]-chunk_offset[dim]) /
+                                   float(self.chunk_size[dim])
+                                   for dim in range(3)]))
+        start = start.astype(np.int)
+        end = np.floor(np.array([(offset[dim]+chunk_offset[dim]+data.shape[dim]-1) /
+                                 float(self.chunk_size[dim]) for dim in range(3)]))
+        end = end.astype(np.int)
+
+        current = np.copy(start)
+
+        multithreading_params = []
+
+        while current[2] <= end[2]:
+            current[1] = start[1]
+            while current[1] <= end[1]:
+                current[0] = start[0]
+                while current[0] <= end[0]:
+                    chunk_coord = current * np.array(self.chunk_size)
+                    if tuple(chunk_coord) in self.coord_dict:
+                        chunk_id = self.coord_dict[tuple(chunk_coord)]
+
+                        path = self.path_head_folder + \
+                               "/chunky_%d/%s.h5" % (chunk_id, name)
+
+                        low = np.array(offset - (chunk_coord - chunk_offset))
+                        low_cut = low * (-1)
+                        low[low < 0] = 0
+                        low_cut[low_cut < 0] = 0
+
+                        high = low + np.array(data.shape) - low_cut - \
+                               self.chunk_size - 2*chunk_offset
+                        high_cut = np.array(data.shape)
+                        high_cut[high > 0] -= high[high > 0]
+                        high[high > 0] = 0
+                        high += self.chunk_size + 2*chunk_offset
+
+                        multithreading_params.append([path, h5_name, low, high,
+                                                      low_cut, high_cut])
+
+                    current[0] += 1
+                current[1] += 1
+            current[2] += 1
+
+        if n_threads > 1:
+            pool = ThreadPool(n_threads)
+            pool.map(_write_chunks, multithreading_params)
+            pool.close()
+            pool.join()
+        else:
+            map(_write_chunks, multithreading_params)
+
     def delete_all_cubes_by_name(self, fullname, nb_threads=10, folder=False):
         def _find_and_delete_cubes(file):
             if folder:
