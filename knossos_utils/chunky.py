@@ -442,7 +442,7 @@ class ChunkDataset(object):
                         for hdf5_name in setnames:
                             values_dict[hdf5_name] = f[hdf5_name].value
                         f.close()
-                    except Exception, e:
+                    except Exception as e:
                         print("Exception:", e)
                         for hdf5_name in setnames:
                             values_dict[hdf5_name] = np.zeros((
