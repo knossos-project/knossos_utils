@@ -8,7 +8,7 @@ format."
 
 from __future__ import absolute_import, print_function  # TODO: division (Careful with old semantics!)
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from builtins import range, map, filter, round, next, input, bytes, hex, oct, chr, int  # TODO: Import all other necessary builtins after testing
+from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int  # TODO: Import all other necessary builtins after testing
 from functools import reduce
 
 __author__ = 'Joergen Kornfeld'
@@ -324,7 +324,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         write_threads = []
 
         # start writing the cubes
-        for cube_data, job_info in itertools.izip(cubes, this_job_chunk):
+        for cube_data, job_info in zip(cubes, this_job_chunk):
             prefix = os.path.dirname(job_info.trg_cube_path)
             cube_full_path = job_info.trg_cube_path
             ref_time = time.time()
