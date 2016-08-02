@@ -13,6 +13,7 @@ from pkg_resources import parse_version
 if sys.version_info[:2] != (2, 7):
     print('\nSorry, only Python 2.7 is currently supported.')
     print('\nYour current Python version is {}'.format(sys.version))
+    print(flush=True)
     sys.exit(1)
 
 # Setuptools >=18.0 is needed for Cython to work correctly.
@@ -21,12 +22,14 @@ if parse_version(setuptools.__version__) < parse_version('18.0'):
     print('Please upgrade it to at least 18.0, e.g. by running')
     print('$ python2 -m pip install --upgrade setuptools')
     print('If this fails, try additionally passing the "--user" switch to the install command, or use Anaconda2.')
+    print(flush=True)
     sys.exit(1)
 
 try:
     import numpy
 except ImportError:
     print("Numpy not found. Please install Numpy manually: http://www.scipy.org/install.html")
+    print(flush=True)
     sys.exit(1)
 
 extensions = [Extension(
