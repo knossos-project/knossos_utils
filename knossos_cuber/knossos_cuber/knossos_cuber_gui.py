@@ -13,8 +13,7 @@ import sys
 import argparse
 from ast import literal_eval
 
-from PyQt4.QtGui import *
-# from PyQt4.QtCore import *
+from PyQt5.QtWidgets import *
 
 try:
     # Assume knossos_cuber is installed as a package or executed from the parent directory

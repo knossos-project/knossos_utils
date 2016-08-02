@@ -11,11 +11,9 @@ install_requires = [
     'numpy>=1.10',
     'scipy>=0.16',
     'Pillow',
-    # 'PyQt4',  # (no packages on PyPi)  # TODO: Maybe port to PyQt5, which has wheels on PyPi for all platforms.
+    'PyQt5',
 ]
 
-if sys.version_info[0] < 3:
-    install_requires.append('future>=0.15')
 
 entry_points = {
     'console_scripts': [
@@ -26,11 +24,22 @@ entry_points = {
     ]
 }
 
-try:
-    import PyQt4
-except ImportError:
-    print('PyQt4 not found. knossos_cuber_gui will not be available.')
-    del entry_points['gui_scripts']
+if sys.version_info < (3, 0):
+    # Python 2 needs builtins provided by future
+    install_requires.append('future>=0.15')
+
+if sys.version_info < (3, 5):
+    # PyQt5 currently can't be pip installed on python<3.5. Either it is there (via system package) or you can't use it.
+    install_requires.remove('PyQt5')
+    try:
+        import PyQt5
+    except ImportError:
+        print('PyQt5 not found. knossos_cuber_gui will not be available.')
+        print('(This problem occurs only in old Python versions.')
+        print(' If you use Python 3.5 or later, PyQt5 will be automatically provided.)')
+        print('You can also try installing PyQt5 via your system package manager (apt, yum etc.) and then re-install.')
+        print(flush=True)
+        del entry_points['gui_scripts']
 
 setup(
     name='knossos_cuber',
