@@ -29,7 +29,6 @@ from PIL import Image
 import os
 import itertools
 import scipy.special
-import StringIO  # TODO: StringIO module was removed. Use io.BytesIO for Pillow instead (will need additional testing)
 import time
 try:
     import fadvise
@@ -839,7 +838,7 @@ def make_mag1_cubes_from_z_stack(config,
                     content += fd.read(buffersize)
                 fd.close()
 
-                PIL_image = Image.open(StringIO.StringIO(content))
+                PIL_image = Image.open(io.BytesIO(content))
                 this_layer = np.array(PIL_image)
 
                 # This stupid swap axes call costs us 50% of the image loading
