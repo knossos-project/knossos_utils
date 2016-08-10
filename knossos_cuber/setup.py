@@ -20,7 +20,7 @@ entry_points = {
         'knossos_cuber = knossos_cuber.knossos_cuber:main',
     ],
     'gui_scripts': [
-        'knossos_cuber_gui = knossos_cuber.knossos_cuber_gui:main',  # TODO: Fix config loading
+        'knossos_cuber_gui = knossos_cuber.knossos_cuber_gui:main'
     ]
 }
 

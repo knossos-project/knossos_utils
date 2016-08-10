@@ -13,6 +13,8 @@ import sys
 import argparse
 from ast import literal_eval
 
+import pkg_resources
+
 from PyQt5.QtWidgets import *
 
 try:
@@ -381,12 +383,14 @@ class KnossosCuberUI(Ui_Dialog):
 
 
 def main():
+    confpath = pkg_resources.resource_filename(__name__, 'config.ini')
+
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument(
         '--config', '-c',
         help="A configuration file. If no file is specified, "
              "`config.ini' from knossos_cuber's installation directory is used.",
-        default='config.ini'  # TODO: Fix default config access for package
+        default=confpath
     )
 
     ARGS = PARSER.parse_args()
