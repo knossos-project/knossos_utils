@@ -28,12 +28,17 @@ if sys.version_info < (3, 0):
     # Python 2 needs builtins provided by future
     install_requires.append('future>=0.15')
 
-if sys.version_info < (3, 5):
-    # PyQt5 currently can't be pip installed on python<3.5. Either it is there (via system package) or you can't use it.
+# Decide if/how the GUI should be installed:
+try:
+    import PyQt5
+    # If the line above works, there is no need to install PyQt5, so we should remove it from install_requires:
     install_requires.remove('PyQt5')
-    try:
-        import PyQt5
-    except ImportError:
+except ImportError:  # PyQt5 not available
+    if sys.version_info >= (3, 5):
+        # PyQt5 will be installed by setuptools via install_requires.
+        pass
+    else:
+        # PyQt5 currently can't be pip installed on python<3.5. Either it is there (system package) or you can't use it.
         print('PyQt5 not found. knossos_cuber_gui will not be available.')
         print('(This problem occurs only in old Python versions.')
         print(' If you use Python 3.5 or later, PyQt5 will be automatically provided.)')
@@ -45,6 +50,7 @@ setup(
     name='knossos_cuber',
     packages=['knossos_cuber'],
     entry_points=entry_points,
+    include_package_data=True,
     version='1.0',
     description='A script that converts images into a KNOSSOS-readable format.',
     author='Jörgen Kornfeld, Fabian Svara',
