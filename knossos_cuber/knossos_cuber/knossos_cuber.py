@@ -254,7 +254,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         for lx, ly, lz in itertools.product([0, 1], [0, 1], [0, 1]):
 
             # fill up the borders with black
-            if not path_hash.has_key((cur_x+lx, cur_y+ly, cur_z+lz)):
+            if (cur_x+lx, cur_y+ly, cur_z+lz) not in path_hash:
                 path_hash[(cur_x+lx, cur_y+ly, cur_z+lz)] = 'bogus'
 
             these_cubes.append(path_hash[(cur_x + lx, cur_y + ly, cur_z + lz)])
@@ -829,7 +829,7 @@ def make_mag1_cubes_from_z_stack(config,
                 #ref_time = time.time()
                 fsize = os.stat(all_source_files[z]).st_size
                 buffersize = 524288//2 # optimal for soma cluster #d int/int
-                content = ''
+                content = b''
                 # This is optimized code, do not think that a single line
                 # would be faster. At least on the soma MPI cluster,
                 # the default buffering values (read entire file into buffer
