@@ -6,7 +6,7 @@ format."
 
 """
 
-from __future__ import absolute_import, print_function  # TODO: division (Careful with old semantics!)
+from __future__ import absolute_import, division, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int  # TODO: Import all other necessary builtins after testing
 from functools import reduce
@@ -232,9 +232,9 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         scale=(scaling[0] * magf,
                scaling[1] * magf,
                scaling[2] * magf),
-        boundary=(boundaries[0]/trg_mag,
-                  boundaries[1]/trg_mag,
-                  boundaries[2]/trg_mag),
+        boundary=(boundaries[0]//trg_mag,  #d int/int
+                  boundaries[1]//trg_mag,  #d int/int
+                  boundaries[2]//trg_mag), #d int/int
         exp_name=exp_name + '_mag' + str(trg_mag),
         mag=trg_mag)
 
@@ -268,7 +268,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         this_job_info.cube_edge_len = config.getint('Processing',
                                                     'cube_edge_len')
 
-        out_path = path_hash[(cur_x/2, cur_y/2, cur_z/2)]
+        out_path = path_hash[(cur_x//2, cur_y//2, cur_z//2)]  #d int/int
         out_path = out_path.replace('mag'+str(src_mag), 'mag'+str(trg_mag))
         this_job_info.trg_cube_path = out_path
 
@@ -285,7 +285,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
 
         # how many chunks do we need?
         chunks_required = \
-            len(downsampling_job_info) / buffer_size_in_cubes_downsampling
+            len(downsampling_job_info) // buffer_size_in_cubes_downsampling  #d int/int  #q Should this really be a floor division?
 
         chunked_jobs = np.array_split(downsampling_job_info, chunks_required)
         # convert back to python list
@@ -317,7 +317,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         worker_pool.join()
 
         log_fn("Downsampling took on avg per cube: {0} s"
-               .format((time.time() - ref_time) / len(this_job_chunk)))
+               .format((time.time() - ref_time) / len(this_job_chunk))) #d float/int
 
         write_times = []
         write_threads = []
@@ -681,14 +681,15 @@ def init_from_source_dir(config, log_fn):
     config.set('Dataset', 'source_dims', str(test_data.shape))
     config.set('Dataset', 'source_dtype', str(test_data.dtype))
 
+    #q (important for division below!) Why getfloat, not getint? It is int in the config.ini and that would make more sense.
     cube_edge_len = config.getfloat('Processing', 'cube_edge_len')
 
     # determine the number of passes required for each cube layer - if several
     # passes are required, we split the xy plane up in X cube_edge_len chunks,
     # always with full y height
-    num_x_cubes = int(math.ceil(source_dims[0] / cube_edge_len))
-    num_y_cubes = int(math.ceil(source_dims[1] / cube_edge_len))
-    num_z_cubes = int(math.ceil(num_z / cube_edge_len))
+    num_x_cubes = int(math.ceil(source_dims[0] / cube_edge_len)) #d int/float
+    num_y_cubes = int(math.ceil(source_dims[1] / cube_edge_len)) #d int/float
+    num_z_cubes = int(math.ceil(num_z / cube_edge_len)) #d int/float
 
     buffer_size_in_cubes = config.getint('Processing', 'buffer_size_in_cubes')
 
@@ -701,10 +702,10 @@ def init_from_source_dir(config, log_fn):
                "either increase the buffer size or accept the longer cubing "
                "time due to IO overhead.")
         num_passes_per_cube_layer = \
-            int(math.ceil(buffer_size_in_cubes / num_y_cubes))
+            int(math.ceil(buffer_size_in_cubes // num_y_cubes)) #d int/int
+        #q ^ This should not be a floor division, right? int(math.ceil()) is redundant because result is always a floored int. Apply regular float division inside?
 
-        num_x_cubes_per_pass = \
-            int(math.floor(num_x_cubes / num_passes_per_cube_layer))
+        num_x_cubes_per_pass = num_x_cubes // num_passes_per_cube_layer #d int/int
 
     CubingInfo = namedtuple('CubingInfo',
                             'num_x_cubes_per_pass num_y_cubes num_z_cubes '
@@ -827,14 +828,14 @@ def make_mag1_cubes_from_z_stack(config,
                 #else:
                 #ref_time = time.time()
                 fsize = os.stat(all_source_files[z]).st_size
-                buffersize = 524288/2 # optimal for soma cluster
+                buffersize = 524288//2 # optimal for soma cluster #d int/int
                 content = ''
                 # This is optimized code, do not think that a single line
                 # would be faster. At least on the soma MPI cluster,
                 # the default buffering values (read entire file into buffer
                 # instead of smaller chunks) leads to delays and slowness.
                 fd = io.open(all_source_files[z], 'r+b', buffering=buffersize)
-                for i in range(0, (fsize / buffersize) + 1):
+                for i in range(0, (fsize // buffersize) + 1): #d int/int
                     content += fd.read(buffersize)
                 fd.close()
 
@@ -985,12 +986,12 @@ def knossos_cuber(config, log_fn):
         total_mag1_time = time.time() - mag1_ref_time
 
         log_fn("Mag 1 succesfully cubed. Took {0} h"
-               .format(total_mag1_time/3600))
+               .format(total_mag1_time/3600)) #d f/i
 
 
     if config.getboolean('Processing', 'perform_downsampling'):
         total_down_ref_time = time.time()
-        curr_mag = 2
+        curr_mag = 2 #q mags are always ints, right? (important for division below!)
 
         # `mags_to_gen' is specified like `2**20' in the configuration file.
         # To parse this number, the string has to be split at `**',
@@ -1000,7 +1001,7 @@ def knossos_cuber(config, log_fn):
                              mags_to_gen_string.split("**"))
 
         while curr_mag <= mags_to_gen:
-            worked = downsample_dataset(config, curr_mag/2, curr_mag, log_fn)
+            worked = downsample_dataset(config, curr_mag//2, curr_mag, log_fn) #d int/int
 
             if worked:
                 log_fn("Mag {0} succesfully cubed.".format(curr_mag))
