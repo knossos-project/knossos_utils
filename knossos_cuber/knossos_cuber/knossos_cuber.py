@@ -46,10 +46,10 @@ except ImportError:
 import argparse
 
 
-SOURCE_FORMAT_FILES = OrderedDict({
-    'tif': ['tif', 'tiff', 'TIF', 'TIFF', '*.tif, *.tiff'],
-    'jpg': ['jpg', 'jpeg', 'JPG', 'JPEG', '*.jpg, *.jpeg'],
-    'png': ['png', 'PNG', '*.png']})
+SOURCE_FORMAT_FILES = OrderedDict()
+SOURCE_FORMAT_FILES['tif'] = ['tif', 'tiff', 'TIF', 'TIFF', '*.tif, *.tiff']
+SOURCE_FORMAT_FILES['jpg'] = ['jpg', 'jpeg', 'JPG', 'JPEG', '*.jpg, *.jpeg']
+SOURCE_FORMAT_FILES['png'] = ['png', 'PNG', '*.png']
 
 
 class InvalidCubingConfigError(Exception):

@@ -100,7 +100,7 @@ class KnossosCuberUI(Ui_Dialog):
         drop-down menu.
         """
 
-        for key, value in SOURCE_FORMAT_FILES.items():
+        for value in SOURCE_FORMAT_FILES.values():
             self.combo_box_source_format.addItem(value[-1])
 
 
