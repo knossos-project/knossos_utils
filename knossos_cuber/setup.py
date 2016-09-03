@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 from __future__ import absolute_import, division, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int  # TODO: Import all other necessary builtins after testing
+from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
 from functools import reduce
 
 import sys
@@ -64,8 +64,8 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
         'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 2 :: Only',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
         'Topic :: Scientific/Engineering :: Information Analysis',
         'Topic :: Scientific/Engineering :: Visualization',
     ],
