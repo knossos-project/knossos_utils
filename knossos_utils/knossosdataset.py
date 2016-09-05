@@ -286,7 +286,7 @@ class KnossosDataset(object):
     def initialized(self):
         return self._initialized
 
-    def initialize_from_knossos_path(self, path, fixed_mag=None, verbose=False):
+    def initialize_from_knossos_path(self, path, fixed_mag=0, verbose=False):
         """ Initializes the dataset by parsing the knossos.conf in path + "mag1"
 
         :param path: str
