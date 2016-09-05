@@ -665,7 +665,7 @@ class KnossosDataset(object):
                                          buffering=buffersize)
                             for i in range(0,(self._edgelength**3//buffersize)+1): #d int//int -> int
                                 l.append(fd.read(buffersize))
-                            content = "".join(l)
+                            content = b"".join(l)
                             fd.close()
 
                             values = np.fromstring(content, dtype=np.uint8)
