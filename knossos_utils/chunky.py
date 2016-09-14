@@ -520,7 +520,7 @@ class ChunkDataset(object):
             return output_matrix
 
     def from_matrix_to_chunky(self, offset, chunk_offset, data, name, h5_name,
-                              n_threads=16):
+                              verbose=True, n_threads=16):
         def _write_chunks(args):
             path = args[0]
             h5_name = args[1]
@@ -531,7 +531,14 @@ class ChunkDataset(object):
 
             if os.path.exists(path):
                 with h5py.File(path, "r") as f:
-                    chunk_data = f[h5_name].value
+                    try:
+                        chunk_data = f[h5_name].value
+                    except:
+                        chunk_data = np.zeros(chunk_offset*2 + self.chunk_size,
+                                              dtype=np.uint8)
+                        if verbose:
+                            print("Cube does not exist, cube with zeros "
+                                  "only assigned")
             else:
                 chunk_data = np.zeros(chunk_offset*2 + self.chunk_size,
                                       dtype=np.uint8)
