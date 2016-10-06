@@ -998,7 +998,6 @@ class Chunk(object):
 
 class FSLock(object):
     def __init__(self, path):
-        # self.f = open(dest, 'a+')
         self.path = path
         self.f = None
         self.is_acquired = False
@@ -1033,8 +1032,8 @@ class ChunkDistributor(object):
         else:
             self.chunklist = range(len(self.cset.chunk_dict))
 
-        # self.next_id = np.random.randint(0, len(self.chunklist))
-        self.next_id = 0
+        self.next_id = np.random.randint(0, len(self.chunklist))
+        # self.next_id = 0
         self.lock = None
         self.status = dict.fromkeys(self.chunklist, False)
 
