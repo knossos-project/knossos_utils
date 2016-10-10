@@ -605,7 +605,7 @@ class ChunkDataset(object):
             low_cut = args[4]
             high_cut = args[5]
 
-            print low, high, low_cut, high_cut
+            print(low, high, low_cut, high_cut)
 
             if os.path.exists(path):
                 with h5py.File(path, "r") as f:
@@ -991,10 +991,10 @@ class Chunk(object):
 
         f = h5py.File(path, 'r')
         if verbose:
-            print('file has following setnames:', f.keys())
+            print('file has following setnames:', list(f.keys()))
             print('setname(s)', setname)
         if setname is None:
-            setname = f.keys()
+            setname = list(f.keys())
 
         if type(setname) == list or type(setname) == np.ndarray:
             data = []
@@ -1041,7 +1041,7 @@ class ChunkDistributor(object):
         if chunklist is not None:
             self.chunklist = chunklist
         else:
-            self.chunklist = range(len(self.cset.chunk_dict))
+            self.chunklist = list(range(len(self.cset.chunk_dict)))
 
         self.next_id = np.random.randint(0, len(self.chunklist))
         # self.next_id = 0
