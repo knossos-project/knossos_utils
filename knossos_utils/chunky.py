@@ -30,14 +30,17 @@ try:
     import cPickle as pkl
 except ImportError:
     import pickle as pkl
+import fcntl
 import glob
 import h5py
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 import numpy as np
 import os
+import socket
 import sys
 import scipy.misc
+import time
 try:
     import fadvise
     fadvise_available = True
@@ -158,6 +161,25 @@ def _export_cset_to_tiff_stack_thread(args):
                               [:boundary[0], :boundary[1], dz])
 
 
+def _switch_array_entries(this_array, entries):
+    """
+    Switches to array entries
+
+    Parameters
+    ----------
+    this_array: np.array
+    entries: list of int
+
+    Returns
+    -------
+    this_array: np.array
+    """
+    entry_0 = this_array[entries[0]]
+    this_array[entries[0]] = this_array[entries[1]]
+    this_array[entries[1]] = entry_0
+    return this_array
+
+
 def save_dataset(chunk_dataset):
     with open(chunk_dataset.path_head_folder+"/chunk_dataset.pkl", 'wb') \
             as output:
@@ -179,7 +201,7 @@ def load_dataset(path_head_folder, update_paths=False):
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-1]
             this_cd.chunk_dict[key].folder = path_head_folder + '/' + rel_path + '/'
         print("... finished. Saving.")
-        save_dataset(this_cd)
+        # save_dataset(this_cd)
 
     return this_cd
 
@@ -233,8 +255,8 @@ class ChunkDataset(object):
         Parameters:
         -----------
 
-        knossos_path: str
-            path to the datasetfolder - not .../mag !
+        knossos_dataset_object: knossos dataset
+            has to be initialized beforehand
         box_size: 3 sequence of int
             defines the size of the box without overlap
         box_coords: 3 sequence of int
@@ -371,6 +393,60 @@ class ChunkDataset(object):
                                         chunk_size, dtype=np.int) * chunk_size
             chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
         return chunk_rep
+
+    def get_neighbouring_chunks(self, chunk, chunklist=None):
+        """ Returns the numbers of all neighbours
+
+        Parameters:
+        -----------
+        cset: chunkDataset object
+        chunk: chunk object
+
+        Returns:
+        --------
+        list of int
+            -1 if neighbour does not exist, else number
+             order: [< x, < y, < z, > x, > y, > z]
+
+        """
+        if chunklist is None:
+            chunklist = self.chunklist
+
+        coordinate = np.array(chunk.coordinates)
+        neighbours = []
+        for dim in range(3):
+            try:
+                this_coordinate = \
+                    coordinate - _switch_array_entries(
+                        np.array([chunk.size[dim], 0, 0]),
+                        [0, dim])
+                neighbour = self.coord_dict[tuple(this_coordinate)]
+                if not chunklist is None:
+                    if neighbour in chunklist:
+                        neighbours.append(neighbour)
+                    else:
+                        neighbours.append(-1)
+                else:
+                    neighbours.append(neighbour)
+            except:
+                neighbours.append(-1)
+
+        for dim in range(3):
+            try:
+                this_coordinate = \
+                    coordinate + _switch_array_entries(
+                        np.array([chunk.size[dim], 0, 0]), [0, dim])
+                neighbour = self.coord_dict[tuple(this_coordinate)]
+                if not chunklist is None:
+                    if neighbour in chunklist:
+                        neighbours.append(neighbour)
+                    else:
+                        neighbours.append(-1)
+                else:
+                    neighbours.append(neighbour)
+            except:
+                neighbours.append(-1)
+        return neighbours
 
     def from_chunky_to_matrix(self, size, offset, name, setnames,
                               dtype=np.uint32, outputpath=None,
@@ -528,6 +604,8 @@ class ChunkDataset(object):
             high = args[3]
             low_cut = args[4]
             high_cut = args[5]
+
+            print low, high, low_cut, high_cut
 
             if os.path.exists(path):
                 with h5py.File(path, "r") as f:
@@ -715,7 +793,7 @@ class Chunk(object):
         kd.initialize_from_knossos_path(self._dataset_path)
         return kd
 
-    def raw_data(self, overlap=None, show_progress=False):
+    def raw_data(self, overlap=None, show_progress=False, invert_raw=False):
         """ Uses DatasetUtils.knossosDataset for getting the real data
 
         Parameters:
@@ -742,7 +820,9 @@ class Chunk(object):
                           np.array(overlap), dtype=np.int)
 
         return self.dataset.from_raw_cubes_to_matrix(size, coords,
-                                                     show_progress=show_progress)
+                                                     invert_data=invert_raw,
+                                                     show_progress=
+                                                     show_progress)
 
     def seg_data(self, with_overlap=False, dytpe_opt=np.uint64):
         """ Uses DatasetUtils.knossosDataset for getting the seg data
@@ -880,7 +960,7 @@ class Chunk(object):
                 f.create_dataset(str(setname), data=data)
         f.close()
 
-    def load_chunk(self, name, setname, verbose=True):
+    def load_chunk(self, name, setname=None, verbose=True):
 
         """ returns data from set in HDF5_file
 
@@ -913,6 +993,9 @@ class Chunk(object):
         if verbose:
             print('file has following setnames:', f.keys())
             print('setname(s)', setname)
+        if setname is None:
+            setname = f.keys()
+
         if type(setname) == list or type(setname) == np.ndarray:
             data = []
             for this_setname in setname:
@@ -922,3 +1005,111 @@ class Chunk(object):
         f.close()
 
         return data
+
+
+class FSLock(object):
+    def __init__(self, path):
+        self.path = path
+        self.f = None
+        self.is_acquired = False
+
+    def acquire(self, no_raise=False, print_locker=True):
+        try:
+            self.f = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+            self.is_acquired = True
+            return True
+        except:
+            return False
+
+    def release(self):
+        if self.is_acquired:
+            os.close(self.f)
+            self.is_acquired = False
+        else:
+            raise IOError("Cannot relase, was not acquired")
+
+    def __del__(self):
+        if self.is_acquired:
+            self.release()
+
+
+class ChunkDistributor(object):
+    def __init__(self, cset, name, chunklist=None):
+        self.cset = cset
+        self.exp_name = name
+
+        if chunklist is not None:
+            self.chunklist = chunklist
+        else:
+            self.chunklist = range(len(self.cset.chunk_dict))
+
+        self.next_id = np.random.randint(0, len(self.chunklist))
+        # self.next_id = 0
+        self.lock = None
+        self.status = dict.fromkeys(self.chunklist, False)
+
+    def next(self, strict=True):
+        try:
+            self.lock.release()
+        except:
+            pass
+
+        for _ in range(2 * len(self.chunklist)):
+            if self._increase_id():
+                if (not os.path.exists(self._path_lock(self.next_id, status=1))
+                    and strict) and not \
+                        os.path.exists(self._path_lock(self.next_id, status=3)):
+
+                    self.lock = FSLock(self._path_lock(self.next_id, status=1))
+                    if self.lock.acquire():
+                        return self.cset.chunk_dict[self.next_id]
+
+                    if os.path.exists(self._path_lock(self.next_id, status=3)):
+                        self.status[self.next_id] = True
+            else:
+                return None
+        return None
+
+    def get_write(self):
+        try:
+            self.lock.release()
+        except:
+            pass
+        self.lock = FSLock(self._path_lock(self.next_id, status=2))
+        if self.lock.acquire():
+            return True
+        else:
+            return False
+
+    def sign_done(self):
+        try:
+            self.lock.release()
+        except:
+            pass
+
+        f = open(self._path_lock(self.next_id, status=3), "w")
+        f.close()
+
+    def _path_lock(self, chunk_id, status=1):
+        base_path = self.cset.path_head_folder + "/chunky_%d/" % chunk_id
+        if status == 1:
+            return base_path + "/%s_running" % self.exp_name
+        elif status == 2:
+            return base_path + "/%s_writing" % self.exp_name
+        elif status == 3:
+            return base_path + "/%s_done" % self.exp_name
+
+    def _increase_id(self):
+        self.next_id += 1
+        self.next_id = self.next_id % len(self.chunklist)
+
+        cnt = 0
+        while self.status[self.next_id] and cnt < len(self.chunklist):
+            self.next_id += 1
+            self.next_id = self.next_id % len(self.chunklist)
+            cnt += 1
+
+        if cnt >= len(self.chunklist):
+            return False
+        else:
+            return True

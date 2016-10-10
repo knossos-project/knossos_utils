@@ -299,8 +299,6 @@ class KnossosDataset(object):
             nothing
         """
 
-        self.__init__()
-
         self._knossos_path = path
         all_mag_folders = our_glob(path+"/*mag*")
 
@@ -323,7 +321,7 @@ class KnossosDataset(object):
             mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
 
         try:
-            f = open(our_glob(path+"*mag1")[0]+"/knossos.conf")
+            f = open(our_glob(path+"/*mag1")[0]+"/knossos.conf")
             lines = f.readlines()
             f.close()
         except:
@@ -396,8 +394,6 @@ class KnossosDataset(object):
         :return:
             nothing
         """
-
-        self.__init__()
 
         self._knossos_path = path
         all_mag_folders = our_glob(path+"*mag*")
