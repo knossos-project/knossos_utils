@@ -30,17 +30,14 @@ try:
     import cPickle as pkl
 except ImportError:
     import pickle as pkl
-import fcntl
 import glob
 import h5py
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 import numpy as np
 import os
-import socket
 import sys
 import scipy.misc
-import time
 try:
     import fadvise
     fadvise_available = True
