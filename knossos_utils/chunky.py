@@ -1037,7 +1037,7 @@ class ChunkDistributor(object):
         self.lock = None
         self.status = dict.fromkeys(self.chunklist, False)
 
-    def next(self, strict=True):
+    def next(self, exclude_running=True):
         try:
             self.lock.release()
         except:
@@ -1046,7 +1046,7 @@ class ChunkDistributor(object):
         for _ in range(2 * len(self.chunklist)):
             if self._increase_id():
                 if (not os.path.exists(self._path_lock(self.next_id, status=1))
-                    and strict) and not \
+                    or not exclude_running) and not \
                         os.path.exists(self._path_lock(self.next_id, status=3)):
 
                     self.lock = FSLock(self._path_lock(self.next_id, status=1))
