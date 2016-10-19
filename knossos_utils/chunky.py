@@ -23,7 +23,6 @@
 
 
 import cPickle as pkl
-import fcntl
 import glob
 import h5py
 import knossosdataset
@@ -31,12 +30,13 @@ from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 import numpy as np
 import os
-import socket
 import sys
 import scipy.misc
 import time
+
 try:
     import fadvise
+
     fadvise_available = True
 except:
     fadvise_available = False
@@ -61,13 +61,18 @@ def _export_cset_as_kd_thread(args):
     """
     coords = args[0]
     size = np.copy(args[1])
-    cset = args[2]
-    kd = args[3]
+    cset_path = args[2]
+    kd_path = args[3]
     name = args[4]
     hdf5names = args[5]
     as_raw = args[6]
     unified_labels = args[7]
     nb_threads = args[8]
+
+    cset = load_dataset(cset_path)
+
+    kd = knossosdataset.KnossosDataset()
+    kd.initialize_from_knossos_path(kd_path)
 
     for dim in range(3):
         if coords[dim] + size[dim] > cset.box_size[dim]:
@@ -80,7 +85,7 @@ def _export_cset_as_kd_thread(args):
     if unified_labels:
         for nb_hdf5_name in range(len(hdf5names)):
             data_list.append(np.array(data_dict[hdf5names[nb_hdf5_name]] > 0,
-                                      dtype=np.uint8)*(nb_hdf5_name+1))
+                                      dtype=np.uint8) * (nb_hdf5_name + 1))
             data_dict[hdf5names[nb_hdf5_name]] = []
         data_list = np.max(data_list, axis=0)
     else:
@@ -88,7 +93,8 @@ def _export_cset_as_kd_thread(args):
         data_dict[hdf5names[0]] = []
         for nb_hdf5_name in range(1, len(hdf5names)):
             data_list[0] = np.maximum(data_list[0],
-                                      np.array(data_dict[hdf5names[nb_hdf5_name]]))
+                                      np.array(
+                                          data_dict[hdf5names[nb_hdf5_name]]))
             data_dict[hdf5names[nb_hdf5_name]] = []
 
     if as_raw:
@@ -110,13 +116,16 @@ def _export_cset_as_kd_control_thread(args):
     """
     coords = args[0]
     size = np.copy(args[1])
-    cset = args[2]
-    kd = args[3]
+    cset_path = args[2]
+    kd_path = args[3]
     name = args[4]
     hdf5names = args[5]
     as_raw = args[6]
     unified_labels = args[7]
     nb_threads = args[8]
+
+    kd = knossosdataset.KnossosDataset()
+    kd.initialize_from_knossos_path(kd_path)
 
     if as_raw:
         data = kd.from_raw_cubes_to_matrix(size, coords)
@@ -148,7 +157,7 @@ def _export_cset_to_tiff_stack_thread(args):
         if not os.path.exists(this_path):
             os.makedirs(this_path)
         for dz in range(stride):
-            scipy.misc.imsave(this_path + "img_%.5d.png" % (z+dz),
+            scipy.misc.imsave(this_path + "img_%.5d.png" % (z + dz),
                               data_dict[hdf5name]
                               [:boundary[0], :boundary[1], dz])
 
@@ -173,13 +182,13 @@ def _switch_array_entries(this_array, entries):
 
 
 def save_dataset(chunk_dataset):
-    with open(chunk_dataset.path_head_folder+"/chunk_dataset.pkl", 'wb') \
+    with open(chunk_dataset.path_head_folder + "/chunk_dataset.pkl", 'wb') \
             as output:
         pkl.dump(chunk_dataset, output, pkl.HIGHEST_PROTOCOL)
 
 
 def load_dataset(path_head_folder, update_paths=False):
-    with open(path_head_folder+"/chunk_dataset.pkl", 'rb') as f:
+    with open(path_head_folder + "/chunk_dataset.pkl", 'rb') as f:
         this_cd = pkl.load(f)
 
     if update_paths:
@@ -191,7 +200,8 @@ def load_dataset(path_head_folder, update_paths=False):
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-2]
             else:
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-1]
-            this_cd.chunk_dict[key].folder = path_head_folder + '/' + rel_path + '/'
+            this_cd.chunk_dict[
+                key].folder = path_head_folder + '/' + rel_path + '/'
         print "... finished."
         # save_dataset(this_cd)
 
@@ -218,6 +228,7 @@ class ChunkDataset(object):
     chunk_dict: dictionary of chunk objects
         contains all chunks of the chunk dataset
     """
+
     def __init__(self):
         self.chunk_dict = {}
         self.chunklist = []
@@ -238,7 +249,7 @@ class ChunkDataset(object):
         kd = knossosdataset.KnossosDataset()
         kd.initialize_from_knossos_path(self._dataset_path)
         return kd
-        
+
     def initialize(self, knossos_dataset_object, box_size,
                    chunk_size, path_head_folder, overlap=np.zeros(3),
                    list_of_coords=[], box_coords=None, fit_box_size=False):
@@ -290,9 +301,9 @@ class ChunkDataset(object):
             for x in range(multiple[0]):
                 for y in range(multiple[1]):
                     for z in range(multiple[2]):
-                        list_of_coords.append([x*chunk_size[0],
-                                               y*chunk_size[1],
-                                               z*chunk_size[2]])
+                        list_of_coords.append([x * chunk_size[0],
+                                               y * chunk_size[1],
+                                               z * chunk_size[2]])
         else:
             box_coords = np.zeros(3)
 
@@ -301,9 +312,9 @@ class ChunkDataset(object):
             new_chunk = Chunk()
             new_chunk.number = nb_coord
             new_chunk.coordinates = \
-                np.array([box_coords[0]+coord[0],
-                          box_coords[1]+coord[1],
-                          box_coords[2]+coord[2]])
+                np.array([box_coords[0] + coord[0],
+                          box_coords[1] + coord[1],
+                          box_coords[2] + coord[2]])
             new_chunk._dataset_path = knossos_dataset_object.knossos_path
             new_chunk.size = chunk_size
             new_chunk.overlap = overlap
@@ -353,7 +364,6 @@ class ChunkDataset(object):
         for i in chunklist:
             ls = []
             if with_chunk:
-
                 ls.append(self.chunk_dict[i])
             if with_chunkclass:
                 ls.append(self)
@@ -450,29 +460,32 @@ class ChunkDataset(object):
 
         dataset_offset = np.array(self.box_coords, dtype=np.uint32)
         start = [knossosdataset.get_first_block(dim,
-                                                np.array(offset)-dataset_offset,
+                                                np.array(
+                                                    offset) - dataset_offset,
                                                 self.chunk_size)
                  for dim in xrange(3)]
         end = [knossosdataset.get_last_block(dim, size,
-                                             np.array(offset)-dataset_offset,
-                                             self.chunk_size)+1
+                                             np.array(offset) - dataset_offset,
+                                             self.chunk_size) + 1
                for dim in xrange(3)]
 
         output_matrix = {}
         for hdf5_name in setnames:
             output_matrix[hdf5_name] = np.zeros(
-                ((end[0]-start[0])*self.chunk_size[0]*interpolated_data[0],
-                 (end[1]-start[1])*self.chunk_size[1]*interpolated_data[1],
-                 (end[2]-start[2])*self.chunk_size[2]*interpolated_data[2]),
+                (
+                (end[0] - start[0]) * self.chunk_size[0] * interpolated_data[0],
+                (end[1] - start[1]) * self.chunk_size[1] * interpolated_data[1],
+                (end[2] - start[2]) * self.chunk_size[2] * interpolated_data[
+                    2]),
                 dtype=dtype)
 
-        offset_start = [(offset[dim]-dataset_offset[dim]) %
-                        (self.chunk_size[dim]*interpolated_data[dim])
+        offset_start = [(offset[dim] - dataset_offset[dim]) %
+                        (self.chunk_size[dim] * interpolated_data[dim])
                         for dim in range(3)]
 
-        offset_end = [(end[dim]-start[dim])*self.chunk_size[dim]*
-                      interpolated_data[dim]-offset_start[dim]-
-                      size[dim]*interpolated_data[dim] for dim in range(3)]
+        offset_end = [(end[dim] - start[dim]) * self.chunk_size[dim] *
+                      interpolated_data[dim] - offset_start[dim] -
+                      size[dim] * interpolated_data[dim] for dim in range(3)]
 
         coord_dict = {}
         nb_chunks = len(self.chunk_dict)
@@ -483,7 +496,7 @@ class ChunkDataset(object):
         cnt = 0
         current = [start[dim] for dim in range(3)]
         nb_chunks_to_process = \
-            (end[2]-start[2]) * (end[1] - start[1]) * (end[0] - start[0])
+            (end[2] - start[2]) * (end[1] - start[1]) * (end[0] - start[0])
 
         while current[2] < end[2]:
             current[1] = start[1]
@@ -491,15 +504,15 @@ class ChunkDataset(object):
                 current[0] = start[0]
                 while current[0] < end[0]:
                     if show_progress:
-                        progress = 100*cnt/float(nb_chunks_to_process)
+                        progress = 100 * cnt / float(nb_chunks_to_process)
                         sys.stdout.write('\rProgress: %.2f%%' % progress)
                         sys.stdout.flush()
                     values_dict = {}
-                    current_coordinate = (current[0]*self.chunk_size[0]+
+                    current_coordinate = (current[0] * self.chunk_size[0] +
                                           dataset_offset[0],
-                                          current[1]*self.chunk_size[1]+
+                                          current[1] * self.chunk_size[1] +
                                           dataset_offset[1],
-                                          current[2]*self.chunk_size[2]+
+                                          current[2] * self.chunk_size[2] +
                                           dataset_offset[2])
                     try:
                         nb_current_chunk = coord_dict[current_coordinate]
@@ -514,9 +527,9 @@ class ChunkDataset(object):
                         print "Exception:", e,
                         for hdf5_name in setnames:
                             values_dict[hdf5_name] = np.zeros((
-                                self.chunk_size[0]*interpolated_data[0],
-                                self.chunk_size[1]*interpolated_data[1],
-                                self.chunk_size[2]*interpolated_data[2]))
+                                self.chunk_size[0] * interpolated_data[0],
+                                self.chunk_size[1] * interpolated_data[1],
+                                self.chunk_size[2] * interpolated_data[2]))
                         print "Cube does not exist, cube with zeros only " \
                               "assigned:", current_coordinate
 
@@ -536,30 +549,36 @@ class ChunkDataset(object):
                             if values.shape[dim] != self.chunk_size[dim] * \
                                     interpolated_data[dim]:
                                 offset[dim] = \
-                                    int((values.shape[dim]-self.chunk_size[dim]*
-                                        interpolated_data[dim])/2)
-                        values = values[offset[0]: values.shape[0]-offset[0],
-                                        offset[1]: values.shape[1]-offset[1],
-                                        offset[2]: values.shape[2]-offset[2]]
+                                    int((values.shape[dim] - self.chunk_size[
+                                        dim] *
+                                         interpolated_data[dim]) / 2)
+                        values = values[offset[0]: values.shape[0] - offset[0],
+                                 offset[1]: values.shape[1] - offset[1],
+                                 offset[2]: values.shape[2] - offset[2]]
 
                         offset = np.zeros(3, dtype=np.int)
                         for dim in range(3):
                             if values.shape[dim] != self.chunk_size[dim] * \
                                     interpolated_data[dim]:
                                 offset[dim] = \
-                                    int(values.shape[dim]-self.chunk_size[dim]*
+                                    int(values.shape[dim] - self.chunk_size[
+                                        dim] *
                                         interpolated_data[dim])
-                        values = values[:values.shape[0]-offset[0],
-                                        :values.shape[1]-offset[1],
-                                        :values.shape[2]-offset[2]]
+                        values = values[:values.shape[0] - offset[0],
+                                 :values.shape[1] - offset[1],
+                                 :values.shape[2] - offset[2]]
 
-                        output_matrix[hdf5_name][sub[0]: sub[0]+self.chunk_size[0]*interpolated_data[0],
-                                                 sub[1]: sub[1]+self.chunk_size[1]*interpolated_data[1],
-                                                 sub[2]: sub[2]+self.chunk_size[2]*interpolated_data[2]] \
+                        output_matrix[hdf5_name][
+                        sub[0]: sub[0] + self.chunk_size[0] * interpolated_data[
+                            0],
+                        sub[1]: sub[1] + self.chunk_size[1] * interpolated_data[
+                            1],
+                        sub[2]: sub[2] + self.chunk_size[2] * interpolated_data[
+                            2]] \
                             = np.swapaxes(np.array(values).reshape(
-                                self.chunk_size[0]*interpolated_data[0],
-                                self.chunk_size[1]*interpolated_data[1],
-                                self.chunk_size[2]*interpolated_data[2]), 0, 0)
+                            self.chunk_size[0] * interpolated_data[0],
+                            self.chunk_size[1] * interpolated_data[1],
+                            self.chunk_size[2] * interpolated_data[2]), 0, 0)
                     current[0] += 1
                 current[1] += 1
             current[2] += 1
@@ -567,11 +586,12 @@ class ChunkDataset(object):
         for hdf5_name in setnames:
             output_matrix[hdf5_name] = knossosdataset.cut_matrix(
                 output_matrix[hdf5_name], offset_start, offset_end,
-                self.chunk_size*interpolated_data, start, end)
+                self.chunk_size * interpolated_data, start, end)
 
         for this_key in output_matrix.keys():
             if False in [output_matrix[this_key].shape[dim] ==
-                         np.array(size[dim])*interpolated_data[dim]
+                                         np.array(size[dim]) *
+                                         interpolated_data[dim]
                          for dim in xrange(3)]:
                 raise Exception("Incorrect shape! Should be", size, "; got:",
                                 output_matrix[this_key].shape)
@@ -604,31 +624,33 @@ class ChunkDataset(object):
                     try:
                         chunk_data = f[h5_name].value
                     except:
-                        chunk_data = np.zeros(chunk_offset*2 + self.chunk_size,
-                                              dtype=np.uint8)
+                        chunk_data = np.zeros(
+                            chunk_offset * 2 + self.chunk_size,
+                            dtype=np.uint8)
                         if verbose:
                             print("Cube does not exist, cube with zeros "
                                   "only assigned")
             else:
-                chunk_data = np.zeros(chunk_offset*2 + self.chunk_size,
+                chunk_data = np.zeros(chunk_offset * 2 + self.chunk_size,
                                       dtype=np.uint8)
 
             chunk_data[low[0]: high[0], low[1]: high[1], low[2]: high[2]] = \
-                                data[low_cut[0]: high_cut[0],
-                                     low_cut[1]: high_cut[1],
-                                     low_cut[2]: high_cut[2]]
+                data[low_cut[0]: high_cut[0],
+                low_cut[1]: high_cut[1],
+                low_cut[2]: high_cut[2]]
 
             with h5py.File(path, "w") as f:
                 f.create_dataset(h5_name, data=chunk_data, compression="gzip")
 
         chunk_offset = np.array(chunk_offset)
 
-        start = np.floor(np.array([(offset[dim]-chunk_offset[dim]) /
+        start = np.floor(np.array([(offset[dim] - chunk_offset[dim]) /
                                    float(self.chunk_size[dim])
                                    for dim in range(3)]))
         start = start.astype(np.int)
-        end = np.floor(np.array([(offset[dim]+chunk_offset[dim]+data.shape[dim]-1) /
-                                 float(self.chunk_size[dim]) for dim in range(3)]))
+        end = np.floor(
+            np.array([(offset[dim] + chunk_offset[dim] + data.shape[dim] - 1) /
+                      float(self.chunk_size[dim]) for dim in range(3)]))
         end = end.astype(np.int)
 
         current = np.copy(start)
@@ -653,11 +675,11 @@ class ChunkDataset(object):
                         low_cut[low_cut < 0] = 0
 
                         high = low + np.array(data.shape) - low_cut - \
-                               self.chunk_size - 2*chunk_offset
+                               self.chunk_size - 2 * chunk_offset
                         high_cut = np.array(data.shape)
                         high_cut[high > 0] -= high[high > 0]
                         high[high > 0] = 0
-                        high += self.chunk_size + 2*chunk_offset
+                        high += self.chunk_size + 2 * chunk_offset
 
                         multithreading_params.append([path, h5_name, low, high,
                                                       low_cut, high_cut])
@@ -693,9 +715,9 @@ class ChunkDataset(object):
     def export_cset_to_tiff_stack(self, save_path, name, hdf5names,
                                   nb_processes, z_stride, size):
         multi_params = []
-        for step in range(int(np.ceil(size[2]/float(z_stride)))):
+        for step in range(int(np.ceil(size[2] / float(z_stride)))):
             multi_params.append([self, save_path, name, hdf5names,
-                                 step*z_stride, z_stride, size])
+                                 step * z_stride, z_stride, size])
 
         if nb_processes > 1:
             pool = Pool(nb_processes)
@@ -706,7 +728,7 @@ class ChunkDataset(object):
 
     def export_cset_to_kd(self, kd, name, hdf5names, nb_threads,
                           coordinate=None, size=None,
-                          stride=[4*128, 4*128, 4*128],
+                          stride=[4 * 128, 4 * 128, 4 * 128],
                           as_raw=False,
                           unified_labels=False):
         if coordinate is None or size is None:
@@ -721,8 +743,8 @@ class ChunkDataset(object):
                 for coordz in range(coordinate[2], coordinate[2] + size[2],
                                     stride[2]):
                     coords = np.array([coordx, coordy, coordz])
-                    multi_params.append([coords, stride, self,
-                                         kd, name, hdf5names, as_raw,
+                    multi_params.append([coords, stride, self.path_head_folder,
+                                         kd.knossos_path, name, hdf5names, as_raw,
                                          unified_labels, nb_threads[1]])
 
         np.random.shuffle(multi_params)
@@ -763,6 +785,7 @@ class Chunk(object):
         uses a specific offset at the edges of x and y
         to account for the border problem of CNN prediction
     """
+
     def __init__(self):
         self.coordinates = np.zeros(3)
         self.size = np.zeros(3)
@@ -826,19 +849,21 @@ class Chunk(object):
         seg data of the chunk
         """
         if with_overlap:
-            size = np.array(np.array(self.size)+ 2 * np.array(self.overlap),
+            size = np.array(np.array(self.size) + 2 * np.array(self.overlap),
                             dtype=np.int)
-            coords = np.array(np.array(self.coordinates) - np.array(self.overlap),
-                              dtype=np.int)
+            coords = np.array(
+                np.array(self.coordinates) - np.array(self.overlap),
+                dtype=np.int)
         else:
             size = np.array(np.array(self.size),
-                dtype=np.int)
+                            dtype=np.int)
             coords = np.array(np.array(self.coordinates),
-                  dtype=np.int)
+                              dtype=np.int)
 
         print 'getting seg data', size, coords
         seg = self.dataset.from_overlaycubes_to_matrix(size,
-                                         coords,dytpe_opt=dytpe_opt)
+                                                       coords,
+                                                       dytpe_opt=dytpe_opt)
 
         return seg
 
@@ -868,32 +893,35 @@ class Chunk(object):
         if labels_data is None:
             labels_data = self.load_chunk(seg_name, seg_set_name)
             print np.max(labels_data), np.min(labels_data)
-        coord = self.coordinates-self.overlap
+        coord = self.coordinates - self.overlap
 
         if without_overlap:
             labels_data = labels_data[self.overlap[0]:-self.overlap[0],
-                                      self.overlap[1]:-self.overlap[1],
-                                      self.overlap[2]:-self.overlap[2]]
+                          self.overlap[1]:-self.overlap[1],
+                          self.overlap[2]:-self.overlap[2]]
             coord = self.coordinates
         print labels_data.shape
         if not write_pathlist:
             print overwrite
             self.dataset.from_matrix_to_overlaycubes(coord,
-                                                 labels_data=[labels_data],
-                                                 swapaxes_option=swap_axes,
-                                                 verbose=True,
-                                                 overwrite=overwrite, mags=mag,
-                                                 as_zip=as_zip,
-                                                 output_zipname=output_zipname)
+                                                     labels_data=[labels_data],
+                                                     swapaxes_option=swap_axes,
+                                                     verbose=True,
+                                                     overwrite=overwrite,
+                                                     mags=mag,
+                                                     as_zip=as_zip,
+                                                     output_zipname=output_zipname)
         else:
             path_list = self.dataset.from_matrix_to_overlaycubes(coord,
-                                     labels_data=[labels_data],
-                                     swapaxes_option=swap_axes,
-                                     verbose=True,
-                                     overwrite=overwrite,
-                                     write_pathlist=True, mags=mag,
-                                     as_zip=as_zip,
-                                     output_zipname=output_zipname)
+                                                                 labels_data=[
+                                                                     labels_data],
+                                                                 swapaxes_option=swap_axes,
+                                                                 verbose=True,
+                                                                 overwrite=overwrite,
+                                                                 write_pathlist=True,
+                                                                 mags=mag,
+                                                                 as_zip=as_zip,
+                                                                 output_zipname=output_zipname)
             return path_list
 
     def save_chunk(self, data, name, setname, compress=True, overwrite=False):
@@ -1002,103 +1030,98 @@ class FSLock(object):
         self.f = None
         self.is_acquired = False
 
-    def acquire(self, no_raise=False, print_locker=True):
+    def acquire(self):
         try:
             self.f = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+            time.sleep(.5)
             self.is_acquired = True
+            os.close(self.f)
             return True
         except:
             return False
 
     def release(self):
-        if self.is_acquired:
-            os.close(self.f)
-            self.is_acquired = False
-        else:
-            raise IOError("Cannot relase, was not acquired")
+        self.is_acquired = False
 
     def __del__(self):
-        if self.is_acquired:
-            self.release()
+        self.release()
 
 
 class ChunkDistributor(object):
-    def __init__(self, cset, name, chunklist=None):
+    def __init__(self, cset, name, chunklist=None, start_chunk=None):
         self.cset = cset
         self.exp_name = name
+        self.status_name = ["running", "writing", "done"]
 
         if chunklist is not None:
             self.chunklist = chunklist
         else:
             self.chunklist = range(len(self.cset.chunk_dict))
 
-        self.next_id = np.random.randint(0, len(self.chunklist))
-        # self.next_id = 0
+        if start_chunk is None:
+            self.next_id = np.random.randint(0, len(self.chunklist))
+        else:
+            self.next_id = start_chunk
+
         self.lock = None
         self.status = dict.fromkeys(self.chunklist, False)
 
     def next(self, exclude_running=True):
-        try:
+        if self.lock is not None:
             self.lock.release()
-        except:
-            pass
 
         for _ in range(2 * len(self.chunklist)):
-            if self._increase_id():
-                if (not os.path.exists(self._path_lock(self.next_id, status=1))
-                    or not exclude_running) and not \
-                        os.path.exists(self._path_lock(self.next_id, status=3)):
+            if (not os.path.exists(self._path_lock(self.next_id, status=1))
+                or not exclude_running) and not \
+                    os.path.exists(self._path_lock(self.next_id, status=3)):
 
-                    self.lock = FSLock(self._path_lock(self.next_id, status=1))
-                    if self.lock.acquire():
-                        return self.cset.chunk_dict[self.next_id]
+                self.lock = FSLock(self._path_lock(self.next_id, status=1))
 
-                    if os.path.exists(self._path_lock(self.next_id, status=3)):
-                        self.status[self.next_id] = True
-            else:
-                return None
+                if self.lock.acquire():
+                    return self.cset.chunk_dict[self.next_id]
+
+            self._increase_id()
         return None
 
     def get_write(self):
-        try:
+        if self.lock is not None:
             self.lock.release()
-        except:
-            pass
+
         self.lock = FSLock(self._path_lock(self.next_id, status=2))
+
         if self.lock.acquire():
             return True
         else:
             return False
 
     def sign_done(self):
-        try:
+        if self.lock is not None:
             self.lock.release()
-        except:
-            pass
 
-        f = open(self._path_lock(self.next_id, status=3), "w")
-        f.close()
+        self.lock = FSLock(self._path_lock(self.next_id, status=3))
+        self.lock.acquire()
+        self.lock.release()
+
+    def clean_locks(self, status=None):
+        if status is None:
+            paths = glob.glob(self.cset.path_head_folder + "/chunky_*/*.lock")
+        else:
+            paths = glob.glob(self._path_lock("*", status=status))
+
+        for path in paths:
+            os.remove(path)
+
+    def get_status(self):
+        for status in [1, 2, 3]:
+            n_locks = len(glob.glob(self._path_lock("*", status=status)))
+            print("%d of %d are %s" % (n_locks, len(self.chunklist),
+                                       self.status_name[status-1]))
 
     def _path_lock(self, chunk_id, status=1):
-        base_path = self.cset.path_head_folder + "/chunky_%d/" % chunk_id
-        if status == 1:
-            return base_path + "/%s_running" % self.exp_name
-        elif status == 2:
-            return base_path + "/%s_writing" % self.exp_name
-        elif status == 3:
-            return base_path + "/%s_done" % self.exp_name
+        base_path = self.cset.path_head_folder + "/chunky_%s/" % str(chunk_id)
+        return base_path + "/%s_%s.lock" % (self.exp_name,
+                                            self.status_name[status-1])
 
     def _increase_id(self):
         self.next_id += 1
-        self.next_id = self.next_id % len(self.chunklist)
-
-        cnt = 0
-        while self.status[self.next_id] and cnt < len(self.chunklist):
-            self.next_id += 1
-            self.next_id = self.next_id % len(self.chunklist)
-            cnt += 1
-
-        if cnt >= len(self.chunklist):
-            return False
-        else:
-            return True
+        self.next_id %= len(self.chunklist)
