@@ -608,7 +608,6 @@ class KnossosDataset(object):
             offset = offset[::-1]
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
-
         for dim in range(3):
             if offset[dim] < 0:
                 size[dim] += offset[dim]
@@ -623,8 +622,6 @@ class KnossosDataset(object):
 
         start = self.get_first_blocks(offset)
         end   = self.get_last_blocks(offset, size)
-
-        #TODO: Describe method
         uncut_matrix_size = (end - start)*self.edgelength
         if zyx_mode:
             uncut_matrix_size = uncut_matrix_size[::-1]
@@ -640,16 +637,14 @@ class KnossosDataset(object):
             for y in range(start[1], end[1]):
                  for x in range(start[0], end[0]):
                     if show_progress:
-                        progress = 100*cnt/float(nb_cubes_to_process) # Any/float -> float
+                        progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout('\rProgress: %.2f%%' % progress)
 
                     if from_raw:
                         path = self._knossos_path+self._name_mag_folder+\
-                               str(mag) + "/x%04d/y%04d/z%04d/" \
-                               % (x,y,z) + \
+                               str(mag) + "/x%04d/y%04d/z%04d/" % (x,y,z) + \
                                self._experiment_name + '_mag' + str(mag) + \
-                               "_x%04d_y%04d_z%04d.raw" \
-                               % (x,y,z)
+                               "_x%04d_y%04d_z%04d.raw"% (x,y,z)
 
                         try:
                             if self.module_wide["fadvise"]:
@@ -666,16 +661,14 @@ class KnossosDataset(object):
 
                     else:
                         path = self._knossos_path+self._name_mag_folder+\
-                               str(mag)+"/x%04d/y%04d/z%04d/" \
-                               % (x,y,z) + \
+                               str(mag)+"/x%04d/y%04d/z%04d/" % (x,y,z) + \
                                self._experiment_name + '_mag' + str(mag) + \
-                               "_x%04d_y%04d_z%04d.seg.sz" \
-                               % (x,y,z)
+                               "_x%04d_y%04d_z%04d.seg.sz" % (x,y,z)
                         try:
                             with zipfile.ZipFile(path+".zip", "r") as zf:
-                                values = np.fromstring(self.module_wide["snappy"].decompress(
-                                    zf.read(os.path.basename(path))),
-                                                       dtype=datatype)
+                                values = np.fromstring(self.module_wide[
+                                "snappy"].decompress(zf.read(
+                                os.path.basename(path))),dtype=datatype)
 
                         except:
                             values = default_value
@@ -692,7 +685,7 @@ class KnossosDataset(object):
                                pos[0]: pos[0]+self.edgelength[0]] = values
 
                     else:
-                        values = np.swapaxes(values.reshape(self.edgelength), 0, 2)
+                        values = values.reshape(self.edgelength).T
                         output[pos[0]: pos[0]+self.edgelength[0],
                                pos[1]: pos[1]+self.edgelength[1],
                                pos[2]: pos[2]+self.edgelength[2]] = values
@@ -707,19 +700,16 @@ class KnossosDataset(object):
                                 self.edgelength, start, end)
 
         if show_progress:
-            progress = 100*cnt/float(nb_cubes_to_process) # Any/float -> float
+            progress = 100.0*cnt/nb_cubes_to_process
             _stdout('\rProgress: %.2f%%' % progress)
             _stdout('\rProgress: finished\n')
             dt = time.time()-t0
             speed = np.product(output.shape) * 1.0/1000000/dt
             _stdout('\rSpeed: %.3f MB or MPix /s, time %s\n'%(speed, dt))
 
-
-        if not np.all(output.shape == size) and not zyx_mode:
-            raise Exception("Incorrect shape! Should be", size, "; got:",
-                            output.shape)
-        elif not np.all(output.shape == size[::-1]) and zyx_mode:
-            raise Exception("Incorrect shape! Should be", size[::-1], "; got:",
+        ref_size = size[::-1] if zyx_mode else size
+        if not np.all(output.shape == ref_size):
+            raise Exception("Incorrect shape! Should be", ref_size, "; got:",
                             output.shape)
         else:
             if verbose:
@@ -729,7 +719,6 @@ class KnossosDataset(object):
             output = np.lib.pad(output, mirror_overlap, 'symmetric')
         elif mirror_oob and np.any(mirror_overlap!=0) and zyx_mode:
             output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
-
 
         if output.dtype != datatype:
             raise Exception("Wrong datatype! - for unknown reasons...")
@@ -744,6 +733,7 @@ class KnossosDataset(object):
             save_to_pickle(output, pickle_path)
 
         return output
+
 
     def from_raw_cubes_to_matrix(self, size, offset, mag=1,
                                  datatype=np.uint8, mirror_oob=True,
