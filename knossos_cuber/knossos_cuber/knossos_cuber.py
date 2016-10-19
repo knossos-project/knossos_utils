@@ -1,8 +1,15 @@
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
+
 """A Python script that converts images into a **Knossos**-readable
 format."
 
 """
+
+from __future__ import absolute_import, division, print_function
+# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
+from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
+from functools import reduce
 
 __author__ = 'Joergen Kornfeld'
 
@@ -22,7 +29,6 @@ from PIL import Image
 import os
 import itertools
 import scipy.special
-import StringIO
 import time
 try:
     import fadvise
@@ -33,13 +39,17 @@ except ImportError:
 import sys
 from ast import literal_eval
 from collections import OrderedDict, namedtuple
-import ConfigParser, argparse
+try:
+    from ConfigParser import SafeConfigParser as ConfigParser
+except ImportError:
+    from configparser import ConfigParser
+import argparse
 
 
-SOURCE_FORMAT_FILES = OrderedDict({
-    'tif': ['tif', 'tiff', 'TIF', 'TIFF', '*.tif, *.tiff'],
-    'jpg': ['jpg', 'jpeg', 'JPG', 'JPEG', '*.jpg, *.jpeg'],
-    'png': ['png', 'PNG', '*.png']})
+SOURCE_FORMAT_FILES = OrderedDict()
+SOURCE_FORMAT_FILES['tif'] = ['tif', 'tiff', 'TIF', 'TIFF', '*.tif, *.tiff']
+SOURCE_FORMAT_FILES['jpg'] = ['jpg', 'jpeg', 'JPG', 'JPEG', '*.jpg, *.jpeg']
+SOURCE_FORMAT_FILES['png'] = ['png', 'PNG', '*.png']
 
 
 class InvalidCubingConfigError(Exception):
@@ -222,9 +232,9 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         scale=(scaling[0] * magf,
                scaling[1] * magf,
                scaling[2] * magf),
-        boundary=(boundaries[0]/trg_mag,
-                  boundaries[1]/trg_mag,
-                  boundaries[2]/trg_mag),
+        boundary=(boundaries[0]//trg_mag,  #d int/int
+                  boundaries[1]//trg_mag,  #d int/int
+                  boundaries[2]//trg_mag), #d int/int
         exp_name=exp_name + '_mag' + str(trg_mag),
         mag=trg_mag)
 
@@ -244,7 +254,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         for lx, ly, lz in itertools.product([0, 1], [0, 1], [0, 1]):
 
             # fill up the borders with black
-            if not path_hash.has_key((cur_x+lx, cur_y+ly, cur_z+lz)):
+            if (cur_x+lx, cur_y+ly, cur_z+lz) not in path_hash:
                 path_hash[(cur_x+lx, cur_y+ly, cur_z+lz)] = 'bogus'
 
             these_cubes.append(path_hash[(cur_x + lx, cur_y + ly, cur_z + lz)])
@@ -258,7 +268,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         this_job_info.cube_edge_len = config.getint('Processing',
                                                     'cube_edge_len')
 
-        out_path = path_hash[(cur_x/2, cur_y/2, cur_z/2)]
+        out_path = path_hash[(cur_x//2, cur_y//2, cur_z//2)]  #d int/int
         out_path = out_path.replace('mag'+str(src_mag), 'mag'+str(trg_mag))
         this_job_info.trg_cube_path = out_path
 
@@ -275,7 +285,7 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
 
         # how many chunks do we need?
         chunks_required = \
-            len(downsampling_job_info) / buffer_size_in_cubes_downsampling
+            len(downsampling_job_info) // buffer_size_in_cubes_downsampling  #d int/int  #q Should this really be a floor division?
 
         chunked_jobs = np.array_split(downsampling_job_info, chunks_required)
         # convert back to python list
@@ -307,13 +317,13 @@ def downsample_dataset(config, src_mag, trg_mag, log_fn):
         worker_pool.join()
 
         log_fn("Downsampling took on avg per cube: {0} s"
-               .format((time.time() - ref_time) / len(this_job_chunk)))
+               .format((time.time() - ref_time) / len(this_job_chunk))) #d float/int
 
         write_times = []
         write_threads = []
 
         # start writing the cubes
-        for cube_data, job_info in itertools.izip(cubes, this_job_chunk):
+        for cube_data, job_info in zip(cubes, this_job_chunk):
             prefix = os.path.dirname(job_info.trg_cube_path)
             cube_full_path = job_info.trg_cube_path
             ref_time = time.time()
@@ -612,7 +622,7 @@ def write_cube(cube_data, prefix, cube_full_path):
         #print("writing took: {0}s".format(time.time()-ref_time))
     except IOError:
         # no log_fn due to multithreading
-        print "Could not write cube: {0}".format(cube_full_path)
+        print("Could not write cube: {0}".format(cube_full_path))
 
     return
 
@@ -650,7 +660,7 @@ def init_from_source_dir(config, log_fn):
     all_source_files = [source_path + '/' + s for s in source_files]
 
     if all_source_files == []:
-        print "No image files of format " + source_format + " was found."
+        print("No image files of format " + source_format + " was found.")
         sys.exit()
 
 
@@ -671,14 +681,15 @@ def init_from_source_dir(config, log_fn):
     config.set('Dataset', 'source_dims', str(test_data.shape))
     config.set('Dataset', 'source_dtype', str(test_data.dtype))
 
+    #q (important for division below!) Why getfloat, not getint? It is int in the config.ini and that would make more sense.
     cube_edge_len = config.getfloat('Processing', 'cube_edge_len')
 
     # determine the number of passes required for each cube layer - if several
     # passes are required, we split the xy plane up in X cube_edge_len chunks,
     # always with full y height
-    num_x_cubes = int(math.ceil(source_dims[0] / cube_edge_len))
-    num_y_cubes = int(math.ceil(source_dims[1] / cube_edge_len))
-    num_z_cubes = int(math.ceil(num_z / cube_edge_len))
+    num_x_cubes = int(math.ceil(source_dims[0] / cube_edge_len)) #d int/float
+    num_y_cubes = int(math.ceil(source_dims[1] / cube_edge_len)) #d int/float
+    num_z_cubes = int(math.ceil(num_z / cube_edge_len)) #d int/float
 
     buffer_size_in_cubes = config.getint('Processing', 'buffer_size_in_cubes')
 
@@ -691,10 +702,10 @@ def init_from_source_dir(config, log_fn):
                "either increase the buffer size or accept the longer cubing "
                "time due to IO overhead.")
         num_passes_per_cube_layer = \
-            int(math.ceil(buffer_size_in_cubes / num_y_cubes))
+            int(math.ceil(buffer_size_in_cubes // num_y_cubes)) #d int/int
+        #q ^ This should not be a floor division, right? int(math.ceil()) is redundant because result is always a floored int. Apply regular float division inside?
 
-        num_x_cubes_per_pass = \
-            int(math.floor(num_x_cubes / num_passes_per_cube_layer))
+        num_x_cubes_per_pass = num_x_cubes // num_passes_per_cube_layer #d int/int
 
     CubingInfo = namedtuple('CubingInfo',
                             'num_x_cubes_per_pass num_y_cubes num_z_cubes '
@@ -817,18 +828,18 @@ def make_mag1_cubes_from_z_stack(config,
                 #else:
                 #ref_time = time.time()
                 fsize = os.stat(all_source_files[z]).st_size
-                buffersize = 524288/2 # optimal for soma cluster
-                content = ''
+                buffersize = 524288//2 # optimal for soma cluster #d int/int
+                content = b''
                 # This is optimized code, do not think that a single line
                 # would be faster. At least on the soma MPI cluster,
                 # the default buffering values (read entire file into buffer
                 # instead of smaller chunks) leads to delays and slowness.
                 fd = io.open(all_source_files[z], 'r+b', buffering=buffersize)
-                for i in range(0, (fsize / buffersize) + 1):
+                for i in range(0, (fsize // buffersize) + 1): #d int/int
                     content += fd.read(buffersize)
                 fd.close()
 
-                PIL_image = Image.open(StringIO.StringIO(content))
+                PIL_image = Image.open(io.BytesIO(content))
                 this_layer = np.array(PIL_image)
 
                 # This stupid swap axes call costs us 50% of the image loading
@@ -975,12 +986,12 @@ def knossos_cuber(config, log_fn):
         total_mag1_time = time.time() - mag1_ref_time
 
         log_fn("Mag 1 succesfully cubed. Took {0} h"
-               .format(total_mag1_time/3600))
+               .format(total_mag1_time/3600)) #d f/i
 
 
     if config.getboolean('Processing', 'perform_downsampling'):
         total_down_ref_time = time.time()
-        curr_mag = 2
+        curr_mag = 2 #q mags are always ints, right? (important for division below!)
 
         # `mags_to_gen' is specified like `2**20' in the configuration file.
         # To parse this number, the string has to be split at `**',
@@ -990,7 +1001,7 @@ def knossos_cuber(config, log_fn):
                              mags_to_gen_string.split("**"))
 
         while curr_mag <= mags_to_gen:
-            worked = downsample_dataset(config, curr_mag/2, curr_mag, log_fn)
+            worked = downsample_dataset(config, curr_mag//2, curr_mag, log_fn) #d int/int
 
             if worked:
                 log_fn("Mag {0} succesfully cubed.".format(curr_mag))
@@ -1063,14 +1074,14 @@ def read_config_file(config_file):
         A ConfigParser object holding the contents of config_file.
     """
 
-    config = ConfigParser.SafeConfigParser(allow_no_value=True)
+    config = ConfigParser(allow_no_value=True)
 
     try:
         config.readfp(open(config_file))
     except IOError:
-        print "Could not open config file `" + config_file + "'."
-        print "An IOError has appeared. Please check whether the " \
-              "configuration file exists and permissions are set."
+        print("Could not open config file `" + config_file + "'.")
+        print("An IOError has appeared. Please check whether the "
+              "configuration file exists and permissions are set.")
 
         sys.exit()
 
@@ -1142,14 +1153,13 @@ def validate_args(args):
     """
 
     if args.format not in SOURCE_FORMAT_FILES.keys():
-        print ("Error: " + args.format +
-               " was not found in the list of supported formats!")
+        print("Error: " + args.format + " was not found in the list of supported formats!")
         return False
 
     return True
 
 
-if __name__ == '__main__':
+def main():
     PARSER = create_parser()
     ARGS = PARSER.parse_args()
 
@@ -1164,3 +1174,6 @@ if __name__ == '__main__':
 
     if validate_config(CONFIG):
         knossos_cuber(CONFIG, lambda x: sys.stdout.write(str(x) + '\n'))
+
+if __name__ == '__main__':
+    main()

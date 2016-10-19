@@ -21,25 +21,33 @@
 #
 ################################################################################
 
+from __future__ import absolute_import, division, print_function
+# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
+from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
+from functools import reduce
 
-import cPickle as pkl
+try:
+    import cPickle as pkl
+except ImportError:
+    import pickle as pkl
 import glob
 import h5py
-import knossosdataset
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 import numpy as np
 import os
 import sys
-import scipy.misc
 import time
 
+import scipy.misc
 try:
     import fadvise
 
     fadvise_available = True
 except:
     fadvise_available = False
+
+from knossos_utils import knossosdataset
 
 
 def wrapper(func, args, kwargs):
@@ -78,7 +86,7 @@ def _export_cset_as_kd_thread(args):
         if coords[dim] + size[dim] > cset.box_size[dim]:
             size[dim] = cset.box_size[dim] - coords[dim]
 
-    print coords
+    print(coords)
     data_dict = cset.from_chunky_to_matrix(size, coords, name, hdf5names)
 
     data_list = []
@@ -192,7 +200,7 @@ def load_dataset(path_head_folder, update_paths=False):
         this_cd = pkl.load(f)
 
     if update_paths:
-        print "Updating paths..."
+        print("Updating paths...")
         this_cd.path_head_folder = path_head_folder + '/'
         for key in this_cd.chunk_dict.keys():
             this_cd.chunk_dict[key].path_head_folder = path_head_folder + '/'
@@ -200,9 +208,8 @@ def load_dataset(path_head_folder, update_paths=False):
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-2]
             else:
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-1]
-            this_cd.chunk_dict[
-                key].folder = path_head_folder + '/' + rel_path + '/'
-        print "... finished."
+            this_cd.chunk_dict[key].folder = path_head_folder + '/' + rel_path + '/'
+        print("... finished.")
         # save_dataset(this_cd)
 
     return this_cd
@@ -290,7 +297,7 @@ class ChunkDataset(object):
         self.overlap = overlap
         if not os.path.exists(self.path_head_folder):
             os.makedirs(self.path_head_folder)
-            print 'folder created at %s' % path_head_folder
+            print('folder created at %s' % path_head_folder)
 
         if len(list_of_coords) == 0:
             if False in np.equal(np.mod(box_size, chunk_size), np.zeros(3)):
@@ -355,10 +362,10 @@ class ChunkDataset(object):
         """
 
         if not chunklist:
-            chunklist = range(len(self.chunk_dict))
-            print self.chunklist
+            chunklist = list(range(len(self.chunk_dict)))
+            print(self.chunklist)
         if self.chunklist:
-            print 'in loop'
+            print('in loop')
             chunklist = self.chunklist
 
         for i in chunklist:
@@ -391,7 +398,7 @@ class ChunkDataset(object):
         chunk_rep = []
         chunk_size = np.array(self.chunk_size, dtype=np.int)
         for coordinate in coordinates:
-            chunk_coordinate = np.array(np.array(coordinate, np.int) /
+            chunk_coordinate = np.array(np.array(coordinate, np.int) / #d (explicitly rounded to int, so type doesn't matter)
                                         chunk_size, dtype=np.int) * chunk_size
             chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
         return chunk_rep
@@ -463,11 +470,11 @@ class ChunkDataset(object):
                                                 np.array(
                                                     offset) - dataset_offset,
                                                 self.chunk_size)
-                 for dim in xrange(3)]
+                 for dim in range(3)]
         end = [knossosdataset.get_last_block(dim, size,
                                              np.array(offset) - dataset_offset,
                                              self.chunk_size) + 1
-               for dim in xrange(3)]
+               for dim in range(3)]
 
         output_matrix = {}
         for hdf5_name in setnames:
@@ -475,8 +482,7 @@ class ChunkDataset(object):
                 (
                 (end[0] - start[0]) * self.chunk_size[0] * interpolated_data[0],
                 (end[1] - start[1]) * self.chunk_size[1] * interpolated_data[1],
-                (end[2] - start[2]) * self.chunk_size[2] * interpolated_data[
-                    2]),
+                (end[2] - start[2]) * self.chunk_size[2] * interpolated_data[2]),
                 dtype=dtype)
 
         offset_start = [(offset[dim] - dataset_offset[dim]) %
@@ -504,7 +510,7 @@ class ChunkDataset(object):
                 current[0] = start[0]
                 while current[0] < end[0]:
                     if show_progress:
-                        progress = 100 * cnt / float(nb_chunks_to_process)
+                        progress = 100 * cnt / float(nb_chunks_to_process) #d int/float -> float
                         sys.stdout.write('\rProgress: %.2f%%' % progress)
                         sys.stdout.flush()
                     values_dict = {}
@@ -523,15 +529,14 @@ class ChunkDataset(object):
                         for hdf5_name in setnames:
                             values_dict[hdf5_name] = f[hdf5_name].value
                         f.close()
-                    except Exception, e:
-                        print "Exception:", e,
+                    except Exception as e:
+                        print("Exception:", e)
                         for hdf5_name in setnames:
                             values_dict[hdf5_name] = np.zeros((
                                 self.chunk_size[0] * interpolated_data[0],
                                 self.chunk_size[1] * interpolated_data[1],
                                 self.chunk_size[2] * interpolated_data[2]))
-                        print "Cube does not exist, cube with zeros only " \
-                              "assigned:", current_coordinate
+                        print("Cube does not exist, cube with zeros only assigned:", current_coordinate)
 
                     cnt += 1
 
@@ -549,12 +554,11 @@ class ChunkDataset(object):
                             if values.shape[dim] != self.chunk_size[dim] * \
                                     interpolated_data[dim]:
                                 offset[dim] = \
-                                    int((values.shape[dim] - self.chunk_size[
-                                        dim] *
-                                         interpolated_data[dim]) / 2)
+                                    int((values.shape[dim]-self.chunk_size[dim] *
+                                        interpolated_data[dim])//2) #d np.int//int -> np.int, then cast to int (numpy follows __future__.division)
                         values = values[offset[0]: values.shape[0] - offset[0],
-                                 offset[1]: values.shape[1] - offset[1],
-                                 offset[2]: values.shape[2] - offset[2]]
+                                        offset[1]: values.shape[1] - offset[1],
+                                        offset[2]: values.shape[2] - offset[2]]
 
                         offset = np.zeros(3, dtype=np.int)
                         for dim in range(3):
@@ -590,9 +594,8 @@ class ChunkDataset(object):
 
         for this_key in output_matrix.keys():
             if False in [output_matrix[this_key].shape[dim] ==
-                                         np.array(size[dim]) *
-                                         interpolated_data[dim]
-                         for dim in xrange(3)]:
+                         np.array(size[dim])*interpolated_data[dim]
+                         for dim in range(3)]:
                 raise Exception("Incorrect shape! Should be", size, "; got:",
                                 output_matrix[this_key].shape)
         else:
@@ -617,7 +620,7 @@ class ChunkDataset(object):
             low_cut = args[4]
             high_cut = args[5]
 
-            print low, high, low_cut, high_cut
+            print(low, high, low_cut, high_cut)
 
             if os.path.exists(path):
                 with h5py.File(path, "r") as f:
@@ -644,13 +647,12 @@ class ChunkDataset(object):
 
         chunk_offset = np.array(chunk_offset)
 
-        start = np.floor(np.array([(offset[dim] - chunk_offset[dim]) /
+        start = np.floor(np.array([(offset[dim] - chunk_offset[dim]) / #d Any/float -> float
                                    float(self.chunk_size[dim])
                                    for dim in range(3)]))
         start = start.astype(np.int)
-        end = np.floor(
-            np.array([(offset[dim] + chunk_offset[dim] + data.shape[dim] - 1) /
-                      float(self.chunk_size[dim]) for dim in range(3)]))
+        end = np.floor(np.array([(offset[dim] + chunk_offset[dim] + data.shape[dim] - 1) / #d Any/float -> float
+                                 float(self.chunk_size[dim]) for dim in range(3)]))
         end = end.astype(np.int)
 
         current = np.copy(start)
@@ -694,13 +696,14 @@ class ChunkDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_write_chunks, multithreading_params)
+            for params in multithreading_params:
+                _write_chunks(params)
 
     def delete_all_cubes_by_name(self, fullname, nb_threads=10, folder=False):
         def _find_and_delete_cubes(file):
             if folder:
                 os.rmdir(file)
-                print file
+                print(file)
             else:
                 os.remove(file)
 
@@ -715,7 +718,7 @@ class ChunkDataset(object):
     def export_cset_to_tiff_stack(self, save_path, name, hdf5names,
                                   nb_processes, z_stride, size):
         multi_params = []
-        for step in range(int(np.ceil(size[2] / float(z_stride)))):
+        for step in range(int(np.ceil(size[2] / float(z_stride)))): #d Any/float -> float
             multi_params.append([self, save_path, name, hdf5names,
                                  step * z_stride, z_stride, size])
 
@@ -724,7 +727,8 @@ class ChunkDataset(object):
             pool.map(_export_cset_to_tiff_stack_thread, multi_params)
             pool.close()
         else:
-            map(_export_cset_to_tiff_stack_thread, multi_params)
+            for params in multi_params:
+                _export_cset_to_tiff_stack_thread(params)
 
     def export_cset_to_kd(self, kd, name, hdf5names, nb_threads,
                           coordinate=None, size=None,
@@ -755,7 +759,8 @@ class ChunkDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_export_cset_as_kd_thread, multi_params)
+            for params in multi_params:
+                _export_cset_as_kd_thread(params)
 
         if nb_threads[0] > 1:
             pool = Pool(processes=nb_threads[0])
@@ -763,7 +768,8 @@ class ChunkDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_export_cset_as_kd_control_thread, multi_params)
+            for params in multi_params:
+                _export_cset_as_kd_control_thread(params)
 
 
 class Chunk(object):
@@ -860,7 +866,7 @@ class Chunk(object):
             coords = np.array(np.array(self.coordinates),
                               dtype=np.int)
 
-        print 'getting seg data', size, coords
+        print('getting seg data', size, coords)
         seg = self.dataset.from_overlaycubes_to_matrix(size,
                                                        coords,
                                                        dytpe_opt=dytpe_opt)
@@ -892,7 +898,7 @@ class Chunk(object):
 
         if labels_data is None:
             labels_data = self.load_chunk(seg_name, seg_set_name)
-            print np.max(labels_data), np.min(labels_data)
+            print(np.max(labels_data), np.min(labels_data))
         coord = self.coordinates - self.overlap
 
         if without_overlap:
@@ -900,9 +906,9 @@ class Chunk(object):
                           self.overlap[1]:-self.overlap[1],
                           self.overlap[2]:-self.overlap[2]]
             coord = self.coordinates
-        print labels_data.shape
+        print(labels_data.shape)
         if not write_pathlist:
-            print overwrite
+            print(overwrite)
             self.dataset.from_matrix_to_overlaycubes(coord,
                                                      labels_data=[labels_data],
                                                      swapaxes_option=swap_axes,
@@ -946,7 +952,7 @@ class Chunk(object):
             if set True, existing HDF5 file is overwritten
         """
         path = self.folder + name + '.h5'
-        print 'writing to ', path
+        print('writing to ', path)
         if not os.path.exists(self.path_head_folder):
             os.makedirs(self.path_head_folder)
 
@@ -997,21 +1003,20 @@ class Chunk(object):
         path = self.folder + name + '.h5'
 
         if not os.path.exists(self.path_head_folder):
-            print self.path_head_folder
+            print(self.path_head_folder)
             raise Exception('path_head_folder to correct, check "/" at the end')
         if not os.path.exists(self.folder):
-            print self.folder
+            print(self.folder)
             raise Exception('chunky folder does not exist')
         if verbose:
-            print 'loading:', path
+            print('loading:', path)
 
         f = h5py.File(path, 'r')
         if verbose:
-            print 'file has following setnames:', f.keys()
-            print 'setname(s)', setname
-
+            print('file has following setnames:', list(f.keys()))
+            print('setname(s)', setname)
         if setname is None:
-            setname = f.keys()
+            setname = list(f.keys())
 
         if type(setname) == list or type(setname) == np.ndarray:
             data = []
@@ -1056,7 +1061,7 @@ class ChunkDistributor(object):
         if chunklist is not None:
             self.chunklist = chunklist
         else:
-            self.chunklist = range(len(self.cset.chunk_dict))
+            self.chunklist = list(range(len(self.cset.chunk_dict)))
 
         if start_chunk is None:
             self.next_id = np.random.randint(0, len(self.chunklist))

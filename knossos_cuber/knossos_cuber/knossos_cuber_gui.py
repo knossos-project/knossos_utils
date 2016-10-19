@@ -1,18 +1,38 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
 """knossos_cuber_gui.py
 """
+
+from __future__ import absolute_import, division, print_function
+# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
+from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
+from functools import reduce
 
 import sys
 import argparse
 from ast import literal_eval
 
-from PyQt4.QtGui import *
-# from PyQt4.QtCore import *
-from knossos_cuber_widgets import Ui_Dialog
-from knossos_cuber_widgets_log import Ui_dialog_log
-from knossos_cuber import knossos_cuber, validate_config
+import pkg_resources
 
-from knossos_cuber import SOURCE_FORMAT_FILES
-from knossos_cuber import read_config_file
+from PyQt5.QtWidgets import *
+
+try:
+    # Assume knossos_cuber is installed as a package or executed from the parent directory
+    from knossos_cuber.knossos_cuber_widgets import Ui_Dialog
+    from knossos_cuber.knossos_cuber_widgets_log import Ui_dialog_log
+    from knossos_cuber.knossos_cuber import knossos_cuber, validate_config
+
+    from knossos_cuber.knossos_cuber import SOURCE_FORMAT_FILES
+    from knossos_cuber.knossos_cuber import read_config_file
+except ImportError:
+    # Assume the user wants to simply run "$ python2 knossos_cuber_gui.py" as a script inside the directory
+    from knossos_cuber_widgets import Ui_Dialog
+    from knossos_cuber_widgets_log import Ui_dialog_log
+    from knossos_cuber import knossos_cuber, validate_config
+
+    from knossos_cuber import SOURCE_FORMAT_FILES
+    from knossos_cuber import read_config_file
 
 
 
@@ -80,7 +100,7 @@ class KnossosCuberUI(Ui_Dialog):
         drop-down menu.
         """
 
-        for key, value in SOURCE_FORMAT_FILES.iteritems():
+        for value in SOURCE_FORMAT_FILES.values():
             self.combo_box_source_format.addItem(value[-1])
 
 
@@ -362,13 +382,15 @@ class KnossosCuberUI(Ui_Dialog):
             knossos_cuber(self.config, log_fn)
 
 
-if __name__ == '__main__':
+def main():
+    confpath = pkg_resources.resource_filename(__name__, 'config.ini')
+
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument(
         '--config', '-c',
         help="A configuration file. If no file is specified, "
              "`config.ini' from knossos_cuber's installation directory is used.",
-        default='config.ini'
+        default=confpath
     )
 
     ARGS = PARSER.parse_args()
@@ -386,3 +408,6 @@ if __name__ == '__main__':
     WINDOW.show()
 
     sys.exit(APP.exec_())
+
+if __name__ == '__main__':
+    main()

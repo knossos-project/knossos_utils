@@ -17,6 +17,7 @@ The script itself depends on the following modules:
 
 *   NumPy
 *   SciPy
+*   Python-Future
 *   Pillow
 
 These dependencies can be installed using `pip`/`easy_install`.

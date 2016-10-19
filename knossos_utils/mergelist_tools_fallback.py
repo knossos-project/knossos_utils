@@ -1,3 +1,8 @@
+from __future__ import absolute_import, division, print_function
+# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
+from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
+from functools import reduce
+
 import numpy as np
 
 
@@ -36,9 +41,9 @@ def apply_mergelist(segmentation, mergelist_content, background_id=0, pad=0, mis
 
     object_map = {}
 
-    for z in xrange(pad, depth - pad):
-        for y in xrange(pad, height - pad):
-            for x in xrange(pad, width - pad):
+    for z in range(pad, depth - pad):
+        for y in range(pad, height - pad):
+            for x in range(pad, width - pad):
                 subobject_id = segmentation[x, y, z]
                 if subobject_id == background_id:
                     continue
@@ -77,9 +82,9 @@ def gen_mergelist_from_segmentation(segmentation, background_id=0, pad=0, offset
 
     seen_subobjects = set()
     new_mergelist = ""
-    for z in xrange(pad, depth - pad):
-        for y in xrange(pad, height - pad):
-            for x in xrange(pad, width - pad):
+    for z in range(pad, depth - pad):
+        for y in range(pad, height - pad):
+            for x in range(pad, width - pad):
                 next_id = segmentation[x, y, z]
                 if next_id == so_cache or next_id == background_id or next_id in seen_subobjects:
                     continue
