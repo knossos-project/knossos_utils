@@ -247,7 +247,7 @@ class KnossosDataset(object):
         self._boundary = np.zeros(3, dtype=np.int)
         self._scale = np.ones(3, dtype=np.float)
         self._number_of_cubes = np.zeros(3)
-        self._edgelength = 128
+        self._edgelength = np.full(3, 128, dtype=np.int)
         self._initialized = False
 
     @property
@@ -359,9 +359,8 @@ class KnossosDataset(object):
         if self._experiment_name.endswith("mag1"):
             self._experiment_name = self._experiment_name[:-5]
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary / #d Any/float -> float
-                                                 float(self.edgelength)),
-                                         dtype=np.int)
+        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) / #d Any/float -> float
+                                                self.edgelength),dtype=np.int)
 
         if verbose:
             _print("Initialization finished successfully")
@@ -540,12 +539,18 @@ class KnossosDataset(object):
         vx_list -= boundary_box[0]
 
         return block[vx_list[:, 0], vx_list[:, 1], vx_list[:, 2]]
-        
+
+    def get_first_blocks(self, offset):
+        return offset // self.edgelength
+
+    def get_last_blocks(self, offset, size):
+        return ((offset+size-1) // self.edgelength) + 1
+
     def from_cubes_to_matrix(self, size, offset, type, mag=1, datatype=np.uint8,
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, verbose=False,
-                             show_progress=True):
+                             show_progress=True, zyx_mode=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -577,6 +582,7 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+        t0 = time.time()
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
@@ -597,6 +603,10 @@ class KnossosDataset(object):
 
         size = np.array(size, dtype=np.int)
         offset = np.array(offset, dtype=np.int)
+        if zyx_mode:
+            size = size[::-1]
+            offset = offset[::-1]
+
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
 
         for dim in range(3):
@@ -611,63 +621,45 @@ class KnossosDataset(object):
             if size[dim] < 0:
                 raise Exception("Given block is totally out ouf bounce!")
 
-        start = np.array([get_first_block(dim, offset, self._edgelength)
-                          for dim in range(3)])
-        end = np.array([get_last_block(dim, size, offset, self._edgelength)+1
-                        for dim in range(3)])
+        start = self.get_first_blocks(offset)
+        end   = self.get_last_blocks(offset, size)
 
         #TODO: Describe method
         uncut_matrix_size = (end - start)*self.edgelength
+        if zyx_mode:
+            uncut_matrix_size = uncut_matrix_size[::-1]
+
         output = np.zeros(uncut_matrix_size, dtype=datatype)
 
-        offset_start = np.array([offset[dim] % self.edgelength
-                                 for dim in range(3)])
-        offset_end = np.array([(self.edgelength-(offset[dim]+size[dim])
-                               % self.edgelength) % self.edgelength
-                              for dim in range(3)])
-
-        current = np.array([start[dim] for dim in range(3)])
-        cnt = 1
-        nb_cubes_to_process = \
-            (end[2]-start[2]) * (end[1] - start[1]) * (end[0] - start[0])
-
-        while current[2] < end[2]:
-            current[1] = start[1]
-            while current[1] < end[1]:
-                current[0] = start[0]
-                while current[0] < end[0]:
+        offset_start = offset%self.edgelength
+        offset_end = (self.edgelength-(offset+size)%self.edgelength)%self.edgelength
+        cnt = 0
+        nb_cubes_to_process = np.prod(end-start)
+        default_value = np.zeros(self.edgelength, dtype=datatype)
+        for z in range(start[2], end[2]):
+            for y in range(start[1], end[1]):
+                 for x in range(start[0], end[0]):
                     if show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process) # Any/float -> float
-                        if progress < 100:
-                            _stdout('\rProgress: %.2f%%' % progress)
-                        else:
-                            _stdout('\rProgress: finished\n')
+                        _stdout('\rProgress: %.2f%%' % progress)
 
                     if from_raw:
                         path = self._knossos_path+self._name_mag_folder+\
                                str(mag) + "/x%04d/y%04d/z%04d/" \
-                               % (current[0], current[1], current[2]) + \
+                               % (x,y,z) + \
                                self._experiment_name + '_mag' + str(mag) + \
                                "_x%04d_y%04d_z%04d.raw" \
-                               % (current[0], current[1], current[2])
+                               % (x,y,z)
 
                         try:
                             if self.module_wide["fadvise"]:
                                 self.module_wide["fadvise"].willneed(path)
 
-                            l = []
-                            buffersize = 32768
-                            fd = io.open(path, 'rb',
-                                         buffering=buffersize)
-                            for i in range(0,(self._edgelength**3//buffersize)+1): #d int//int -> int
-                                l.append(fd.read(buffersize))
-                            content = b"".join(l)
-                            fd.close()
-
-                            values = np.fromstring(content, dtype=np.uint8)
+                            count = np.prod(self.edgelength)
+                            values = np.fromfile(path, dtype=np.uint8, count=count)
 
                         except:
-                            values = np.zeros([self.edgelength,]*3)
+                            values = default_value
                             if verbose:
                                 _print("Cube does not exist, cube with zeros " \
                                       "only assigned")
@@ -675,10 +667,10 @@ class KnossosDataset(object):
                     else:
                         path = self._knossos_path+self._name_mag_folder+\
                                str(mag)+"/x%04d/y%04d/z%04d/" \
-                               % (current[0], current[1], current[2]) + \
+                               % (x,y,z) + \
                                self._experiment_name + '_mag' + str(mag) + \
                                "_x%04d_y%04d_z%04d.seg.sz" \
-                               % (current[0], current[1], current[2])
+                               % (x,y,z)
                         try:
                             with zipfile.ZipFile(path+".zip", "r") as zf:
                                 values = np.fromstring(self.module_wide["snappy"].decompress(
@@ -686,36 +678,58 @@ class KnossosDataset(object):
                                                        dtype=datatype)
 
                         except:
-                            values = np.zeros([self.edgelength,]*3)
+                            values = default_value
                             if verbose:
                                 _print("Cube does not exist, cube with zeros " \
                                       "only assigned")
 
-                    pos = (current-start)*self.edgelength
+                    pos = np.subtract([x,y,z], start)*self.edgelength
 
-                    values = np.swapaxes(values.reshape([self.edgelength, ]*3),
-                                         0, 2)
-                    output[pos[0]: pos[0]+self.edgelength,
-                           pos[1]: pos[1]+self.edgelength,
-                           pos[2]: pos[2]+self.edgelength] = values
+                    if zyx_mode:
+                        values = values.reshape(self.edgelength)
+                        output[pos[2]: pos[2]+self.edgelength[2],
+                               pos[1]: pos[1]+self.edgelength[1],
+                               pos[0]: pos[0]+self.edgelength[0]] = values
+
+                    else:
+                        values = np.swapaxes(values.reshape(self.edgelength), 0, 2)
+                        output[pos[0]: pos[0]+self.edgelength[0],
+                               pos[1]: pos[1]+self.edgelength[1],
+                               pos[2]: pos[2]+self.edgelength[2]] = values
 
                     cnt += 1
-                    current[0] += 1
-                current[1] += 1
-            current[2] += 1
 
-        output = cut_matrix(output, offset_start, offset_end, self.edgelength,
-                            start, end)
+        if zyx_mode:
+            output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
+                                self.edgelength[::-1],start[::-1], end[::-1])
+        else:
+            output = cut_matrix(output, offset_start, offset_end,
+                                self.edgelength, start, end)
 
-        if False in [output.shape[dim] == size[dim] for dim in range(3)]:
+        if show_progress:
+            progress = 100*cnt/float(nb_cubes_to_process) # Any/float -> float
+            _stdout('\rProgress: %.2f%%' % progress)
+            _stdout('\rProgress: finished\n')
+            dt = time.time()-t0
+            speed = np.product(output.shape) * 1.0/1000000/dt
+            _stdout('\rSpeed: %.3f MB or MPix /s, time %s\n'%(speed, dt))
+
+
+        if not np.all(output.shape == size) and not zyx_mode:
             raise Exception("Incorrect shape! Should be", size, "; got:",
+                            output.shape)
+        elif not np.all(output.shape == size[::-1]) and zyx_mode:
+            raise Exception("Incorrect shape! Should be", size[::-1], "; got:",
                             output.shape)
         else:
             if verbose:
                 _print("Correct shape")
 
-        if mirror_oob and np.any(mirror_overlap!=0):
+        if mirror_oob and np.any(mirror_overlap!=0) and not zyx_mode:
             output = np.lib.pad(output, mirror_overlap, 'symmetric')
+        elif mirror_oob and np.any(mirror_overlap!=0) and zyx_mode:
+            output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
+
 
         if output.dtype != datatype:
             raise Exception("Wrong datatype! - for unknown reasons...")
@@ -735,7 +749,7 @@ class KnossosDataset(object):
                                  datatype=np.uint8, mirror_oob=True,
                                  hdf5_path=None, hdf5_name="raw",
                                  pickle_path=None, invert_data=False,
-                                 verbose=False, show_progress=True):
+                                 verbose=False, show_progress=True, zyx_mode=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset raw cubes
 
         :param size: 3 sequence of ints
@@ -771,13 +785,14 @@ class KnossosDataset(object):
             self.from_cubes_to_matrix(size, offset, 'raw', mag, datatype,
                                       mirror_oob, hdf5_path, hdf5_name,
                                       pickle_path, invert_data, verbose,
-                                      show_progress)
+                                      show_progress, zyx_mode=zyx_mode)
         else:
             return self.from_cubes_to_matrix(size, offset, 'raw', mag, datatype,
                                              mirror_oob, hdf5_path,
                                              hdf5_name, pickle_path,
                                              invert_data, verbose,
-                                             show_progress)
+                                             show_progress, zyx_mode=zyx_mode)
+
 
     def from_overlaycubes_to_matrix(self, size, offset, mag=1,
                                     datatype=np.uint64, mirror_oob=True,
@@ -1386,3 +1401,18 @@ class KnossosDataset(object):
         else:
             for params in multi_params:
                 _find_and_delete_cubes_process(params)
+
+
+if __name__ =="__main__":
+    kds_barr = KnossosDataset()
+    data_prefix = os.path.expanduser("~/lustre/sdorkenw/j0126_")
+    kds_barr.initialize_from_knossos_path(data_prefix+'161012_barrier/')
+    data = kds_barr.from_raw_cubes_to_matrix([613,245,20], [1245,2532,0], show_progress=True)
+    data_zyx = kds_barr.from_raw_cubes_to_matrix([613,245,20][::-1], [1245,2532,0][::-1], show_progress=True, zyx_mode=True)
+    assert np.all(data.T==data_zyx)
+#    try:
+#        from numa.utils.plotting import scroll_plot
+#        f = scroll_plot(data.T, 'barr', 0)
+#        f2 = scroll_plot(data_zyx, 'barr', 0)
+#    except:
+#        pass
