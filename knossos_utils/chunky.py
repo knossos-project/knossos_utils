@@ -420,6 +420,8 @@ class ChunkDataset(object):
         """
         if chunklist is None:
             chunklist = self.chunklist
+            if len(chunklist) == 0:
+                chunklist = self.chunk_dict.keys()
 
         coordinate = np.array(chunk.coordinates)
         neighbours = []
@@ -430,6 +432,7 @@ class ChunkDataset(object):
                         np.array([chunk.size[dim], 0, 0]),
                         [0, dim])
                 neighbour = self.coord_dict[tuple(this_coordinate)]
+
                 if not chunklist is None:
                     if neighbour in chunklist:
                         neighbours.append(neighbour)
