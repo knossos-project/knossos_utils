@@ -114,7 +114,7 @@ def _export_cset_as_kd_thread(args):
                             data=data_list,
                             as_raw=as_raw,
                             nb_threads=nb_threads,
-                            overwrite=False,
+                            overwrite=True,
                             datatype=datatype)
     data = []
 
@@ -403,7 +403,7 @@ class ChunkDataset(object):
             chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
         return chunk_rep
 
-    def get_neighbouring_chunks(self, chunk, chunklist=None):
+    def get_neighbouring_chunks(self, chunk, chunklist=None, con_mode=7):
         """ Returns the numbers of all neighbours
 
         Parameters:
@@ -416,49 +416,53 @@ class ChunkDataset(object):
         list of int
             -1 if neighbour does not exist, else number
              order: [< x, < y, < z, > x, > y, > z]
-
+        con_mode: int
+            either 7, 19 or 27, defines which neighbours are considered
         """
         if chunklist is None:
             chunklist = self.chunklist
             if len(chunklist) == 0:
                 chunklist = self.chunk_dict.keys()
 
+        assert(con_mode in [7, 19, 27])
+
+        stencil = np.ones([3, 3, 3], dtype=np.bool)
+        stencil[1, 1, 1] = 0
+        if con_mode != 27:
+            for x in [0, 2]:
+                for y in [0, 2]:
+                    for z in [0, 2]:
+                        stencil[x, y, z] = False
+
+        if con_mode == 7:
+            for x in range(3):
+                for y in range(3):
+                    for z in range(3):
+                        if (x+y+z) % 2 == 1:
+                            stencil[x, y, z] = False
+
         coordinate = np.array(chunk.coordinates)
         neighbours = []
-        for dim in range(3):
-            try:
-                this_coordinate = \
-                    coordinate - _switch_array_entries(
-                        np.array([chunk.size[dim], 0, 0]),
-                        [0, dim])
-                neighbour = self.coord_dict[tuple(this_coordinate)]
+        pos = []
 
-                if not chunklist is None:
-                    if neighbour in chunklist:
-                        neighbours.append(neighbour)
-                    else:
-                        neighbours.append(-1)
-                else:
-                    neighbours.append(neighbour)
-            except:
-                neighbours.append(-1)
+        for x in range(3):
+            for y in range(3):
+                for z in range(3):
+                    if stencil[x, y, z]:
+                        this_coordinate = coordinate - chunk.size * \
+                                                       np.array([x-1, y-1, z-1])
+                        print(this_coordinate)
+                        if tuple(this_coordinate) in self.coord_dict:
+                            neighbour = self.coord_dict[tuple(this_coordinate)]
+                            if neighbour in chunklist:
+                                neighbours.append(neighbour)
+                            else:
+                                neighbours.append(-1)
+                        else:
+                            neighbours.append(-1)
+                        pos.append([x-1, y-1, z-1])
 
-        for dim in range(3):
-            try:
-                this_coordinate = \
-                    coordinate + _switch_array_entries(
-                        np.array([chunk.size[dim], 0, 0]), [0, dim])
-                neighbour = self.coord_dict[tuple(this_coordinate)]
-                if not chunklist is None:
-                    if neighbour in chunklist:
-                        neighbours.append(neighbour)
-                    else:
-                        neighbours.append(-1)
-                else:
-                    neighbours.append(neighbour)
-            except:
-                neighbours.append(-1)
-        return neighbours
+        return neighbours, pos
 
     def from_chunky_to_matrix(self, size, offset, name, setnames,
                               dtype=np.uint32, outputpath=None,
