@@ -464,12 +464,6 @@ class ChunkDataset(object):
                               
         pos = np.array(pos)
         neighbours = np.array(neighbours)
-        # sort the neighbours from bottom left to top right etc.
-        index = 100*pos[:,0] + 10*pos[:,1] + pos[:,2] + 1000*np.any(pos>0, axis=1)
-        index = np.argsort(index)
-        neighbours = neighbours[index]
-        pos = pos[index]
-        
         return neighbours, pos
 
     def from_chunky_to_matrix(self, size, offset, name, setnames,
