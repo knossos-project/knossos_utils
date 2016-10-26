@@ -449,9 +449,9 @@ class ChunkDataset(object):
             for y in range(3):
                 for z in range(3):
                     if stencil[x, y, z]:
-                        this_coordinate = coordinate - chunk.size * \
+                        this_coordinate = coordinate + chunk.size * \
                                                        np.array([x-1, y-1, z-1])
-                        #print(this_coordinate)
+
                         if tuple(this_coordinate) in self.coord_dict:
                             neighbour = self.coord_dict[tuple(this_coordinate)]
                             if neighbour in chunklist:
