@@ -451,7 +451,7 @@ class ChunkDataset(object):
                     if stencil[x, y, z]:
                         this_coordinate = coordinate - chunk.size * \
                                                        np.array([x-1, y-1, z-1])
-                        print(this_coordinate)
+                        #print(this_coordinate)
                         if tuple(this_coordinate) in self.coord_dict:
                             neighbour = self.coord_dict[tuple(this_coordinate)]
                             if neighbour in chunklist:
@@ -461,7 +461,15 @@ class ChunkDataset(object):
                         else:
                             neighbours.append(-1)
                         pos.append([x-1, y-1, z-1])
-
+                              
+        pos = np.array(pos)
+        neighbours = np.array(neighbours)
+        # sort the neighbours from bottom left to top right etc.
+        index = 100*pos[:,0] + 10*pos[:,1] + pos[:,2] + 1000*np.any(pos>0, axis=1)
+        index = np.argsort(index)
+        neighbours = neighbours[index]
+        pos = pos[index]
+        
         return neighbours, pos
 
     def from_chunky_to_matrix(self, size, offset, name, setnames,
