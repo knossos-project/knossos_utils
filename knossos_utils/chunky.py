@@ -1085,12 +1085,14 @@ class ChunkDistributor(object):
             self.lock.release()
 
         for _ in range(2 * len(self.chunklist)):
-            if (not os.path.exists(self._path_lock(self.next_id, status=1))
-                or not exclude_running) and not \
-                    os.path.exists(self._path_lock(self.next_id, status=3)):
-
+            if not os.path.exists(self._path_lock(self.next_id, status=3)):
+                running = os.path.exists(self._path_lock(self.next_id, status=1))
+                if exclude_running and running: # need to remove otherwise acquire fails
+                    continue
+                elif running:
+                    os.remove(self._path_lock(self.next_id, status=1))
+                
                 self.lock = FSLock(self._path_lock(self.next_id, status=1))
-
                 if self.lock.acquire():
                     return self.cset.chunk_dict[self.next_id]
 
