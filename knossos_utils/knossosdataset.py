@@ -1103,7 +1103,10 @@ class KnossosDataset(object):
             start = args[4]
             end = args[5]
 
-            cube = np.zeros([self.edgelength,]*3, dtype=datatype)
+            #print('cube_offset: {0}'.format(cube_offset))
+
+            # self.edgelength[0] used as a workaround. Needs to be checked.
+            cube = np.zeros([self.edgelength[0],]*3, dtype=datatype)
 
             cube[cube_offset[0]: cube_limit[0],
                  cube_offset[1]: cube_limit[1],
@@ -1113,7 +1116,7 @@ class KnossosDataset(object):
                              start[2]: start[2]+end[2]]
 
             cube = np.swapaxes(cube, 0, 2)
-            cube = cube.reshape(self.edgelength**3)
+            cube = cube.reshape(self.edgelength[0]**3)
 
             if kzip_path is None:
                 if not os.path.exists(folder_path):
@@ -1300,10 +1303,10 @@ class KnossosDataset(object):
                             if cube_coords[dim] < offset_mag[dim]:
                                 cube_offset[dim] += offset_mag[dim] \
                                                     - cube_coords[dim]
-                            if cube_coords[dim] + self.edgelength > \
+                            if cube_coords[dim] + self.edgelength[dim] > \
                                             offset_mag[dim] + size_mag[dim]:
                                 cube_limit[dim] -= \
-                                    self.edgelength + cube_coords[dim]\
+                                    self.edgelength[dim] + cube_coords[dim]\
                                         - (offset_mag[dim] + size_mag[dim])
 
                         start_coord = cube_coords-offset_mag+cube_offset
