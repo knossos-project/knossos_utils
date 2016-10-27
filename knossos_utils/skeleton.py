@@ -21,7 +21,6 @@
 from xml.dom import minidom
 import xml.etree.cElementTree as cElementTree
 from math import pow, sqrt
-from skeleton_utils import euclidian_distance
 import copy
 import tempfile
 import unicodedata
@@ -34,6 +33,10 @@ import shutil
 import zipfile
 from multiprocessing import Pool
 
+def euclidian_distance(c1, c2):
+    return sqrt(pow((c2[0] - c1[0]), 2) +
+     pow((c2[1] - c1[1]), 2) +
+     pow((c2[2] - c1[2]), 2))
 
 class Skeleton:
     """

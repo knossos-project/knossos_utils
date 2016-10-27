@@ -33,13 +33,10 @@ from scipy.spatial import ConvexHull
 import networkx as nx
 
 from skeleton import SkeletonAnnotation, Skeleton, SkeletonNode, \
-                     integer_checksum
+                     integer_checksum, euclidian_distance
 
 
-def euclidian_distance(c1, c2):
-    return sqrt(pow((c2[0] - c1[0]), 2) +
-     pow((c2[1] - c1[1]), 2) +
-     pow((c2[2] - c1[2]), 2))
+
 
 
 class InvalidFileFormatException(Exception):
