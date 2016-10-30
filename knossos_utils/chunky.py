@@ -1082,12 +1082,13 @@ class ChunkDistributor(object):
 
     def next(self, exclude_running=True):
         if self.lock is not None:
-            self.lock.release()
+            self.lock.release()   
 
         for _ in range(2 * len(self.chunklist)):
             if not os.path.exists(self._path_lock(self.next_id, status=3)):
                 running = os.path.exists(self._path_lock(self.next_id, status=1))
                 if exclude_running and running: # need to remove otherwise acquire fails
+                    self._increase_id()
                     continue
                 elif running:
                     os.remove(self._path_lock(self.next_id, status=1))
@@ -1097,6 +1098,9 @@ class ChunkDistributor(object):
                     return self.cset.chunk_dict[self.next_id]
 
             self._increase_id()
+           
+        print("No chunks left")
+        self.get_status()
         return None
 
     def get_write(self):
