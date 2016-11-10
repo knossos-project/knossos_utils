@@ -55,7 +55,7 @@ setup(
     description="Tools for generating or manipulating knossos datasets and annotation files",
     author="Sven Dorkenwald, KNOSSOS team",
     author_email="knossos-team@mpimf-heidelberg.mpg.de",
-    url="https://github.com/knossos-project/knossos_python_tools",
+    url="https://github.com/knossos-project/knossos_utils",
     license="GPL",
     long_description=read("README.md"),
     packages=["knossos_utils"],

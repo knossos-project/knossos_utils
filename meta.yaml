@@ -1,5 +1,5 @@
 package:
-  name: knossos_python_tools
+  name: knossos_utils
   version: 1.0
 
 source:

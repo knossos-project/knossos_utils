@@ -1,4 +1,4 @@
-# Knossos Python-Tools
+# knossos_utils
 This repository serves as a place for python code that interacts with **KNOSSOS** data sets or annotation files. However, the code here is standalone and you won't find **KNOSSOS-Plugins** here (but feel free to be inspired by it when writing plugins).
 
 # knossosdataset
