@@ -89,7 +89,7 @@ def _stdout(s):
 def _as_shapearray(x, dim=3):
     """ Creates a np.ndarray that represents a shape.
 
-    This is used to enable different forms of passing edgelength parameters.
+    This is used to enable different forms of passing cube_shape parameters.
     For example, all of the following expressions are equal:
         np.array([128, 128, 128])
         _as_shapearray(np.array([128, 128, 128]))
@@ -131,25 +131,25 @@ def moduleInit():
         pass
     return
 
-def get_first_block(dim, offset, edgelength):
+def get_first_block(dim, offset, cube_shape):
     """ Helper for iterating over cubes """
-    edgelength = _as_shapearray(edgelength)
-    return int(np.floor(offset[dim]/edgelength[dim])) #d (types irrevelevant due to floor, int cast)
+    cube_shape = _as_shapearray(cube_shape)
+    return int(np.floor(offset[dim] / cube_shape[dim])) #d (types irrevelevant due to floor, int cast)
 
 
-def get_last_block(dim, size, offset, edgelength):
+def get_last_block(dim, size, offset, cube_shape):
     """ Helper for iterating over cubes """
-    edgelength = _as_shapearray(edgelength)
-    return int(np.floor((offset[dim]+size[dim]-1)/edgelength[dim])) #d (types irrevelevant due to floor, int cast)
+    cube_shape = _as_shapearray(cube_shape)
+    return int(np.floor((offset[dim]+size[dim]-1) / cube_shape[dim])) #d (types irrevelevant due to floor, int cast)
 
 
-def cut_matrix(data, offset_start, offset_end, edgelength, start, end):
+def cut_matrix(data, offset_start, offset_end, cube_shape, start, end):
     """ Helper for cutting matrices extracted from cubes to a required size """
-    edgelength = _as_shapearray(edgelength)
+    cube_shape = _as_shapearray(cube_shape)
 
     cut_start = np.array(offset_start, dtype=np.int)
     number_cubes = np.array(end) - np.array(start)
-    cut_end = np.array(number_cubes * edgelength - offset_end, dtype=np.int)
+    cut_end = np.array(number_cubes * cube_shape - offset_end, dtype=np.int)
 
     return data[cut_start[0]: cut_end[0],
                 cut_start[1]: cut_end[1],
@@ -266,7 +266,7 @@ class KnossosDataset(object):
         self._boundary = np.zeros(3, dtype=np.int)
         self._scale = np.ones(3, dtype=np.float)
         self._number_of_cubes = np.zeros(3)
-        self._edgelength = np.full(3, 128, dtype=np.int)
+        self._cube_shape = np.full(3, 128, dtype=np.int)
         self._initialized = False
 
     @property
@@ -298,8 +298,8 @@ class KnossosDataset(object):
         return self._number_of_cubes
 
     @property
-    def edgelength(self):
-        return self._edgelength
+    def cube_shape(self):
+        return self._cube_shape
 
     @property
     def initialized(self):
@@ -378,8 +378,8 @@ class KnossosDataset(object):
         if self._experiment_name.endswith("mag1"):
             self._experiment_name = self._experiment_name[:-5]
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) / #d Any/float -> float
-                                                self.edgelength),dtype=np.int)
+        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /  #d Any/float -> float
+                                                self.cube_shape), dtype=np.int)
 
         if verbose:
             _print("Initialization finished successfully")
@@ -451,8 +451,8 @@ class KnossosDataset(object):
         self._boundary = boundary
         self._experiment_name = experiment_name
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) / #d Any/float -> float
-                                                 self.edgelength),
+        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /  #d Any/float -> float
+                                                 self.cube_shape),
                                          dtype=np.int)
 
         if create_knossos_conf:
@@ -560,10 +560,10 @@ class KnossosDataset(object):
         return block[vx_list[:, 0], vx_list[:, 1], vx_list[:, 2]]
 
     def get_first_blocks(self, offset):
-        return offset // self.edgelength
+        return offset // self.cube_shape
 
     def get_last_blocks(self, offset, size):
-        return ((offset+size-1) // self.edgelength) + 1
+        return ((offset+size-1) // self.cube_shape) + 1
 
     def from_cubes_to_matrix(self, size, offset, type, mag=1, datatype=np.uint8,
                              mirror_oob=True, hdf5_path=None,
@@ -641,17 +641,17 @@ class KnossosDataset(object):
 
         start = self.get_first_blocks(offset)
         end   = self.get_last_blocks(offset, size)
-        uncut_matrix_size = (end - start)*self.edgelength
+        uncut_matrix_size = (end - start)*self.cube_shape
         if zyx_mode:
             uncut_matrix_size = uncut_matrix_size[::-1]
 
         output = np.zeros(uncut_matrix_size, dtype=datatype)
 
-        offset_start = offset%self.edgelength
-        offset_end = (self.edgelength-(offset+size)%self.edgelength)%self.edgelength
+        offset_start = offset%self.cube_shape
+        offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % self.cube_shape
         cnt = 0
         nb_cubes_to_process = np.prod(end-start)
-        default_value = np.zeros(self.edgelength, dtype=datatype)
+        default_value = np.zeros(self.cube_shape, dtype=datatype)
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
                  for x in range(start[0], end[0]):
@@ -669,7 +669,7 @@ class KnossosDataset(object):
                             if self.module_wide["fadvise"]:
                                 self.module_wide["fadvise"].willneed(path)
 
-                            count = np.prod(self.edgelength)
+                            count = np.prod(self.cube_shape)
                             values = np.fromfile(path, dtype=np.uint8, count=count)
 
                         except:
@@ -695,28 +695,32 @@ class KnossosDataset(object):
                                 _print("Cube does not exist, cube with zeros " \
                                       "only assigned")
 
-                    pos = np.subtract([x,y,z], start)*self.edgelength
+                    pos = np.subtract([x,y,z], start)*self.cube_shape
 
                     if zyx_mode:
-                        values = values.reshape(self.edgelength)
-                        output[pos[2]: pos[2]+self.edgelength[2],
-                               pos[1]: pos[1]+self.edgelength[1],
-                               pos[0]: pos[0]+self.edgelength[0]] = values
+                        values = values.reshape(self.cube_shape)
+                        output[
+                            pos[2]: pos[2]+self.cube_shape[2],
+                            pos[1]: pos[1]+self.cube_shape[1],
+                            pos[0]: pos[0]+self.cube_shape[0]
+                        ] = values
 
                     else:
-                        values = values.reshape(self.edgelength).T
-                        output[pos[0]: pos[0]+self.edgelength[0],
-                               pos[1]: pos[1]+self.edgelength[1],
-                               pos[2]: pos[2]+self.edgelength[2]] = values
+                        values = values.reshape(self.cube_shape).T
+                        output[
+                            pos[0]: pos[0]+self.cube_shape[0],
+                            pos[1]: pos[1]+self.cube_shape[1],
+                            pos[2]: pos[2]+self.cube_shape[2]
+                        ] = values
 
                     cnt += 1
 
         if zyx_mode:
             output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
-                                self.edgelength[::-1],start[::-1], end[::-1])
+                                self.cube_shape[::-1], start[::-1], end[::-1])
         else:
             output = cut_matrix(output, offset_start, offset_end,
-                                self.edgelength, start, end)
+                                self.cube_shape, start, end)
 
         if show_progress:
             progress = 100.0*cnt/nb_cubes_to_process
@@ -880,16 +884,16 @@ class KnossosDataset(object):
         size = np.array(size, dtype=np.int)
         offset = np.array(offset, dtype=np.int)
 
-        start = np.array([get_first_block(dim, offset, self._edgelength)
+        start = np.array([get_first_block(dim, offset, self._cube_shape)
                           for dim in range(3)])
-        end = np.array([get_last_block(dim, size, offset, self._edgelength)+1
+        end = np.array([get_last_block(dim, size, offset, self._cube_shape) + 1
                         for dim in range(3)])
 
-        matrix_size = (end - start)*self.edgelength
+        matrix_size = (end - start)*self.cube_shape
         output = np.zeros(matrix_size, dtype=datatype)
 
-        offset_start = offset % self.edgelength
-        offset_end = (self.edgelength - (offset + size) % self.edgelength) % self.edgelength
+        offset_start = offset % self.cube_shape
+        offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % self.cube_shape
         # TODO: Double-check offset calculation changes above.
 
         current = np.array([start[dim] for dim in range(3)])
@@ -923,21 +927,21 @@ class KnossosDataset(object):
                         if verbose:
                             _print("Cube does not exist, cube with %d only " \
                                   "assigned" % empty_cube_label)
-                        values = np.full(self.edgelength, empty_cube_label, dtype=datatype)
+                        values = np.full(self.cube_shape, empty_cube_label, dtype=datatype)
 
-                    pos = (current-start)*self.edgelength
+                    pos = (current-start)*self.cube_shape
 
-                    values = np.swapaxes(values.reshape(self.edgelength), 0, 2)
-                    output[pos[0] : pos[0] + self.edgelength[0],
-                           pos[1] : pos[1] + self.edgelength[1],
-                           pos[2] : pos[2] + self.edgelength[2]
+                    values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
+                    output[pos[0] : pos[0] + self.cube_shape[0],
+                           pos[1] : pos[1] + self.cube_shape[1],
+                           pos[2] : pos[2] + self.cube_shape[2]
                     ] = values
                     cnt += 1
                     current[0] += 1
                 current[1] += 1
             current[2] += 1
 
-        output = cut_matrix(output, offset_start, offset_end, self.edgelength,
+        output = cut_matrix(output, offset_start, offset_end, self.cube_shape,
                             start, end)
         if verbose:
             _print("applying mergelist now")
@@ -1025,18 +1029,18 @@ class KnossosDataset(object):
 
         scaled_cube_layer_size = (self.boundary[0]//mag, #d np.int//int -> np.int
                                   self.boundary[1]//mag, #d np.int//int -> np.int
-                                  self._edgelength[2])
+                                  self._cube_shape[2])
 
         for curr_z_cube in range(0, 1 + int(np.ceil(
                 self._number_of_cubes[2]) / float(mag))): #d Any/float -> float
 
             layer = self.from_raw_cubes_to_matrix(
                 size=scaled_cube_layer_size,
-                offset=[0,0, curr_z_cube * self._edgelength[2]],
+                offset=[0, 0, curr_z_cube * self._cube_shape[2]],
                 mag=mag
             )
 
-            for curr_z_coord in range(0, self._edgelength[2]):
+            for curr_z_coord in range(0, self._cube_shape[2]):
 
                 file_path = "{0}_{1}_{2:06d}.{3}".format(out_path,
                                                          self.experiment_name,
@@ -1122,7 +1126,7 @@ class KnossosDataset(object):
 
             #print('cube_offset: {0}'.format(cube_offset))
 
-            cube = np.zeros(self.edgelength, dtype=datatype)
+            cube = np.zeros(self.cube_shape, dtype=datatype)
 
             cube[cube_offset[0]: cube_limit[0],
                  cube_offset[1]: cube_limit[1],
@@ -1132,7 +1136,7 @@ class KnossosDataset(object):
                              start[2]: start[2]+end[2]]
 
             cube = np.swapaxes(cube, 0, 2)
-            cube = cube.reshape(np.prod(self.edgelength))
+            cube = cube.reshape(np.prod(self.cube_shape))
 
             if kzip_path is None:
                 if not os.path.exists(folder_path):
@@ -1267,10 +1271,10 @@ class KnossosDataset(object):
                 _print("box_offset: {0}".format(offset_mag))
                 _print("box_size: {0}".format(size_mag))
 
-            start = np.array([get_first_block(dim, offset_mag, self._edgelength)
+            start = np.array([get_first_block(dim, offset_mag, self._cube_shape)
                               for dim in range(3)])
             end = np.array([get_last_block(dim, size_mag, offset_mag,
-                                           self._edgelength)+1
+                                           self._cube_shape) + 1
                             for dim in range(3)])
 
             if verbose:
@@ -1311,18 +1315,18 @@ class KnossosDataset(object):
 
                         this_cube_info.append(path)
 
-                        cube_coords = current*self.edgelength
+                        cube_coords = current*self.cube_shape
                         cube_offset = np.zeros(3)
-                        cube_limit = np.ones(3)*self.edgelength
+                        cube_limit = np.ones(3)*self.cube_shape
 
                         for dim in range(3):
                             if cube_coords[dim] < offset_mag[dim]:
                                 cube_offset[dim] += offset_mag[dim] \
                                                     - cube_coords[dim]
-                            if cube_coords[dim] + self.edgelength[dim] > \
+                            if cube_coords[dim] + self.cube_shape[dim] > \
                                             offset_mag[dim] + size_mag[dim]:
                                 cube_limit[dim] -= \
-                                    self.edgelength[dim] + cube_coords[dim]\
+                                    self.cube_shape[dim] + cube_coords[dim]\
                                         - (offset_mag[dim] + size_mag[dim])
 
                         start_coord = cube_coords-offset_mag+cube_offset
