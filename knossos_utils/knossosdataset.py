@@ -86,6 +86,32 @@ def _stdout(s):
         sys.stdout.flush()
     return
 
+def _as_shapearray(x, dim=3):
+    """ Creates a np.ndarray that represents a shape.
+
+    This is used to enable different forms of passing edgelength parameters.
+    For example, all of the following expressions are equal:
+        np.array([128, 128, 128])
+        _as_shapearray(np.array([128, 128, 128]))
+        _as_shapearray([128, 128, 128])
+        _as_shapearray((128, 128, 128))
+        _as_shapearray(128)
+
+    :param x: int or iterable
+        If this is a number, the result is an array repeating it `dim` times.
+        If this is an iterable, the result is a corresponding np.ndarray.
+    :param dim: int
+        Number of elements that the shape array should have.
+    :return: np.ndarray
+        Shape array
+    """
+    try:
+        array = np.fromiter(x, dtype=np.int, count=dim)
+    except TypeError:
+        array = np.full(dim, x, dtype=np.int)
+    return array
+
+
 def moduleInit():
     global module_wide
     if module_wide["init"]:
@@ -107,30 +133,23 @@ def moduleInit():
 
 def get_first_block(dim, offset, edgelength):
     """ Helper for iterating over cubes """
-    try:
-        return int(np.floor(offset[dim]/edgelength[dim])) #d (types irrevelevant due to floor, int cast)
-    except:
-        return int(np.floor(offset[dim]/edgelength)) #d (types irrevelevant due to floor, int cast)
+    edgelength = _as_shapearray(edgelength)
+    return int(np.floor(offset[dim]/edgelength[dim])) #d (types irrevelevant due to floor, int cast)
 
 
 def get_last_block(dim, size, offset, edgelength):
     """ Helper for iterating over cubes """
-    try:
-        return int(np.floor((offset[dim]+size[dim]-1)/edgelength[dim])) #d (types irrevelevant due to floor, int cast)
-    except:
-        return int(np.floor((offset[dim]+size[dim]-1)/edgelength)) #d (types irrevelevant due to floor, int cast)
+    edgelength = _as_shapearray(edgelength)
+    return int(np.floor((offset[dim]+size[dim]-1)/edgelength[dim])) #d (types irrevelevant due to floor, int cast)
 
 
 def cut_matrix(data, offset_start, offset_end, edgelength, start, end):
     """ Helper for cutting matrices extracted from cubes to a required size """
-    try:
-        len(edgelength)
-    except:
-        edgelength = np.array([edgelength, ]*3)
+    edgelength = _as_shapearray(edgelength)
 
     cut_start = np.array(offset_start, dtype=np.int)
     number_cubes = np.array(end) - np.array(start)
-    cut_end = np.array(number_cubes*edgelength-offset_end, dtype=np.int)
+    cut_end = np.array(number_cubes * edgelength - offset_end, dtype=np.int)
 
     return data[cut_start[0]: cut_end[0],
                 cut_start[1]: cut_end[1],
@@ -432,8 +451,8 @@ class KnossosDataset(object):
         self._boundary = boundary
         self._experiment_name = experiment_name
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary / #d Any/float -> float
-                                                 float(self.edgelength)),
+        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) / #d Any/float -> float
+                                                 self.edgelength),
                                          dtype=np.int)
 
         if create_knossos_conf:
@@ -869,11 +888,9 @@ class KnossosDataset(object):
         matrix_size = (end - start)*self.edgelength
         output = np.zeros(matrix_size, dtype=datatype)
 
-        offset_start = np.array([offset[dim] % self.edgelength
-                                 for dim in range(3)])
-        offset_end = np.array([(self.edgelength-(offset[dim]+size[dim])
-                               % self.edgelength) % self.edgelength
-                               for dim in range(3)])
+        offset_start = offset % self.edgelength
+        offset_end = (self.edgelength - (offset + size) % self.edgelength) % self.edgelength
+        # TODO: Double-check offset calculation changes above.
 
         current = np.array([start[dim] for dim in range(3)])
         cnt = 1
@@ -906,15 +923,15 @@ class KnossosDataset(object):
                         if verbose:
                             _print("Cube does not exist, cube with %d only " \
                                   "assigned" % empty_cube_label)
-                        values = np.ones([self.edgelength,]*3)*empty_cube_label
+                        values = np.full(self.edgelength, empty_cube_label, dtype=datatype)
 
                     pos = (current-start)*self.edgelength
 
-                    values = np.swapaxes(values.reshape([self.edgelength, ]*3),
-                                         0, 2)
-                    output[pos[0]: pos[0]+self.edgelength,
-                           pos[1]: pos[1]+self.edgelength,
-                           pos[2]: pos[2]+self.edgelength] = values
+                    values = np.swapaxes(values.reshape(self.edgelength), 0, 2)
+                    output[pos[0] : pos[0] + self.edgelength[0],
+                           pos[1] : pos[1] + self.edgelength[1],
+                           pos[2] : pos[2] + self.edgelength[2]
+                    ] = values
                     cnt += 1
                     current[0] += 1
                 current[1] += 1
@@ -1008,18 +1025,18 @@ class KnossosDataset(object):
 
         scaled_cube_layer_size = (self.boundary[0]//mag, #d np.int//int -> np.int
                                   self.boundary[1]//mag, #d np.int//int -> np.int
-                                  self._edgelength)
+                                  self._edgelength[2])
 
-        for curr_z_cube in range(0, 1+int(np.ceil(self._number_of_cubes[
-            2])/float(mag))): #d Any/float -> float
+        for curr_z_cube in range(0, 1 + int(np.ceil(
+                self._number_of_cubes[2]) / float(mag))): #d Any/float -> float
 
-            layer = self.from_raw_cubes_to_matrix(size=scaled_cube_layer_size,
-                                                  offset=[0,0,
-                                                          curr_z_cube *
-                                                          self._edgelength],
-                                                  mag=mag)
+            layer = self.from_raw_cubes_to_matrix(
+                size=scaled_cube_layer_size,
+                offset=[0,0, curr_z_cube * self._edgelength[2]],
+                mag=mag
+            )
 
-            for curr_z_coord in range(0, self._edgelength):
+            for curr_z_coord in range(0, self._edgelength[2]):
 
                 file_path = "{0}_{1}_{2:06d}.{3}".format(out_path,
                                                          self.experiment_name,
@@ -1105,8 +1122,7 @@ class KnossosDataset(object):
 
             #print('cube_offset: {0}'.format(cube_offset))
 
-            # self.edgelength[0] used as a workaround. Needs to be checked.
-            cube = np.zeros([self.edgelength[0],]*3, dtype=datatype)
+            cube = np.zeros(self.edgelength, dtype=datatype)
 
             cube[cube_offset[0]: cube_limit[0],
                  cube_offset[1]: cube_limit[1],
@@ -1116,7 +1132,7 @@ class KnossosDataset(object):
                              start[2]: start[2]+end[2]]
 
             cube = np.swapaxes(cube, 0, 2)
-            cube = cube.reshape(self.edgelength[0]**3)
+            cube = cube.reshape(np.prod(self.edgelength))
 
             if kzip_path is None:
                 if not os.path.exists(folder_path):
