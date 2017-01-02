@@ -134,13 +134,13 @@ def moduleInit():
 def get_first_block(dim, offset, cube_shape):
     """ Helper for iterating over cubes """
     cube_shape = _as_shapearray(cube_shape)
-    return int(np.floor(offset[dim] / cube_shape[dim])) #d (types irrevelevant due to floor, int cast)
+    return int(np.floor(offset[dim] / cube_shape[dim]))
 
 
 def get_last_block(dim, size, offset, cube_shape):
     """ Helper for iterating over cubes """
     cube_shape = _as_shapearray(cube_shape)
-    return int(np.floor((offset[dim]+size[dim]-1) / cube_shape[dim])) #d (types irrevelevant due to floor, int cast)
+    return int(np.floor((offset[dim]+size[dim]-1) / cube_shape[dim]))
 
 
 def cut_matrix(data, offset_start, offset_end, cube_shape, start, end):
@@ -378,7 +378,7 @@ class KnossosDataset(object):
         if self._experiment_name.endswith("mag1"):
             self._experiment_name = self._experiment_name[:-5]
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /  #d Any/float -> float
+        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /
                                                 self.cube_shape), dtype=np.int)
 
         if verbose:
@@ -451,7 +451,7 @@ class KnossosDataset(object):
         self._boundary = boundary
         self._experiment_name = experiment_name
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /  #d Any/float -> float
+        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /
                                                  self.cube_shape),
                                          dtype=np.int)
 
@@ -894,7 +894,6 @@ class KnossosDataset(object):
 
         offset_start = offset % self.cube_shape
         offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % self.cube_shape
-        # TODO: Double-check offset calculation changes above.
 
         current = np.array([start[dim] for dim in range(3)])
         cnt = 1
@@ -907,7 +906,7 @@ class KnossosDataset(object):
                 current[0] = start[0]
                 while current[0] < end[0]:
                     if not verbose:
-                        progress = 100*cnt/float(nb_cubes_to_process) #d Any/float -> float
+                        progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout('\rProgress: %.2f%%' % progress)
 
                     this_path = self._experiment_name +\
@@ -1027,12 +1026,12 @@ class KnossosDataset(object):
 
         z_coord_cnt = 0
 
-        scaled_cube_layer_size = (self.boundary[0]//mag, #d np.int//int -> np.int
-                                  self.boundary[1]//mag, #d np.int//int -> np.int
+        scaled_cube_layer_size = (self.boundary[0]//mag,
+                                  self.boundary[1]//mag,
                                   self._cube_shape[2])
 
         for curr_z_cube in range(0, 1 + int(np.ceil(
-                self._number_of_cubes[2]) / float(mag))): #d Any/float -> float
+                self._number_of_cubes[2]) / float(mag))):
 
             layer = self.from_raw_cubes_to_matrix(
                 size=scaled_cube_layer_size,
@@ -1057,7 +1056,7 @@ class KnossosDataset(object):
                 elif out_format == 'raw':
                     swapped.tofile(file_path)
 
-                _print("Writing layer {0} of {1} in total.".format(z_coord_cnt, self.boundary[2]//mag)) #d np.int//int -> np.int
+                _print("Writing layer {0} of {1} in total.".format(z_coord_cnt, self.boundary[2]//mag))
 
                 z_coord_cnt += 1
 
@@ -1260,11 +1259,11 @@ class KnossosDataset(object):
                 if fast_downsampling:
                     data_inter = np.array(data[::mag, ::mag, ::mag], dtype=datatype)
                 else:
-                    data_inter = np.array(scipy.ndimage.zoom(data, 1.0/mag, order=3), dtype=datatype) #d float/int -> float
+                    data_inter = np.array(scipy.ndimage.zoom(data, 1.0/mag, order=3), dtype=datatype)
             else:
                 data_inter = np.array(np.copy(data), dtype=datatype)
 
-            offset_mag = np.array(offset, dtype=np.int) // mag #d np.array[int]//int -> int
+            offset_mag = np.array(offset, dtype=np.int) // mag
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
             if verbose:
@@ -1397,7 +1396,7 @@ class KnossosDataset(object):
         for mag in range(32):
             if os.path.exists(self._knossos_path+self._name_mag_folder+
                               str(2**mag)):
-                for x_cube in range(self._number_of_cubes[0]//2**mag+1): #d np.array[Any]//int -> np.int
+                for x_cube in range(self._number_of_cubes[0]//2**mag+1):
                     glob_input = self._knossos_path+self._name_mag_folder+\
                                  str(2**mag)+"/x%04d/y*/z*/" % x_cube + \
                                  self._experiment_name + "*seg*"

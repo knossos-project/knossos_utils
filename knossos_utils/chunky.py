@@ -398,7 +398,7 @@ class ChunkDataset(object):
         chunk_rep = []
         chunk_size = np.array(self.chunk_size, dtype=np.int)
         for coordinate in coordinates:
-            chunk_coordinate = np.array(np.array(coordinate, np.int) / #d (explicitly rounded to int, so type doesn't matter)
+            chunk_coordinate = np.array(np.array(coordinate, np.int) /
                                         chunk_size, dtype=np.int) * chunk_size
             chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
         return chunk_rep
@@ -519,7 +519,7 @@ class ChunkDataset(object):
                 current[0] = start[0]
                 while current[0] < end[0]:
                     if show_progress:
-                        progress = 100 * cnt / float(nb_chunks_to_process) #d int/float -> float
+                        progress = 100 * cnt / float(nb_chunks_to_process)
                         sys.stdout.write('\rProgress: %.2f%%' % progress)
                         sys.stdout.flush()
                     values_dict = {}
@@ -564,7 +564,7 @@ class ChunkDataset(object):
                                     interpolated_data[dim]:
                                 offset[dim] = \
                                     int((values.shape[dim]-self.chunk_size[dim] *
-                                        interpolated_data[dim])//2) #d np.int//int -> np.int, then cast to int (numpy follows __future__.division)
+                                        interpolated_data[dim])//2)
                         values = values[offset[0]: values.shape[0] - offset[0],
                                         offset[1]: values.shape[1] - offset[1],
                                         offset[2]: values.shape[2] - offset[2]]
@@ -656,11 +656,11 @@ class ChunkDataset(object):
 
         chunk_offset = np.array(chunk_offset)
 
-        start = np.floor(np.array([(offset[dim] - chunk_offset[dim]) / #d Any/float -> float
+        start = np.floor(np.array([(offset[dim] - chunk_offset[dim]) /
                                    float(self.chunk_size[dim])
                                    for dim in range(3)]))
         start = start.astype(np.int)
-        end = np.floor(np.array([(offset[dim] + chunk_offset[dim] + data.shape[dim] - 1) / #d Any/float -> float
+        end = np.floor(np.array([(offset[dim] + chunk_offset[dim] + data.shape[dim] - 1) /
                                  float(self.chunk_size[dim]) for dim in range(3)]))
         end = end.astype(np.int)
 
@@ -727,7 +727,7 @@ class ChunkDataset(object):
     def export_cset_to_tiff_stack(self, save_path, name, hdf5names,
                                   nb_processes, z_stride, size):
         multi_params = []
-        for step in range(int(np.ceil(size[2] / float(z_stride)))): #d Any/float -> float
+        for step in range(int(np.ceil(size[2] / float(z_stride)))):
             multi_params.append([self, save_path, name, hdf5names,
                                  step * z_stride, z_stride, size])
 
