@@ -62,11 +62,13 @@ import zipfile
 
 module_wide = {"init":False,"noprint":False,"snappy":None,"fadvise":None}
 
+
 def our_glob(s):
     l = []
     for g in glob.glob(s):
         l.append(g.replace(os.path.sep,"/"))
     return l
+
 
 def _print(s):
     global module_wide
@@ -74,10 +76,12 @@ def _print(s):
         print(s)
     return
 
+
 def _set_noprint(noprint):
     global module_wide
     module_wide["noprint"] = noprint
     return
+
 
 def _stdout(s):
     global module_wide
@@ -85,6 +89,7 @@ def _stdout(s):
         sys.stdout.write(s)
         sys.stdout.flush()
     return
+
 
 def _as_shapearray(x, dim=3):
     """ Creates a np.ndarray that represents a shape.
@@ -130,6 +135,7 @@ def moduleInit():
     except:
         pass
     return
+
 
 def get_first_block(dim, offset, cube_shape):
     """ Helper for iterating over cubes """
@@ -1060,8 +1066,6 @@ class KnossosDataset(object):
 
                 z_coord_cnt += 1
 
-
-
         return
 
     def from_matrix_to_cubes(self, offset, mags=1, data=None, data_path=None,
@@ -1331,10 +1335,10 @@ class KnossosDataset(object):
                         start_coord = cube_coords-offset_mag+cube_offset
                         end_coord = cube_limit-cube_offset
 
-                        this_cube_info.append(cube_offset)
-                        this_cube_info.append(cube_limit)
-                        this_cube_info.append(start_coord)
-                        this_cube_info.append(end_coord)
+                        this_cube_info.append(cube_offset.astype(np.int))
+                        this_cube_info.append(cube_limit.astype(np.int))
+                        this_cube_info.append(start_coord.astype(np.int))
+                        this_cube_info.append(end_coord.astype(np.int))
 
                         multithreading_params.append(this_cube_info)
                         current[0] += 1
