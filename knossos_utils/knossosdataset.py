@@ -812,7 +812,6 @@ class KnossosDataset(object):
                                              invert_data, verbose,
                                              show_progress, zyx_mode=zyx_mode)
 
-
     def from_overlaycubes_to_matrix(self, size, offset, mag=1,
                                     datatype=np.uint64, mirror_oob=True,
                                     hdf5_path=None, hdf5_name="raw",

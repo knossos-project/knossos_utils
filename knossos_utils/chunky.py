@@ -86,7 +86,6 @@ def _export_cset_as_kd_thread(args):
         if coords[dim] + size[dim] > cset.box_size[dim]:
             size[dim] = cset.box_size[dim] - coords[dim]
 
-    print(coords)
     data_dict = cset.from_chunky_to_matrix(size, coords, name, hdf5names)
 
     data_list = []
@@ -290,7 +289,7 @@ class ChunkDataset(object):
                                       (box_size[dim] % chunk_size[dim]))
 
         self.path_head_folder = path_head_folder
-        self.chunk_size = chunk_size
+        self.chunk_size = np.array(chunk_size)
         self.box_coords = box_coords
         self._dataset_path = knossos_dataset_object.knossos_path
         self.box_size = box_size
@@ -654,7 +653,7 @@ class ChunkDataset(object):
             with h5py.File(path, "w") as f:
                 f.create_dataset(h5_name, data=chunk_data, compression="gzip")
 
-        chunk_offset = np.array(chunk_offset)
+        chunk_offset = np.array(chunk_offset, dtype=np.int)
 
         start = np.floor(np.array([(offset[dim] - chunk_offset[dim]) /
                                    float(self.chunk_size[dim])
@@ -687,6 +686,7 @@ class ChunkDataset(object):
 
                         high = low + np.array(data.shape) - low_cut - \
                                self.chunk_size - 2 * chunk_offset
+                        high = high.astype(np.int)
                         high_cut = np.array(data.shape)
                         high_cut[high > 0] -= high[high > 0]
                         high[high > 0] = 0
