@@ -18,6 +18,10 @@
 #
 ################################################################################
 
+import sys
+if sys.version_info[0] >= 3:
+    raise ImportError('{} currently only supports Python 2.7.'.format(__file__))
+
 from xml.dom import minidom
 import xml.etree.cElementTree as cElementTree
 from math import pow, sqrt

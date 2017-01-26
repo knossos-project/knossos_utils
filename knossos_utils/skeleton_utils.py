@@ -18,6 +18,10 @@
 #
 ################################################################################
 
+import sys
+if sys.version_info[0] >= 3:
+    raise ImportError('{} currently only supports Python 2.7.'.format(__file__))
+
 import copy
 from math import sqrt
 import numpy as np
