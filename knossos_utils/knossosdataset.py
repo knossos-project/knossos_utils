@@ -348,6 +348,15 @@ class KnossosDataset(object):
             return None
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
+        """ Parse a knossos.conf
+
+        :param path_to_knossos_conf: str
+            path to knossos.conf
+        :param verbose: bool
+            several information is printed when set to True
+        :return:
+            nothing
+        """
         try:
             f = open(path_to_knossos_conf)
             lines = f.readlines()
@@ -402,11 +411,13 @@ class KnossosDataset(object):
         """ Initializes the dataset by parsing the knossos.conf in path + "mag1"
 
         :param path: str
-            forward-slash separated path to the datasetfolder - not .../mag !
+            forward-slash separated path
         :param fixed_mag: int
             fixes available mag to one specific value
         :param verbose: bool
             several information is printed when set to True
+        :param use_abs_path: bool
+            the absolut path to the knossos dataset will be used
         :return:
             nothing
         """
