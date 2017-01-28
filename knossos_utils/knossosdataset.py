@@ -347,6 +347,12 @@ class KnossosDataset(object):
         else:
             return None
 
+    def get_first_blocks(self, offset):
+        return offset // self.cube_shape
+
+    def get_last_blocks(self, offset, size):
+        return ((offset+size-1) // self.cube_shape) + 1
+
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
 
@@ -676,17 +682,11 @@ class KnossosDataset(object):
 
         return block[vx_list[:, 0], vx_list[:, 1], vx_list[:, 2]]
 
-    def get_first_blocks(self, offset):
-        return offset // self.cube_shape
-
-    def get_last_blocks(self, offset, size):
-        return ((offset+size-1) // self.cube_shape) + 1
-
     def from_cubes_to_matrix(self, size, offset, type, mag=1, datatype=np.uint8,
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
-                             invert_data=False, verbose=False,
-                             show_progress=True, zyx_mode=False):
+                             invert_data=False, zyx_mode=False,
+                             nb_threads=40, verbose=False, show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -711,6 +711,10 @@ class KnossosDataset(object):
             if given the output is written as (c)Pickle file
         :param invert_data: bool
             True: inverts the output
+        :param zyx_mode: bool
+            activates zyx-order, size and offset have to in zyx if activated
+        :param nb_threads: int
+            number of threads - twice the number of cores is recommended
         :param verbose: bool
             True: prints several information
         :param show_progress: bool
@@ -718,7 +722,58 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+        def _read_cube(c):
+            if from_raw:
+                path = self._knossos_path + \
+                       self._name_mag_folder + \
+                       "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
+                       self._experiment_name + \
+                       "_mag%d_x%04d_y%04d_z%04d.raw" % (mag, c[0], c[1], c[2])
+
+                try:
+                    flat_shape = int(np.prod(self.cube_shape))
+                    values = np.fromfile(path, dtype=np.uint8,
+                                         count=flat_shape)
+                except:
+                    values = default_value
+                    if verbose:
+                        _print("Cube does not exist, cube with zeros "
+                               "only assigned")
+            else:
+                path = self._knossos_path + \
+                       self._name_mag_folder + \
+                       "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
+                       self._experiment_name + \
+                       "_mag%d_x%04d_y%04d_z%04d.seg.sz" % \
+                       (mag, c[0], c[1], c[2])
+                try:
+                    with zipfile.ZipFile(path + ".zip", "r") as zf:
+                        values = np.fromstring(
+                            self.module_wide["snappy"].decompress(
+                                zf.read(os.path.basename(path))),
+                            dtype=datatype)
+                except:
+                    values = default_value
+                    if verbose:
+                        _print("Cube does not exist, cube with zeros "
+                               "only assigned")
+
+            pos = np.subtract([c[0], c[1], c[2]], start)*self.cube_shape
+
+            if zyx_mode:
+                values = values.reshape(self.cube_shape)
+                output[pos[2]: pos[2]+self.cube_shape[2],
+                       pos[1]: pos[1]+self.cube_shape[1],
+                       pos[0]: pos[0]+self.cube_shape[0]] = values
+
+            else:
+                values = values.reshape(self.cube_shape).T
+                output[pos[0]: pos[0]+self.cube_shape[0],
+                       pos[1]: pos[1]+self.cube_shape[1],
+                       pos[2]: pos[2]+self.cube_shape[2]] = values
+
         t0 = time.time()
+
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
@@ -727,8 +782,8 @@ class KnossosDataset(object):
 
         if verbose and show_progress:
             show_progress = False
-            _print("when choosing verbose, show_progress is automatically set " \
-                  "to False")
+            _print("when choosing verbose, show_progress is automatically "
+                   "disabled")
 
         if type == 'raw':
             from_raw = True
@@ -739,98 +794,58 @@ class KnossosDataset(object):
 
         size = np.array(size, dtype=np.int)
         offset = np.array(offset, dtype=np.int)
+
         if zyx_mode:
             size = size[::-1]
             offset = offset[::-1]
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
+
         for dim in range(3):
             if offset[dim] < 0:
                 size[dim] += offset[dim]
-                mirror_overlap[dim][0] = offset[dim]*(-1)
+                mirror_overlap[dim][0] = - offset[dim]
                 offset[dim] = 0
+
             if offset[dim]+size[dim] > self.boundary[dim]:
-                mirror_overlap[dim][1] = offset[dim]+size[dim]\
-                                         -self.boundary[dim]
-                size[dim] -= offset[dim]+size[dim]-self.boundary[dim]
+                mirror_overlap[dim][1] = offset[dim] + size[dim] - \
+                                         self.boundary[dim]
+                size[dim] -= offset[dim] + size[dim] - self.boundary[dim]
+
             if size[dim] < 0:
                 raise Exception("Given block is totally out ouf bounce!")
 
         start = self.get_first_blocks(offset)
-        end   = self.get_last_blocks(offset, size)
-        uncut_matrix_size = (end - start)*self.cube_shape
+        end = self.get_last_blocks(offset, size)
+
+        uncut_matrix_size = (end - start) * self.cube_shape
         if zyx_mode:
             uncut_matrix_size = uncut_matrix_size[::-1]
 
         output = np.zeros(uncut_matrix_size, dtype=datatype)
 
-        offset_start = offset%self.cube_shape
-        offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % self.cube_shape
+        offset_start = offset % self.cube_shape
+        offset_end = (self.cube_shape - (offset + size)
+                      % self.cube_shape) % self.cube_shape
+
         cnt = 0
-        nb_cubes_to_process = np.prod(end-start)
+        nb_cubes_to_process = int(np.prod(end - start))
         default_value = np.zeros(self.cube_shape, dtype=datatype)
+
+        cube_coordinates = []
+
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
-                 for x in range(start[0], end[0]):
-                    if show_progress:
-                        progress = 100*cnt/float(nb_cubes_to_process)
-                        _stdout('\rProgress: %.2f%%' % progress)
+                for x in range(start[0], end[0]):
+                    cube_coordinates.append([x, y, z])
 
-                    if from_raw:
-                        path = self._knossos_path+self._name_mag_folder+\
-                               str(mag) + "/x%04d/y%04d/z%04d/" % (x,y,z) + \
-                               self._experiment_name + '_mag' + str(mag) + \
-                               "_x%04d_y%04d_z%04d.raw"% (x,y,z)
-
-                        try:
-                            if self.module_wide["fadvise"]:
-                                self.module_wide["fadvise"].willneed(path)
-
-                            count = np.prod(self.cube_shape)
-                            values = np.fromfile(path, dtype=np.uint8, count=count)
-
-                        except:
-                            values = default_value
-                            if verbose:
-                                _print("Cube does not exist, cube with zeros " \
-                                      "only assigned")
-
-                    else:
-                        path = self._knossos_path+self._name_mag_folder+\
-                               str(mag)+"/x%04d/y%04d/z%04d/" % (x,y,z) + \
-                               self._experiment_name + '_mag' + str(mag) + \
-                               "_x%04d_y%04d_z%04d.seg.sz" % (x,y,z)
-                        try:
-                            with zipfile.ZipFile(path+".zip", "r") as zf:
-                                values = np.fromstring(self.module_wide[
-                                "snappy"].decompress(zf.read(
-                                os.path.basename(path))),dtype=datatype)
-
-                        except:
-                            values = default_value
-                            if verbose:
-                                _print("Cube does not exist, cube with zeros " \
-                                      "only assigned")
-
-                    pos = np.subtract([x,y,z], start)*self.cube_shape
-
-                    if zyx_mode:
-                        values = values.reshape(self.cube_shape)
-                        output[
-                            pos[2]: pos[2]+self.cube_shape[2],
-                            pos[1]: pos[1]+self.cube_shape[1],
-                            pos[0]: pos[0]+self.cube_shape[0]
-                        ] = values
-
-                    else:
-                        values = values.reshape(self.cube_shape).T
-                        output[
-                            pos[0]: pos[0]+self.cube_shape[0],
-                            pos[1]: pos[1]+self.cube_shape[1],
-                            pos[2]: pos[2]+self.cube_shape[2]
-                        ] = values
-
-                    cnt += 1
+        if nb_threads > 1:
+            pool = ThreadPool(nb_threads)
+            pool.map(_read_cube, cube_coordinates)
+            pool.close()
+            pool.join()
+        else:
+            map(_read_cube, cube_coordinates)
 
         if zyx_mode:
             output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
@@ -840,7 +855,7 @@ class KnossosDataset(object):
                                 self.cube_shape, start, end)
 
         if show_progress:
-            progress = 100.0*cnt/nb_cubes_to_process
+            progress = 100.0 * cnt / nb_cubes_to_process
             _stdout('\rProgress: %.2f%%' % progress)
             _stdout('\rProgress: finished\n')
             dt = time.time()-t0
@@ -855,9 +870,9 @@ class KnossosDataset(object):
             if verbose:
                 _print("Correct shape")
 
-        if mirror_oob and np.any(mirror_overlap!=0) and not zyx_mode:
+        if mirror_oob and np.any(mirror_overlap != 0) and not zyx_mode:
             output = np.lib.pad(output, mirror_overlap, 'symmetric')
-        elif mirror_oob and np.any(mirror_overlap!=0) and zyx_mode:
+        elif mirror_oob and np.any(mirror_overlap != 0) and zyx_mode:
             output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
 
         if output.dtype != datatype:
@@ -874,12 +889,12 @@ class KnossosDataset(object):
 
         return output
 
-
     def from_raw_cubes_to_matrix(self, size, offset, mag=1,
                                  datatype=np.uint8, mirror_oob=True,
                                  hdf5_path=None, hdf5_name="raw",
                                  pickle_path=None, invert_data=False,
-                                 verbose=False, show_progress=True, zyx_mode=False):
+                                 zyx_mode=False, nb_threads=40,
+                                 verbose=False, show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset raw cubes
 
         :param size: 3 sequence of ints
@@ -900,6 +915,10 @@ class KnossosDataset(object):
             if given the output is written as (c)Pickle file
         :param invert_data: bool
             True: inverts the output
+        :param zyx_mode: bool
+            activates zyx-order, size and offset have to in zyx if activated
+        :param nb_threads: int
+            number of threads - twice the number of cores is recommended
         :param verbose: bool
             True: prints several information
         :param show_progress: bool
@@ -910,23 +929,25 @@ class KnossosDataset(object):
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        if (not hdf5_name is None and not hdf5_path is None) or \
-                not pickle_path is None:
-            self.from_cubes_to_matrix(size, offset, 'raw', mag, datatype,
-                                      mirror_oob, hdf5_path, hdf5_name,
-                                      pickle_path, invert_data, verbose,
-                                      show_progress, zyx_mode=zyx_mode)
-        else:
-            return self.from_cubes_to_matrix(size, offset, 'raw', mag, datatype,
-                                             mirror_oob, hdf5_path,
-                                             hdf5_name, pickle_path,
-                                             invert_data, verbose,
-                                             show_progress, zyx_mode=zyx_mode)
+        return self.from_cubes_to_matrix(size, offset,
+                                         type='raw',
+                                         mag=mag,
+                                         datatype=datatype,
+                                         mirror_oob=mirror_oob,
+                                         hdf5_path=hdf5_path,
+                                         hdf5_name=hdf5_name,
+                                         pickle_path=pickle_path,
+                                         invert_data=invert_data,
+                                         zyx_mode=zyx_mode,
+                                         nb_threads=nb_threads,
+                                         verbose=verbose,
+                                         show_progress=show_progress)
 
     def from_overlaycubes_to_matrix(self, size, offset, mag=1,
                                     datatype=np.uint64, mirror_oob=True,
                                     hdf5_path=None, hdf5_name="raw",
                                     pickle_path=None, invert_data=False,
+                                    zyx_mode=False, nb_threads=40,
                                     verbose=False, show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset overlay cubes
 
@@ -948,6 +969,10 @@ class KnossosDataset(object):
             if given the output is written as (c)Pickle file
         :param invert_data: bool
             True: inverts the output
+        :param zyx_mode: bool
+            activates zyx-order, size and offset have to in zyx if activated
+        :param nb_threads: int
+            number of threads - twice the number of cores is recommended
         :param verbose: bool
             True: prints several information
         :param show_progress: bool
@@ -958,18 +983,19 @@ class KnossosDataset(object):
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        if (not hdf5_name is None and not hdf5_path is None) or \
-                not pickle_path is None:
-            self.from_cubes_to_matrix(size, offset, 'overlay', mag, datatype,
-                                      mirror_oob, hdf5_path, hdf5_name,
-                                      pickle_path, invert_data, verbose,
-                                      show_progress)
-        else:
-            return self.from_cubes_to_matrix(size, offset, 'overlay', mag,
-                                             datatype, mirror_oob,
-                                             hdf5_path, hdf5_name, pickle_path,
-                                             invert_data, verbose,
-                                             show_progress)
+        self.from_cubes_to_matrix(size, offset,
+                                  type='overlay',
+                                  mag=mag,
+                                  datatype=datatype,
+                                  mirror_oob=mirror_oob,
+                                  hdf5_path=hdf5_path,
+                                  hdf5_name=hdf5_name,
+                                  pickle_path=pickle_path,
+                                  invert_data=invert_data,
+                                  zyx_mode=zyx_mode,
+                                  nb_threads=nb_threads,
+                                  verbose=verbose,
+                                  show_progress=show_progress)
 
     def from_kzip_to_matrix(self, path, size, offset, empty_cube_label=0,
                             datatype=np.uint64, verbose=False):
@@ -1125,7 +1151,6 @@ class KnossosDataset(object):
             scipy.misc.imsave(output_path+"/"+name+"_%d."+output_format,
                               data[:, :, z])
 
-
     def export_to_image_stack(self, out_format='png', out_path='', mag=1):
         """
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
@@ -1265,7 +1290,6 @@ class KnossosDataset(object):
                             os.makedirs(folder_path+"block")
                             break
                         time.sleep(1)
-
 
                 if (not overwrite) and os.path.isfile(path) and as_raw:
                     existing_cube = np.fromfile(path, dtype=datatype)
