@@ -724,26 +724,44 @@ class KnossosDataset(object):
         """
         def _read_cube(c):
             if from_raw:
-                path = self._knossos_path + \
-                       self._name_mag_folder + \
+                path = self.knossos_path + \
+                       self.name_mag_folder + \
                        "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                       self._experiment_name + \
+                       self.experiment_name + \
                        "_mag%d_x%04d_y%04d_z%04d.raw" % (mag, c[0], c[1], c[2])
 
-                try:
-                    flat_shape = int(np.prod(self.cube_shape))
-                    values = np.fromfile(path, dtype=np.uint8,
-                                         count=flat_shape)
-                except:
-                    values = default_value
+                if self.in_http_mode:
+                    try:
+                        request = urllib2.Request(path)
+                        request.add_header("Authorization", self.http_auth)
+                        values = np.fromstring(urllib2.urlopen(request).read(),
+                                               dtype=datatype)
+                    except:
+                        values = default_value
+                        if verbose:
+                            _print("Cube does not exist, cube with zeros "
+                                   "only assigned")
+                else:
+                    try:
+                        flat_shape = int(np.prod(self.cube_shape))
+                        values = np.fromfile(path, dtype=np.uint8,
+                                             count=flat_shape)
+                    except:
+                        values = default_value
+                        if verbose:
+                            _print("Cube does not exist, cube with zeros "
+                                   "only assigned")
+            else:
+                if self.in_http_mode:
+                    _print("overlaycubes not yet supportedin http mode")
+
                     if verbose:
                         _print("Cube does not exist, cube with zeros "
                                "only assigned")
-            else:
-                path = self._knossos_path + \
-                       self._name_mag_folder + \
+                path = self.knossos_path + \
+                       self.name_mag_folder + \
                        "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                       self._experiment_name + \
+                       self.experiment_name + \
                        "_mag%d_x%04d_y%04d_z%04d.seg.sz" % \
                        (mag, c[0], c[1], c[2])
                 try:
@@ -845,7 +863,8 @@ class KnossosDataset(object):
             pool.close()
             pool.join()
         else:
-            map(_read_cube, cube_coordinates)
+            for c in cube_coordinates:
+                _read_cube(c)
 
         if zyx_mode:
             output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
