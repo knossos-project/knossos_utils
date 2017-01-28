@@ -35,13 +35,13 @@ from __future__ import absolute_import, division, print_function
 from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
 from functools import reduce
 
+import base64
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 import glob
 import h5py
-import io
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 try:
@@ -57,16 +57,17 @@ import scipy.ndimage
 import shutil
 import sys
 import time
+import urllib2
 import os
 import zipfile
 
-module_wide = {"init":False,"noprint":False,"snappy":None,"fadvise":None}
+module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
 
 def our_glob(s):
     l = []
     for g in glob.glob(s):
-        l.append(g.replace(os.path.sep,"/"))
+        l.append(g.replace(os.path.sep, "/"))
     return l
 
 
@@ -126,9 +127,9 @@ def moduleInit():
         import snappy
         module_wide["snappy"] = snappy
     except:
-        _print("snappy is not available - you won't be able to write/read " \
-              "overlaycubes and k.zips. Reference for snappy: " \
-              "https://pypi.python.org/pypi/python-snappy/")
+        _print("snappy is not available - you won't be able to write/read "
+               "overlaycubes and k.zips. Reference for snappy: "
+               "https://pypi.python.org/pypi/python-snappy/")
     try:
         import fadvise
         module_wide["fadvise"] = fadvise
@@ -266,6 +267,9 @@ class KnossosDataset(object):
         global module_wide
         self.module_wide = module_wide
         self._knossos_path = None
+        self._http_url = None
+        self._http_user = None
+        self._http_passwd = None
         self._experiment_name = None
         self._mag = []
         self._name_mag_folder = None
@@ -297,7 +301,12 @@ class KnossosDataset(object):
 
     @property
     def knossos_path(self):
-        return self._knossos_path
+        if self.in_http_mode:
+            return self.http_url
+        elif self._knossos_path:
+            return self._knossos_path
+        else:
+            raise Exception("No knossos path available")
 
     @property
     def number_of_cubes(self):
@@ -311,42 +320,36 @@ class KnossosDataset(object):
     def initialized(self):
         return self._initialized
 
-    def initialize_from_knossos_path(self, path, fixed_mag=0, verbose=False):
-        """ Initializes the dataset by parsing the knossos.conf in path + "mag1"
+    @property
+    def http_url(self):
+        return self._http_url
 
-        :param path: str
-            forward-slash separated path to the datasetfolder - not .../mag !
-        :param fixed_mag: int
-            fixes available mag to one specific value
-        :param verbose: bool
-            several information is printed when set to True
-        :return:
-            nothing
-        """
+    @property
+    def http_user(self):
+        return self._http_user
 
-        self._knossos_path = path
-        all_mag_folders = our_glob(path+"/*mag*")
+    @property
+    def http_passwd(self):
+        return self._http_passwd
 
-        if fixed_mag > 0:
-            self._mag.append(fixed_mag)
+    @property
+    def in_http_mode(self):
+        if self.http_url and self.http_user and self.http_passwd:
+            return True
         else:
-            for mag_test_nb in range(32):
-                for mag_folder in all_mag_folders:
-                    if "mag"+str(2**mag_test_nb) in mag_folder:
-                        self._mag.append(2**mag_test_nb)
-                        break
+            return False
 
-        mag_folder = our_glob(path+"/*mag*")[0].split("/")
-        if len(mag_folder[-1]) > 1:
-            mag_folder = mag_folder[-1]
+    @property
+    def http_auth(self):
+        if self.in_http_mode:
+            return "Basic %s" % base64.b64encode(
+                '%s:%s' % (self.http_user, self.http_passwd))
         else:
-            mag_folder = mag_folder[-2]
+            return None
 
-        self._name_mag_folder = \
-            mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
-
+    def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         try:
-            f = open(our_glob(path+"/*mag1")[0]+"/knossos.conf")
+            f = open(path_to_knossos_conf)
             lines = f.readlines()
             f.close()
         except:
@@ -354,25 +357,31 @@ class KnossosDataset(object):
 
         parsed_dict = {}
         for line in lines:
-            try:
-                match = re.search(r'(?P<key>[A-Za-z _]+)'
-                                  r'((?P<numeric_value>[0-9\.]+)'
-                                  r'|"(?P<string_value>[A-Za-z0-9._/-]+)");',
-                                  line).groupdict()
+            if line.startswith("ftp_mode"):
+                line_s = line.split(" ")
+                self._http_url = "http://" + line_s[1] + line_s[2]
+                self._http_user = line_s[3]
+                self._http_passwd = line_s[4]
+            else:
+                try:
+                    match = re.search(r'(?P<key>[A-Za-z _]+)'
+                                      r'((?P<numeric_value>[0-9\.]+)'
+                                      r'|"(?P<string_value>[A-Za-z0-9._/-]+)");',
+                                      line).groupdict()
 
-                if match['string_value']:
-                    val = match['string_value']
-                elif '.' in match['numeric_value']:
-                    val = float(match['numeric_value'])
-                elif match['numeric_value']:
-                    val = int(match['numeric_value'])
-                else:
-                    raise Exception('Malformed knossos.conf')
+                    if match['string_value']:
+                        val = match['string_value']
+                    elif '.' in match['numeric_value']:
+                        val = float(match['numeric_value'])
+                    elif match['numeric_value']:
+                        val = int(match['numeric_value'])
+                    else:
+                        raise Exception('Malformed knossos.conf')
 
-                parsed_dict[match["key"]] = val
-            except:
-                if verbose:
-                    _print("Unreadable line in knossos.conf - ignored.")
+                    parsed_dict[match["key"]] = val
+                except:
+                    if verbose:
+                        _print("Unreadable line in knossos.conf - ignored.")
 
         self._boundary[0] = parsed_dict['boundary x ']
         self._boundary[1] = parsed_dict['boundary y ']
@@ -384,8 +393,99 @@ class KnossosDataset(object):
         if self._experiment_name.endswith("mag1"):
             self._experiment_name = self._experiment_name[:-5]
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /
-                                                self.cube_shape), dtype=np.int)
+        self._number_of_cubes = \
+            np.array(np.ceil(self.boundary.astype(np.float) /
+                             self.cube_shape), dtype=np.int)
+
+    def initialize_from_knossos_path(self, path, fixed_mag=None,
+                                     use_abs_path=False, verbose=False):
+        """ Initializes the dataset by parsing the knossos.conf in path + "mag1"
+
+        :param path: str
+            forward-slash separated path to the datasetfolder - not .../mag !
+        :param fixed_mag: int
+            fixes available mag to one specific value
+        :param verbose: bool
+            several information is printed when set to True
+        :return:
+            nothing
+        """
+        path = path.strip("/")
+
+        if not os.path.exists(path):
+            raise Exception("No directory or file found")
+
+        if os.path.isfile(path):
+            self.parse_knossos_conf(path, verbose=verbose)
+            if self.in_http_mode:
+                self._name_mag_folder = "mag"
+
+                if fixed_mag:
+                    if isinstance(fixed_mag, int):
+                        self._mag.append(fixed_mag)
+                    else:
+                        raise Exception("Fixed mag must be integer.")
+                else:
+                    for mag_test_nb in range(10):
+                        mag_folder = self.http_url + \
+                                     self.name_mag_folder + str(2**mag_test_nb)
+                        request = urllib2.Request(mag_folder)
+                        request.add_header("Authorization", self.http_auth)
+                        try:
+                            urllib2.urlopen(request)
+                            self._mag.append(2**mag_test_nb)
+                        except:
+                            break
+            else:
+                folder = os.path.basename(os.path.dirname(path))
+                match = re.search(r'(?<=mag)[\d]+$', folder)
+                if match:
+                    self._knossos_path = \
+                        os.path.dirname(os.path.dirname(path)) + "/"
+                else:
+                    raise Exception("Corrupt folder structure - knossos.conf"
+                                    "is not inside a mag folder")
+        else:
+            match = re.search(r'(?<=mag)[\d]+$', path)
+            if match:
+                self._knossos_path = os.path.dirname(path) + "/"
+            else:
+                self._knossos_path = path + "/"
+
+        if not self.in_http_mode:
+            all_mag_folders = our_glob(self._knossos_path+"/*mag*")
+
+            if fixed_mag:
+                if isinstance(fixed_mag, int):
+                    self._mag.append(fixed_mag)
+                else:
+                    raise Exception("Fixed mag must be integer.")
+            else:
+                for mag_test_nb in range(10):
+                    for mag_folder in all_mag_folders:
+                        if "mag"+str(2**mag_test_nb) in mag_folder:
+                            self._mag.append(2**mag_test_nb)
+                            break
+
+            if len(all_mag_folders) == 0:
+                raise Exception("No valid mag folders found")
+
+            mag_folder = all_mag_folders[0].split("/")
+            if len(mag_folder[-1]) > 1:
+                mag_folder = mag_folder[-1]
+            else:
+                mag_folder = mag_folder[-2]
+
+            self._name_mag_folder = \
+                mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
+
+            self.parse_knossos_conf(self.knossos_path +
+                                    self.name_mag_folder +
+                                    "%d/knossos.conf" % self.mag[0],
+                                    verbose=verbose)
+
+        if use_abs_path:
+            self._knossos_path = os.path.abspath(self.knossos_path)
 
         if verbose:
             _print("Initialization finished successfully")
@@ -1217,8 +1317,7 @@ class KnossosDataset(object):
                       "created in mag1")
 
             mags = [1]
-            if not 1 in self.mag\
-                    :
+            if not 1 in self.mag:
                 raise Exception("kzips have to be in mag1 but dataset does not"
                                 "support mag1")
 
