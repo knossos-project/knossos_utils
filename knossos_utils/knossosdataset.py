@@ -428,9 +428,10 @@ class KnossosDataset(object):
         :return:
             nothing
         """
-        path = path.strip("/")
+        while path.endswith("/"):
+            path = path[:-1]
 
-        if not os.path.exists(os.path.abspath(path)):
+        if not os.path.exists(path):
             raise Exception("No directory or file found")
 
         if os.path.isfile(path):
