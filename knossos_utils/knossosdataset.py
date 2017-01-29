@@ -37,13 +37,13 @@ from builtins import range, map, zip, filter, round, next, input, bytes, hex, \
     oct, chr, int
 from functools import reduce
 
-import base64
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 import glob
 import h5py
+from io import BytesIO
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 try:
@@ -57,10 +57,9 @@ import re
 import scipy.misc
 import scipy.ndimage
 import shutil
-from StringIO import StringIO
 import sys
 import time
-import urllib2
+import requests
 import os
 import zipfile
 
@@ -346,8 +345,7 @@ class KnossosDataset(object):
     @property
     def http_auth(self):
         if self.in_http_mode:
-            return "Basic %s" % base64.b64encode(
-                '%s:%s' % (self.http_user, self.http_passwd))
+            return self.http_user, self.http_passwd
         else:
             return None
 
@@ -451,12 +449,11 @@ class KnossosDataset(object):
                     for mag_test_nb in range(10):
                         mag_folder = self.http_url + \
                                      self.name_mag_folder + str(2**mag_test_nb)
-                        request = urllib2.Request(mag_folder)
-                        request.add_header("Authorization", self.http_auth)
-                        try:
-                            urllib2.urlopen(request)
+                        request = requests.get(mag_folder,
+                                               auth=self.http_auth)
+                        if request.status_code == 200:
                             self._mag.append(2**mag_test_nb)
-                        except:
+                        else:
                             break
             else:
                 folder = os.path.basename(os.path.dirname(path))
@@ -739,10 +736,8 @@ class KnossosDataset(object):
 
                 if self.in_http_mode:
                     try:
-                        request = urllib2.Request(path)
-                        request.add_header("Authorization", self.http_auth)
-                        values = np.fromstring(urllib2.urlopen(request).read(),
-                                               dtype=datatype)
+                        request = requests.get(path, auth=self.http_auth)
+                        values = np.fromstring(request.content, dtype=datatype)
                     except:
                         values = default_value
                         if verbose:
@@ -768,11 +763,11 @@ class KnossosDataset(object):
 
                 if self.in_http_mode:
                     try:
-                        request = urllib2.Request(path + ".zip")
-                        request.add_header("Authorization", self.http_auth)
+                        request = requests.get(path + ".zip",
+                                               auth=self.http_auth)
 
-                        with zipfile.ZipFile(StringIO(
-                                urllib2.urlopen(request).read()), "r") \
+                        with zipfile.ZipFile(BytesIO(
+                                request.content), "r") \
                                 as zf:
                             values = np.fromstring(
                                 self.module_wide["snappy"].decompress(
