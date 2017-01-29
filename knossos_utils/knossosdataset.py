@@ -55,6 +55,7 @@ import re
 import scipy.misc
 import scipy.ndimage
 import shutil
+from StringIO import StringIO
 import sys
 import time
 import urllib2
@@ -374,7 +375,7 @@ class KnossosDataset(object):
         for line in lines:
             if line.startswith("ftp_mode"):
                 line_s = line.split(" ")
-                self._http_url = "http://" + line_s[1] + line_s[2]
+                self._http_url = "http://" + line_s[1] + line_s[2] + "/"
                 self._http_user = line_s[3]
                 self._http_passwd = line_s[4]
             else:
@@ -429,7 +430,7 @@ class KnossosDataset(object):
         """
         path = path.strip("/")
 
-        if not os.path.exists(path):
+        if not os.path.exists(os.path.abspath(path)):
             raise Exception("No directory or file found")
 
         if os.path.isfile(path):
@@ -752,29 +753,41 @@ class KnossosDataset(object):
                             _print("Cube does not exist, cube with zeros "
                                    "only assigned")
             else:
-                if self.in_http_mode:
-                    _print("overlaycubes not yet supportedin http mode")
-
-                    if verbose:
-                        _print("Cube does not exist, cube with zeros "
-                               "only assigned")
                 path = self.knossos_path + \
                        self.name_mag_folder + \
                        "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
                        self.experiment_name + \
                        "_mag%d_x%04d_y%04d_z%04d.seg.sz" % \
                        (mag, c[0], c[1], c[2])
-                try:
-                    with zipfile.ZipFile(path + ".zip", "r") as zf:
-                        values = np.fromstring(
-                            self.module_wide["snappy"].decompress(
-                                zf.read(os.path.basename(path))),
-                            dtype=datatype)
-                except:
-                    values = default_value
-                    if verbose:
-                        _print("Cube does not exist, cube with zeros "
-                               "only assigned")
+
+                if self.in_http_mode:
+                    try:
+                        request = urllib2.Request(path + ".zip")
+                        request.add_header("Authorization", self.http_auth)
+
+                        with zipfile.ZipFile(StringIO(urllib2.urlopen(request).read()), "r") \
+                                as zf:
+                            values = np.fromstring(
+                                self.module_wide["snappy"].decompress(
+                                    zf.read(os.path.basename(path))),
+                                dtype=datatype)
+                    except:
+                        values = default_value
+                        if verbose:
+                            _print("Cube does not exist, cube with zeros "
+                                   "only assigned")
+                else:
+                    try:
+                        with zipfile.ZipFile(path + ".zip", "r") as zf:
+                            values = np.fromstring(
+                                self.module_wide["snappy"].decompress(
+                                    zf.read(os.path.basename(path))),
+                                dtype=datatype)
+                    except:
+                        values = default_value
+                        if verbose:
+                            _print("Cube does not exist, cube with zeros "
+                                   "only assigned")
 
             pos = np.subtract([c[0], c[1], c[2]], start)*self.cube_shape
 
@@ -879,7 +892,10 @@ class KnossosDataset(object):
             _stdout('\rProgress: finished\n')
             dt = time.time()-t0
             speed = np.product(output.shape) * 1.0/1000000/dt
-            _stdout('\rSpeed: %.3f MB or MPix /s, time %s\n'%(speed, dt))
+            if type == "raw":
+                _stdout('\rSpeed: %.3f MB or MPix /s, time %s\n' % (speed, dt))
+            else:
+                _stdout('\rSpeed: %.3f MPix /s, time %s\n' % (speed, dt))
 
         ref_size = size[::-1] if zyx_mode else size
         if not np.all(output.shape == ref_size):
@@ -1002,19 +1018,19 @@ class KnossosDataset(object):
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        self.from_cubes_to_matrix(size, offset,
-                                  type='overlay',
-                                  mag=mag,
-                                  datatype=datatype,
-                                  mirror_oob=mirror_oob,
-                                  hdf5_path=hdf5_path,
-                                  hdf5_name=hdf5_name,
-                                  pickle_path=pickle_path,
-                                  invert_data=invert_data,
-                                  zyx_mode=zyx_mode,
-                                  nb_threads=nb_threads,
-                                  verbose=verbose,
-                                  show_progress=show_progress)
+        return self.from_cubes_to_matrix(size, offset,
+                                         type='overlay',
+                                         mag=mag,
+                                         datatype=datatype,
+                                         mirror_oob=mirror_oob,
+                                         hdf5_path=hdf5_path,
+                                         hdf5_name=hdf5_name,
+                                         pickle_path=pickle_path,
+                                         invert_data=invert_data,
+                                         zyx_mode=zyx_mode,
+                                         nb_threads=nb_threads,
+                                         verbose=verbose,
+                                         show_progress=show_progress)
 
     def from_kzip_to_matrix(self, path, size, offset, empty_cube_label=0,
                             datatype=np.uint64, verbose=False):
@@ -1569,18 +1585,3 @@ class KnossosDataset(object):
         else:
             for params in multi_params:
                 _find_and_delete_cubes_process(params)
-
-
-if __name__ =="__main__":
-    kds_barr = KnossosDataset()
-    data_prefix = os.path.expanduser("~/lustre/sdorkenw/j0126_")
-    kds_barr.initialize_from_knossos_path(data_prefix+'161012_barrier/')
-    data = kds_barr.from_raw_cubes_to_matrix([613,245,20], [1245,2532,0], show_progress=True)
-    data_zyx = kds_barr.from_raw_cubes_to_matrix([613,245,20][::-1], [1245,2532,0][::-1], show_progress=True, zyx_mode=True)
-    assert np.all(data.T==data_zyx)
-#    try:
-#        from numa.utils.plotting import scroll_plot
-#        f = scroll_plot(data.T, 'barr', 0)
-#        f2 = scroll_plot(data_zyx, 'barr', 0)
-#    except:
-#        pass
