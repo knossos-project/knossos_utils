@@ -579,9 +579,8 @@ class KnossosDataset(object):
         self._boundary = boundary
         self._experiment_name = experiment_name
 
-        self._number_of_cubes = np.array(np.ceil(self.boundary.astype(np.float) /
-                                                 self.cube_shape),
-                                         dtype=np.int)
+        self._number_of_cubes = np.array(np.ceil(
+            self.boundary.astype(np.float) / self.cube_shape), dtype=np.int)
 
         if create_knossos_conf:
             all_mag_folders = our_glob(path+"*mag*")
