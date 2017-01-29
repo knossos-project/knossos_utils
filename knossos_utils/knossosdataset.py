@@ -1364,7 +1364,7 @@ class KnossosDataset(object):
                                     self.module_wide["snappy"].compress(cube),
                                     compress_type=zipfile.ZIP_DEFLATED)
 
-                os.rmdir(folder_path+"block")   # ---------------------------–-
+                os.rmdir(folder_path+"block")   # ------------------------------
 
             else:
                 f = open(path, "wb")
@@ -1443,9 +1443,12 @@ class KnossosDataset(object):
         for mag in mags:
             if mag > 1:
                 if fast_downsampling:
-                    data_inter = np.array(data[::mag, ::mag, ::mag], dtype=datatype)
+                    data_inter = np.array(data[::mag, ::mag, ::mag],
+                                          dtype=datatype)
                 else:
-                    data_inter = np.array(scipy.ndimage.zoom(data, 1.0/mag, order=3), dtype=datatype)
+                    data_inter = np.array(scipy.ndimage.zoom(data, 1.0/mag,
+                                                             order=3),
+                                          dtype=datatype)
             else:
                 data_inter = np.array(np.copy(data), dtype=datatype)
 
@@ -1476,8 +1479,8 @@ class KnossosDataset(object):
                     while current[0] < end[0]:
                         this_cube_info = []
                         path = self._knossos_path+self._name_mag_folder + \
-                               str(mag)+"/"+"x%04d/y%04d/z%04d/" % \
-                                            (current[0], current[1], current[2])
+                               str(mag) + "/" + "x%04d/y%04d/z%04d/" \
+                                        % (current[0], current[1], current[2])
 
                         this_cube_info.append(path)
 
@@ -1489,12 +1492,12 @@ class KnossosDataset(object):
                                         % (current[0], current[1], current[2])
                             else:
                                 path += self._experiment_name \
-                                        + "_mag"+str(mag)+\
+                                        + "_mag"+str(mag) + \
                                         "_x%04d_y%04d_z%04d.seg.sz" \
                                         % (current[0], current[1], current[2])
                         else:
-                            path = kzip_path+"/"+self.experiment_name+ \
-                                   "_mag"+str(mag)+"_mag"+str(mag)+ \
+                            path = kzip_path+"/"+self.experiment_name + \
+                                   "_mag"+str(mag)+"_mag"+str(mag) + \
                                    "x%dy%dz%d.seg.sz" \
                                    % (current[0], current[1], current[2])
 
