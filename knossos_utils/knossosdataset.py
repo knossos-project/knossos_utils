@@ -270,6 +270,7 @@ class KnossosDataset(object):
         global module_wide
         self.module_wide = module_wide
         self._knossos_path = None
+        self._conf_path = None
         self._http_url = None
         self._http_user = None
         self._http_passwd = None
@@ -310,6 +311,10 @@ class KnossosDataset(object):
             return self._knossos_path
         else:
             raise Exception("No knossos path available")
+
+    @property
+    def conf_path(self):
+        return self._conf_path
 
     @property
     def number_of_cubes(self):
@@ -371,6 +376,8 @@ class KnossosDataset(object):
             f.close()
         except:
             raise NotImplementedError("Could not find/read *mag1/knossos.conf")
+
+        self._conf_path = path_to_knossos_conf
 
         parsed_dict = {}
         for line in lines:
@@ -1115,8 +1122,7 @@ class KnossosDataset(object):
                     values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
                     output[pos[0] : pos[0] + self.cube_shape[0],
                            pos[1] : pos[1] + self.cube_shape[1],
-                           pos[2] : pos[2] + self.cube_shape[2]
-                    ] = values
+                           pos[2] : pos[2] + self.cube_shape[2]] = values
                     cnt += 1
                     current[0] += 1
                 current[1] += 1
