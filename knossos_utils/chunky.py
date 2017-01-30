@@ -637,18 +637,18 @@ class ChunkDataset(object):
                     except:
                         chunk_data = np.zeros(
                             chunk_offset * 2 + self.chunk_size,
-                            dtype=np.uint8)
+                            dtype=data.dtype)
                         if verbose:
                             print("Cube does not exist, cube with zeros "
                                   "only assigned")
             else:
                 chunk_data = np.zeros(chunk_offset * 2 + self.chunk_size,
-                                      dtype=np.uint8)
+                                      dtype=data.dtype)
 
             chunk_data[low[0]: high[0], low[1]: high[1], low[2]: high[2]] = \
                 data[low_cut[0]: high_cut[0],
-                low_cut[1]: high_cut[1],
-                low_cut[2]: high_cut[2]]
+                     low_cut[1]: high_cut[1],
+                     low_cut[2]: high_cut[2]]
 
             with h5py.File(path, "w") as f:
                 f.create_dataset(h5_name, data=chunk_data, compression="gzip")
