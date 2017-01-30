@@ -39,7 +39,8 @@ install_requires = [
     "h5py>=2.5",
     "numpy>=1.10",
     "scipy>=0.16",
-    "networkx",
+    "networkx>=1.11",
+    "requests>=2.12",
 ]
 
 if sys.version_info[0] < 3:
