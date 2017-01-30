@@ -619,7 +619,7 @@ class ChunkDataset(object):
             return output_matrix
 
     def from_matrix_to_chunky(self, offset, chunk_offset, data, name, h5_name,
-                              verbose=True, n_threads=16):
+                              datatype=None, verbose=True, n_threads=16):
         def _write_chunks(args):
             path = args[0]
             h5_name = args[1]
@@ -637,13 +637,13 @@ class ChunkDataset(object):
                     except:
                         chunk_data = np.zeros(
                             chunk_offset * 2 + self.chunk_size,
-                            dtype=data.dtype)
+                            dtype=datatype)
                         if verbose:
                             print("Cube does not exist, cube with zeros "
                                   "only assigned")
             else:
                 chunk_data = np.zeros(chunk_offset * 2 + self.chunk_size,
-                                      dtype=data.dtype)
+                                      dtype=datatype)
 
             chunk_data[low[0]: high[0], low[1]: high[1], low[2]: high[2]] = \
                 data[low_cut[0]: high_cut[0],
@@ -652,6 +652,9 @@ class ChunkDataset(object):
 
             with h5py.File(path, "w") as f:
                 f.create_dataset(h5_name, data=chunk_data, compression="gzip")
+
+        if datatype is None:
+            datatype = data.dtype
 
         chunk_offset = np.array(chunk_offset, dtype=np.int)
 
