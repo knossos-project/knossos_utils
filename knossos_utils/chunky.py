@@ -6,7 +6,7 @@
 #  (C) Copyright 2015
 #  Max-Planck-Gesellschaft zur Foerderung der Wissenschaften e.V.
 #
-#  DatasetUtils.py is free software: you can redistribute it and/or modify
+#  chunky.py is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License version 2 of
 #  the License as published by the Free Software Foundation.
 #
@@ -330,7 +330,7 @@ class ChunkDataset(object):
             self.coord_dict[tuple(new_chunk.coordinates)] = nb_coord
             if path_head_folder:
                 new_chunk.path_head_folder = path_head_folder
-                new_chunk.folder = path_head_folder + 'chunky_%i/' % nb_coord
+                new_chunk.folder = path_head_folder + "/" + new_chunk.folder_name
                 new_chunk.box_size = box_size
 
         for nb_chunk in self.chunk_dict.keys():
@@ -396,10 +396,24 @@ class ChunkDataset(object):
             coordinates = coordinates.tolist()
         chunk_rep = []
         chunk_size = np.array(self.chunk_size, dtype=np.int)
-        for coordinate in coordinates:
-            chunk_coordinate = np.array(np.array(coordinate, np.int) /
-                                        chunk_size, dtype=np.int) * chunk_size
-            chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
+        if self.box_coords is not None:
+            for coordinate in coordinates:
+                chunk_coordinate = np.array(np.array(coordinate, np.int) / #d (explicitly rounded to int, so type doesn't matter)
+                                            chunk_size, dtype=np.int) * chunk_size
+                chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
+        else:
+            for coordinate in coordinates:
+                was_found =False
+                coordinate = np.array(coordinate)
+                for coord in self.coord_dict.keys():
+                    if np.sum(coordinate >= np.array(coord)) == 3:
+                        if np.sum(coordinate - self.chunk_size <= np.array(coord)) == 3:
+                            chunk_rep.append(self.coord_dict[coord])
+                            was_found = True
+                            break
+                if not was_found:
+                    chunk_rep.append(-1)
+
         return chunk_rep
 
     def get_neighbouring_chunks(self, chunk, chunklist=None, con_mode=7):
@@ -628,30 +642,35 @@ class ChunkDataset(object):
             low_cut = args[4]
             high_cut = args[5]
 
-            print(low, high, low_cut, high_cut)
-
+            # print(low, high, low_cut, high_cut)
+            chunk_data = {}
             if os.path.exists(path):
                 with h5py.File(path, "r") as f:
-                    try:
-                        chunk_data = f[h5_name].value
-                    except:
-                        chunk_data = np.zeros(
+                    for key in f.keys():
+                        chunk_data[key] = f[key].value
+
+                    if not h5_name in f.keys():
+                        chunk_data[h5_name] = np.zeros(
                             chunk_offset * 2 + self.chunk_size,
                             dtype=datatype)
                         if verbose:
                             print("Cube does not exist, cube with zeros "
                                   "only assigned")
             else:
-                chunk_data = np.zeros(chunk_offset * 2 + self.chunk_size,
+                chunk_data[h5_name] = np.zeros(chunk_offset * 2 + self.chunk_size,
                                       dtype=datatype)
 
-            chunk_data[low[0]: high[0], low[1]: high[1], low[2]: high[2]] = \
+            chunk_data[h5_name][low[0]: high[0],
+                                low[1]: high[1],
+                                low[2]: high[2]] = \
                 data[low_cut[0]: high_cut[0],
                      low_cut[1]: high_cut[1],
                      low_cut[2]: high_cut[2]]
 
             with h5py.File(path, "w") as f:
-                f.create_dataset(h5_name, data=chunk_data, compression="gzip")
+                for key in chunk_data.keys():
+                    f.create_dataset(key, data=chunk_data[key],
+                                     compression="gzip")
 
         if datatype is None:
             datatype = data.dtype
