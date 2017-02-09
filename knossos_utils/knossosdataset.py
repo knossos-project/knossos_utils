@@ -697,7 +697,8 @@ class KnossosDataset(object):
                              mirror_oob=False, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
-                             nb_threads=40, verbose=False, show_progress=True):
+                             nb_threads=40, verbose=False, show_progress=True,
+                             http_max_tries=10, http_verbose=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -734,6 +735,7 @@ class KnossosDataset(object):
             if a path is given no data is returned
         """
         def _read_cube(c):
+            valid_values = False
             if from_raw:
                 path = self.knossos_path + \
                        self.name_mag_folder + \
@@ -742,21 +744,39 @@ class KnossosDataset(object):
                        "_mag%d_x%04d_y%04d_z%04d.raw" % (mag, c[0], c[1], c[2])
 
                 if self.in_http_mode:
-                    try:
-                        request = requests.get(path, auth=self.http_auth)
-                        values = np.fromstring(request.content, dtype=datatype)
-                    except:
-                        values = default_value
-                        if verbose:
-                            _print("Cube does not exist, cube with zeros "
-                                   "only assigned")
+                    tries = 0
+                    while tries < http_max_tries:
+                        try:
+                            request = requests.get(path,
+                                                   auth=self.http_auth,
+                                                   timeout=2)
+                            request.raise_for_status()
+                            values = np.fromstring(request.content,
+                                                   dtype=datatype)
+                            valid_values = True
+
+                        except requests.exceptions.Timeout as e:
+                            return e
+                        except requests.exceptions.TooManyRedirects as e:
+                            return e
+                        except requests.exceptions.RequestException as e:
+                            return e
+                        except requests.exceptions.ConnectionError as e:
+                            tries += 1
+                            if tries == http_max_tries:
+                                return e
+                            else:
+                                continue
+                        except requests.exceptions.HTTPError as e:
+                            return e
+                        break
                 else:
                     try:
                         flat_shape = int(np.prod(self.cube_shape))
                         values = np.fromfile(path, dtype=np.uint8,
                                              count=flat_shape)
+                        valid_values = True
                     except:
-                        values = default_value
                         if verbose:
                             _print("Cube does not exist, cube with zeros "
                                    "only assigned")
@@ -769,22 +789,36 @@ class KnossosDataset(object):
                        (mag, c[0], c[1], c[2])
 
                 if self.in_http_mode:
-                    try:
-                        request = requests.get(path + ".zip",
-                                               auth=self.http_auth)
+                    tries = 0
+                    while tries < http_max_tries:
+                        try:
+                            request = requests.get(path + ".zip",
+                                                   auth=self.http_auth,
+                                                   timeout=2)
+                            request.raise_for_status()
+                            with zipfile.ZipFile(BytesIO(
+                                    request.content), "r") \
+                                    as zf:
+                                values = np.fromstring(
+                                    self.module_wide["snappy"].decompress(
+                                        zf.read(os.path.basename(path))),
+                                    dtype=datatype)
 
-                        with zipfile.ZipFile(BytesIO(
-                                request.content), "r") \
-                                as zf:
-                            values = np.fromstring(
-                                self.module_wide["snappy"].decompress(
-                                    zf.read(os.path.basename(path))),
-                                dtype=datatype)
-                    except:
-                        values = default_value
-                        if verbose:
-                            _print("Cube does not exist, cube with zeros "
-                                   "only assigned")
+                        except requests.exceptions.Timeout as e:
+                            return e
+                        except requests.exceptions.TooManyRedirects as e:
+                            return e
+                        except requests.exceptions.RequestException as e:
+                            return e
+                        except requests.exceptions.ConnectionError as e:
+                            tries += 1
+                            if tries == http_max_tries:
+                                return e
+                            else:
+                                continue
+                        except requests.exceptions.HTTPError as e:
+                            return e
+                        break
                 else:
                     try:
                         with zipfile.ZipFile(path + ".zip", "r") as zf:
@@ -792,25 +826,26 @@ class KnossosDataset(object):
                                 self.module_wide["snappy"].decompress(
                                     zf.read(os.path.basename(path))),
                                 dtype=datatype)
+                            valid_values = True
                     except:
-                        values = default_value
                         if verbose:
                             _print("Cube does not exist, cube with zeros "
                                    "only assigned")
 
             pos = np.subtract([c[0], c[1], c[2]], start)*self.cube_shape
 
-            if zyx_mode:
-                values = values.reshape(self.cube_shape)
-                output[pos[2]: pos[2]+self.cube_shape[2],
-                       pos[1]: pos[1]+self.cube_shape[1],
-                       pos[0]: pos[0]+self.cube_shape[0]] = values
+            if valid_values:
+                if zyx_mode:
+                    output[pos[2]: pos[2]+self.cube_shape[2],
+                           pos[1]: pos[1]+self.cube_shape[1],
+                           pos[0]: pos[0]+self.cube_shape[0]] = \
+                        values.reshape(self.cube_shape)
 
-            else:
-                values = values.reshape(self.cube_shape).T
-                output[pos[0]: pos[0]+self.cube_shape[0],
-                       pos[1]: pos[1]+self.cube_shape[1],
-                       pos[2]: pos[2]+self.cube_shape[2]] = values
+                else:
+                    output[pos[0]: pos[0]+self.cube_shape[0],
+                           pos[1]: pos[1]+self.cube_shape[1],
+                           pos[2]: pos[2]+self.cube_shape[2]] = \
+                        values.reshape(self.cube_shape).T
 
         t0 = time.time()
 
@@ -870,7 +905,6 @@ class KnossosDataset(object):
 
         cnt = 0
         nb_cubes_to_process = int(np.prod(end - start))
-        default_value = np.zeros(self.cube_shape, dtype=datatype)
 
         cube_coordinates = []
 
@@ -881,12 +915,28 @@ class KnossosDataset(object):
 
         if nb_threads > 1:
             pool = ThreadPool(nb_threads)
-            pool.map(_read_cube, cube_coordinates)
+            results = pool.map(_read_cube, cube_coordinates)
             pool.close()
             pool.join()
         else:
+            results = []
             for c in cube_coordinates:
-                _read_cube(c)
+                results.append(_read_cube(c))
+
+        if (verbose or http_verbose) and self.in_http_mode:
+            errors = {}
+            for result in results:
+                if result:
+                    errno = result.response.status_code
+                    if errno in errors:
+                        errors[errno] += 1
+                    else:
+                        errors[errno] = 1
+            if verbose and len(errors):
+                _print("Errors appeared! Keep in mind that Error 404 might be "
+                       "totally fine. Overview:")
+                for errno in errors:
+                    _print("%d: %dx" % (errno, errors[errno]))
 
         if zyx_mode:
             output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
@@ -912,7 +962,7 @@ class KnossosDataset(object):
                             output.shape)
         else:
             if verbose:
-                _print("Correct shape")
+                _print("Shape was verified")
 
         if mirror_oob and np.any(mirror_overlap != 0) and not zyx_mode:
             output = np.lib.pad(output, mirror_overlap, 'symmetric')
@@ -931,14 +981,18 @@ class KnossosDataset(object):
         if pickle_path:
             save_to_pickle(output, pickle_path)
 
-        return output
+        if http_verbose and self.in_http_mode:
+            return output, errors
+        else:
+            return output
 
     def from_raw_cubes_to_matrix(self, size, offset, mag=1,
                                  datatype=np.uint8, mirror_oob=False,
                                  hdf5_path=None, hdf5_name="raw",
                                  pickle_path=None, invert_data=False,
                                  zyx_mode=False, nb_threads=40,
-                                 verbose=False, show_progress=True):
+                                 verbose=False, http_verbose=False,
+                                 show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset raw cubes
 
         :param size: 3 sequence of ints
@@ -985,6 +1039,7 @@ class KnossosDataset(object):
                                          zyx_mode=zyx_mode,
                                          nb_threads=nb_threads,
                                          verbose=verbose,
+                                         http_verbose=http_verbose,
                                          show_progress=show_progress)
 
     def from_overlaycubes_to_matrix(self, size, offset, mag=1,
@@ -992,7 +1047,8 @@ class KnossosDataset(object):
                                     hdf5_path=None, hdf5_name="raw",
                                     pickle_path=None, invert_data=False,
                                     zyx_mode=False, nb_threads=40,
-                                    verbose=False, show_progress=True):
+                                    verbose=False, http_verbose=False,
+                                    show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset overlay cubes
 
         :param size: 3 sequence of ints
@@ -1039,6 +1095,7 @@ class KnossosDataset(object):
                                          zyx_mode=zyx_mode,
                                          nb_threads=nb_threads,
                                          verbose=verbose,
+                                         http_verbose=http_verbose,
                                          show_progress=show_progress)
 
     def from_kzip_to_matrix(self, path, size, offset, empty_cube_label=0,
