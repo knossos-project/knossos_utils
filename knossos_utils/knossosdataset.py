@@ -672,6 +672,115 @@ class KnossosDataset(object):
                                   fast_downsampling=fast_downsampling,
                                   as_raw=True)
 
+    def from_http_to_on_disk(self, path, raw_data=True, mags=None,
+                             n_max_tries=10, stride=256, nb_threads=20):
+        def _download_files_thread(args):
+            # args = mag, size, offset, raw_dataset
+            if args[3]:
+                i_iterations = 0
+                while i_iterations < n_max_tries:
+                    raw, err = self.from_raw_cubes_to_matrix(args[1], args[2],
+                                                             mag=args[0],
+                                                             http_verbose=True,
+                                                             nb_threads=1,
+                                                             show_progress=False)
+                    if len(err.keys()) > 1:
+                        i_iterations += 1
+                    elif len(err.keys()) > 0:
+                        if 404 in err:
+                            break
+                        else:
+                            i_iterations += 1
+                    else:
+                        break
+
+                    time.sleep(1.)
+
+                if i_iterations == n_max_tries:
+                        return err
+                else:
+                    new_kd.from_matrix_to_cubes(offset=args[2], mags=args[0],
+                                                data=raw, datatype=np.uint8,
+                                                as_raw=True, nb_threads=1)
+                    return err
+            else:
+                i_iterations = 0
+                while i_iterations < n_max_tries:
+                    overlay, err = self.from_overlaycubes_to_matrix(
+                        args[1], args[2], mag=args[0], http_verbose=True,
+                        nb_threads=1, show_progress=False)
+                    if len(err.keys()) > 1:
+                        i_iterations += 1
+                    elif len(err.keys()) > 0:
+                        if 404 in err:
+                            break
+                        else:
+                            i_iterations += 1
+                    else:
+                        break
+
+                    time.sleep(1.)
+
+                if i_iterations == n_max_tries:
+                    return err
+                else:
+                    new_kd.from_matrix_to_cubes(offset=args[2], mags=args[0],
+                                                data=overlay, datatype=np.uint32,
+                                                nb_threads=1)
+                    return err
+
+        assert raw_data or overlaycubes
+        assert self.in_http_mode
+
+        new_kd = KnossosDataset()
+        new_kd.initialize_without_conf(path=path, boundary=self.boundary,
+                                       scale=self.scale,
+                                       experiment_name=self.experiment_name,
+                                       mags=self.mag)
+
+        if not mags:
+            mags = self.mag
+
+        multi_params = []
+        if raw_data:
+            for mag in mags:
+                for x in range(0, self.boundary[0] / mag - stride, stride):
+                    for y in range(0, self.boundary[1] / mag - stride, stride):
+                        for z in range(0, self.boundary[2] / mag - stride, stride):
+                            multi_params.append([mag, [stride]*3, [x, y, z],
+                                                 True])
+        else:
+            for x in range(0, self.boundary[0] - stride, stride):
+                for y in range(0, self.boundary[1] - stride, stride):
+                    for z in range(0, self.boundary[2] - stride, stride):
+                        multi_params.append([1, [stride]*3, [x, y, z],
+                                             False])
+
+        if nb_threads > 1:
+            pool = ThreadPool(nb_threads)
+            results = pool.map(_download_files_thread, multi_params)
+            pool.close()
+            pool.join()
+        else:
+            results = map(_download_files_thread, multi_params)
+
+        errors = {}
+        for result in results:
+            if result:
+                for errno in result:
+                    if errno in errors:
+                        errrors[errno] += result[errno]
+                    else:
+                        errors[errno] = result[errno]
+        if errors:
+            _print("Errors appeared! Keep in mind that Error 404 might be "
+                   "totally fine. Overview:")
+            for errno in errors:
+                _print("%d: %dx" % (errno, errors[errno]))
+
+
+
+
     def from_raw_cubes_to_list(self, vx_list):
         """ Read voxel values vectorized
         WARNING: voxels have to be clustered, otherwise: runtime -> inf
@@ -927,11 +1036,12 @@ class KnossosDataset(object):
             errors = {}
             for result in results:
                 if result:
-                    errno = result.response.status_code
-                    if errno in errors:
-                        errors[errno] += 1
-                    else:
-                        errors[errno] = 1
+                    if result.response:
+                        errno = result.response.status_code
+                        if errno in errors:
+                            errors[errno] += 1
+                        else:
+                            errors[errno] = 1
             if verbose and len(errors):
                 _print("Errors appeared! Keep in mind that Error 404 might be "
                        "totally fine. Overview:")
