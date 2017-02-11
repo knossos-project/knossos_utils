@@ -673,9 +673,9 @@ class KnossosDataset(object):
                                   as_raw=True)
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
-                     stride=256, nb_threads=20):
-        """ Copies a dataset to another - especially useful for downloading
-            remote datasets
+                     stride=256, return_errors=False, nb_threads=20):
+        """ Copies a dataset to another dataset - especially useful for
+            downloading remote datasets
 
         :param path: str
             path to new knossosdataset (will be created)
@@ -685,6 +685,7 @@ class KnossosDataset(object):
         :param do_raw: boolean
             True: raw data will be copied
             False: overlaycubes will be copied
+            do not do both at once in different processes!
         :param mags: list of int or int
             mags from which data should be copied (automatically 1 for
             overlaycubes). Default: all available mags
@@ -791,9 +792,8 @@ class KnossosDataset(object):
                    "totally fine. Overview:")
             for errno in errors:
                 _print("%d: %dx" % (errno, errors[errno]))
-
-
-
+        if return_errors:
+            return errors
 
     def from_raw_cubes_to_list(self, vx_list):
         """ Read voxel values vectorized
