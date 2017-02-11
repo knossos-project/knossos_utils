@@ -672,65 +672,76 @@ class KnossosDataset(object):
                                   fast_downsampling=fast_downsampling,
                                   as_raw=True)
 
-    def from_http_to_on_disk(self, path, raw_data=True, mags=None,
-                             n_max_tries=10, stride=256, nb_threads=20):
-        def _download_files_thread(args):
-            # args = mag, size, offset, raw_dataset
-            if args[3]:
-                i_iterations = 0
-                while i_iterations < n_max_tries:
-                    raw, err = self.from_raw_cubes_to_matrix(args[1], args[2],
-                                                             mag=args[0],
-                                                             http_verbose=True,
-                                                             nb_threads=1,
-                                                             show_progress=False)
-                    if len(err.keys()) > 1:
-                        i_iterations += 1
-                    elif len(err.keys()) > 0:
-                        if 404 in err:
-                            break
-                        else:
-                            i_iterations += 1
-                    else:
-                        break
+    def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
+                     stride=256, nb_threads=20):
+        """ Copies a dataset to another - especially useful for downloading
+            remote datasets
 
-                    time.sleep(1.)
+        :param path: str
+            path to new knossosdataset (will be created)
+        :param data_range: list of list
+            specifies subvolume: [[x, y, z], [x, y, z]]
+            None: whole dataset will be copied
+        :param do_raw: boolean
+            True: raw data will be copied
+            False: overlaycubes will be copied
+        :param mags: list of int or int
+            mags from which data should be copied (automatically 1 for
+            overlaycubes). Default: all available mags
+        :param stride: int
+            stride for copying
+        :param nb_threads: int
+            number of threads to be used (recommended: 2 * number of cpus)
+        """
+        def _copy_block_thread(args):
+            mag, size, offset, do_raw = args
+            if do_raw:
+                raw = self.from_raw_cubes_to_matrix(size, offset, mag=mag,
+                                                    http_verbose=True,
+                                                    nb_threads=1,
+                                                    show_progress=False)
 
-                if i_iterations == n_max_tries:
-                        return err
+                if isinstance(raw, tuple):
+                    err = raw[1]
+                    raw = raw[0]
                 else:
-                    new_kd.from_matrix_to_cubes(offset=args[2], mags=args[0],
-                                                data=raw, datatype=np.uint8,
-                                                as_raw=True, nb_threads=1)
-                    return err
+                    err = None
+
+                new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
+                                            data=raw, datatype=np.uint8,
+                                            as_raw=True, nb_threads=1)
+
+                return err
             else:
-                i_iterations = 0
-                while i_iterations < n_max_tries:
-                    overlay, err = self.from_overlaycubes_to_matrix(
-                        args[1], args[2], mag=args[0], http_verbose=True,
-                        nb_threads=1, show_progress=False)
-                    if len(err.keys()) > 1:
-                        i_iterations += 1
-                    elif len(err.keys()) > 0:
-                        if 404 in err:
-                            break
-                        else:
-                            i_iterations += 1
-                    else:
-                        break
+                overlay = self.from_overlaycubes_to_matrix(size, offset,
+                                                           mag=mag,
+                                                           http_verbose=True,
+                                                           nb_threads=1,
+                                                           show_progress=False)
 
-                    time.sleep(1.)
-
-                if i_iterations == n_max_tries:
-                    return err
+                if isinstance(overlay, tuple):
+                    err = overlay[1]
+                    overlay = overlay[0]
                 else:
-                    new_kd.from_matrix_to_cubes(offset=args[2], mags=args[0],
-                                                data=overlay, datatype=np.uint32,
-                                                nb_threads=1)
-                    return err
+                    err = None
 
-        assert raw_data or overlaycubes
-        assert self.in_http_mode
+                new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
+                                            data=overlay, datatype=np.uint32,
+                                            nb_threads=1)
+                return err
+
+        if data_range:
+            assert isinstance(data_range, list)
+            assert len(data_range[0]) == 3
+            assert len(data_range[1]) == 3
+        else:
+            data_range = [[0, 0, 0], self.boundary]
+
+        if not mags:
+            mags = self.mag
+
+        if isinstance(mags, int):
+            mags = [mags]
 
         new_kd = KnossosDataset()
         new_kd.initialize_without_conf(path=path, boundary=self.boundary,
@@ -738,38 +749,41 @@ class KnossosDataset(object):
                                        experiment_name=self.experiment_name,
                                        mags=self.mag)
 
-        if not mags:
-            mags = self.mag
-
         multi_params = []
-        if raw_data:
+        if do_raw:
             for mag in mags:
-                for x in range(0, self.boundary[0] / mag - stride, stride):
-                    for y in range(0, self.boundary[1] / mag - stride, stride):
-                        for z in range(0, self.boundary[2] / mag - stride, stride):
+                for x in range(data_range[0][0],
+                               data_range[1][0] / mag, stride):
+                    for y in range(data_range[0][1],
+                                   data_range[1][1] / mag, stride):
+                        for z in range(data_range[0][2],
+                                       data_range[1][2] / mag, stride):
                             multi_params.append([mag, [stride]*3, [x, y, z],
                                                  True])
         else:
-            for x in range(0, self.boundary[0] - stride, stride):
-                for y in range(0, self.boundary[1] - stride, stride):
-                    for z in range(0, self.boundary[2] - stride, stride):
+            for x in range(data_range[0][0],
+                           data_range[1][0], stride):
+                for y in range(data_range[0][1],
+                               data_range[1][1], stride):
+                    for z in range(data_range[0][2],
+                                   data_range[1][2], stride):
                         multi_params.append([1, [stride]*3, [x, y, z],
                                              False])
 
         if nb_threads > 1:
             pool = ThreadPool(nb_threads)
-            results = pool.map(_download_files_thread, multi_params)
+            results = pool.map(_copy_block_thread, multi_params)
             pool.close()
             pool.join()
         else:
-            results = map(_download_files_thread, multi_params)
+            results = map(_copy_block_thread, multi_params)
 
         errors = {}
         for result in results:
             if result:
                 for errno in result:
                     if errno in errors:
-                        errrors[errno] += result[errno]
+                        errors[errno] += result[errno]
                     else:
                         errors[errno] = result[errno]
         if errors:
