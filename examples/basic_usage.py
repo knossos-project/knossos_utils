@@ -29,7 +29,7 @@
 ################################################################################
 #
 # This examples covers the handling of knossos datasets. Using remote datasets
-# as the one hosted under <http://connectomes.org/knossos.conf> work exactly
+# as the one hosted under <http://connectomes.org/knossos.conf> works exactly
 # the same.
 #
 ################################################################################
