@@ -978,6 +978,10 @@ class KnossosDataset(object):
         if mag not in self._mag:
             raise Exception("Magnification not supported")
 
+        if 0 in size:
+            raise Exception("The first parameter is size! - "
+                            "at least one dimension was set to 0 ...")
+
         if verbose and show_progress:
             show_progress = False
             _print("when choosing verbose, show_progress is automatically "
