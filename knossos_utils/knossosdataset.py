@@ -1468,11 +1468,17 @@ class KnossosDataset(object):
         :param verbose: bool
             True: prints several information
         :param overwrite: bool
-            True: whole KNOSSOS cube is overwritten
-            False: cube entries where data == 0 are contained
-            eg.: Two different function calls write different parts of one
-                 KNOSSOS cube. When overwrite is set to False, the second call
-                 won't overwrite the output of the first one.
+            True: whole KNOSSOS cube is overwritten with new data
+            False: cube entries where new data == 0 are contained
+            eg.: Two different function calls write to two non-overlapping parts
+                 of one KNOSSOS cube. When overwrite is set to False, the second
+                 call won't overwrite the output of the first one. When they
+                 overlap however, the second call will overwrite the data
+                 from the first call at all voxels where the second data block
+                 has non-zero entries. If overwrite is set to True for the
+                 second call the full block gets replaced with the new data
+                 regardless of its values. In the current implementation this
+                 effects all data within all knossos cubes that are accessed.
         :param kzip_path: str
             is not None: overlay data is written as kzip to this path
         :param annotation_str: str
