@@ -1776,14 +1776,50 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+        self.delete_all_cubes(raw=False, nb_processes=nb_processes,
+                              verbose=verbose)
+
+    def delete_all_rawcubes(self, nb_processes=4, verbose=False):
+        """  Deletes all overlaycubes
+
+        :param nb_processes: int
+            if < 2: no multiprocessing
+        :param verbose: bool
+            True: prints several information
+        :return:
+            nothing
+        """
+        self.delete_all_cubes(raw=True, nb_processes=nb_processes,
+                              verbose=verbose)
+
+    def delete_all_cubes(self, raw, nb_processes=4, verbose=False):
+        """  Deletes all overlaycubes
+
+        :param raw: bool
+            wether to delete raw or overlay cubes
+        :param nb_processes: int
+            if < 2: no multiprocessing
+        :param verbose: bool
+            True: prints several information
+        :return:
+            nothing
+        """
         multi_params = []
         for mag in range(32):
             if os.path.exists(self._knossos_path+self._name_mag_folder +
                               str(2**mag)):
                 for x_cube in range(self._number_of_cubes[0] // 2**mag+1):
-                    glob_input = self._knossos_path + self._name_mag_folder + \
-                                 str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
-                                 self._experiment_name + "*seg*"
+                    if raw:
+                        glob_input = self._knossos_path + \
+                                     self._name_mag_folder + \
+                                     str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
+                                     self._experiment_name + "*.raw"
+                    else:
+                        glob_input = self._knossos_path + \
+                                     self._name_mag_folder + \
+                                     str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
+                                     self._experiment_name + "*seg*"
+
                     multi_params.append([glob_input, verbose])
 
         if not self.initialized:
