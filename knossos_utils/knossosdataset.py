@@ -926,6 +926,7 @@ class KnossosDataset(object):
                                     self.module_wide["snappy"].decompress(
                                         zf.read(os.path.basename(path))),
                                     dtype=datatype)
+                                valid_values = True
 
                         except requests.exceptions.Timeout as e:
                             return e
