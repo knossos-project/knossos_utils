@@ -421,7 +421,7 @@ class KnossosDataset(object):
             np.array(np.ceil(self.boundary.astype(np.float) /
                              self.cube_shape), dtype=np.int)
 
-    def initialize_from_knossos_path(self, path, fixed_mag=None,
+    def initialize_from_knossos_path(self, path, fixed_mag=None, http_max_tries=10,
                                      use_abs_path=False, verbose=False):
         """ Initializes the dataset by parsing the knossos.conf in path + "mag1"
 
@@ -456,11 +456,25 @@ class KnossosDataset(object):
                     for mag_test_nb in range(10):
                         mag_folder = self.http_url + \
                                      self.name_mag_folder + str(2**mag_test_nb)
-                        request = requests.get(mag_folder,
-                                               auth=self.http_auth)
-                        if request.status_code == 200:
-                            self._mag.append(2**mag_test_nb)
-                        else:
+                        tries = 0
+                        while tries < http_max_tries:
+                            try:
+                                request = requests.get(mag_folder,
+                                                       auth=self.http_auth,
+                                                       timeout=10)
+                                if request.status_code == 200:
+                                    self._mag.append(2 ** mag_test_nb)
+                                    break
+
+                                request.raise_for_status()
+                            except:
+                                tries += 1
+                                if tries >= http_max_tries:
+                                    break
+                                else:
+                                    continue
+
+                        if tries >= http_max_tries:
                             break
             else:
                 folder = os.path.basename(os.path.dirname(path))
