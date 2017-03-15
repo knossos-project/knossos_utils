@@ -212,6 +212,57 @@ class AnnotationSearch(object):
     pass
 
 
+def average_coordinate(c):
+    """
+    Return the average coordinate (center of gravity) for an iterable of
+    coordinates.
+
+    Parameters
+    ----------
+
+    c : iterable of coordinates
+        Coordinates are represented as lists and must have the same number of
+        dimensions.
+
+    Returns
+    -------
+
+    avg_coordinate : iterable
+
+    Example
+    -------
+
+    >>> average_coordinate([[1, 2, 3], [4, 5, 6]])
+    [2.5, 3.5, 4.5]
+    >>> average_coordinate([])
+    []
+    """
+
+    if not has_equal_dimensions(c):
+        raise Exception('All coordinates must have equal number of dimensions '
+            'to calculate average.')
+
+    avg_coordinate = [sum([float(y) for y in x]) / len(x) for x in zip(*c)]
+
+    return avg_coordinate
+
+def gen_random_pass(length):
+    """Generate a password from a character set similar to
+    base64, but without the 1, I, O and 0 characters and the
+    / and + characters replaced by ? and !.
+    """
+
+    password = ""
+
+    while (len(password) < length):
+        random_string = os.urandom(12)
+        cur_passpart = base64.b64encode(random_string, '?!')
+        cur_passpart = cur_passpart.translate(None, '1I0O')
+        password = password + cur_passpart
+
+    return password[0:length]
+
+
 def filter_nodes(s, criterion):
     matching_nodes = []
 
