@@ -3,10 +3,10 @@
 #  This file provides a class representation of a KNOSSOS-dataset for reading
 #  and writing raw and overlay data.
 #
-#  (C) Copyright 2015
+#  (C) Copyright 2017
 #  Max-Planck-Gesellschaft zur Foerderung der Wissenschaften e.V.
 #
-#  chunky.py is free software: you can redistribute it and/or modify
+#  skeleton_utils.py is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License version 2 of
 #  the License as published by the Free Software Foundation.
 #

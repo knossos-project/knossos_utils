@@ -1,3 +1,24 @@
+# -*- coding: utf-8 -*-
+################################################################################
+#  This file provides a functions and classes for working with synapse annotations.
+#  and writing raw and overlay data.
+#
+#  (C) Copyright 2017
+#  Max-Planck-Gesellschaft zur Foerderung der Wissenschaften e.V.
+#
+#  synapses.py is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License version 2 of
+#  the License as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#
+################################################################################
+
+
 """
 Class and function definitions that allow the extraction and
 analysis of synapse annotations on skeleton annotations.
