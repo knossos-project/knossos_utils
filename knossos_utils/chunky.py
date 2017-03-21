@@ -109,7 +109,7 @@ def _export_cset_as_kd_thread(args):
     else:
         datatype = np.uint64
     kd.from_matrix_to_cubes(coords,
-                            mags=[1, 2, 4, 8],
+                            mags=kd.mag,
                             data=data_list,
                             as_raw=as_raw,
                             nb_threads=nb_threads,

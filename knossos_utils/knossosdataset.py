@@ -809,12 +809,17 @@ class KnossosDataset(object):
         if return_errors:
             return errors
 
-    def from_raw_cubes_to_list(self, vx_list):
+    def from_cubes_to_list(self, vx_list, raw=True, datatype=np.uint32):
         """ Read voxel values vectorized
-        WARNING: voxels have to be clustered, otherwise: runtime -> inf
+        WARNING: voxels have to be clustered, otherwise: RAM & runtime -> inf
 
         :param vx_list:  list or array of 3 sequence of int
             list of voxels which values should be returned
+        :param raw: bool
+            True: read from raw cubes
+            False: read from overlaycubes
+        :param datatype: np.dtype
+            defines np.dtype, only relevant for overlaycubes (raw=False)
         :return: array of int
             array of voxel values corresponding to vx_list
         """
@@ -823,12 +828,43 @@ class KnossosDataset(object):
                         np.max(vx_list, axis=0)]
         size = boundary_box[1] - boundary_box[0] + np.array([1, 1, 1])
 
-        block = self.from_raw_cubes_to_matrix(size, boundary_box[0],
-                                              show_progress=False)
+        if raw:
+            block = self.from_raw_cubes_to_matrix(size, boundary_box[0],
+                                                  show_progress=False)
+        else:
+            block = self.from_overlaycubes_to_matrix(size, boundary_box[0],
+                                                     datatype=datatype,
+                                                     show_progress=False)
 
         vx_list -= boundary_box[0]
 
         return block[vx_list[:, 0], vx_list[:, 1], vx_list[:, 2]]
+
+    def from_raw_cubes_to_list(self, vx_list):
+        """ Read voxel values vectorized
+        WARNING: voxels have to be clustered, otherwise: RAM & runtime -> inf
+
+        :param vx_list:  list or array of 3 sequence of int
+            list of voxels which values should be returned
+        :return: array of int
+            array of voxel values corresponding to vx_list
+        """
+
+        return self.from_cubes_to_list(vx_list, raw=True, datatype=np.uint8)
+
+    def from_overlaycubes_to_list(self, vx_list, datatype=np.uint32):
+        """ Read voxel values vectorized
+        WARNING: voxels have to be clustered, otherwise: RAM & runtime -> inf
+
+        :param vx_list:  list or array of 3 sequence of int
+            list of voxels which values should be returned
+        :param datatype: np.dtype
+            defines np.dtype
+        :return: array of int
+            array of voxel values corresponding to vx_list
+        """
+
+        return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
     def from_cubes_to_matrix(self, size, offset, type, mag=1, datatype=np.uint8,
                              mirror_oob=False, hdf5_path=None,
