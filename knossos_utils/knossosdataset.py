@@ -1282,7 +1282,7 @@ class KnossosDataset(object):
             raise Exception("Dataset is not initialized")
 
         return self.from_cubes_to_matrix(size, offset,
-                                         type='raw',
+                                         mode='raw',
                                          mag=mag,
                                          datatype=datatype,
                                          mirror_oob=mirror_oob,
@@ -1338,7 +1338,7 @@ class KnossosDataset(object):
             raise Exception("Dataset is not initialized")
 
         return self.from_cubes_to_matrix(size, offset,
-                                         type='overlay',
+                                         mode='overlay',
                                          mag=mag,
                                          datatype=datatype,
                                          mirror_oob=mirror_oob,
