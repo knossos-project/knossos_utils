@@ -1192,10 +1192,10 @@ def j0126_axon_syn_analysis(path_to_dir):
     return
 
 
-def synapses_from_j0126(annotation,
-                        extractionMode='taskA',
-                        enable_heuristic=False,
-                        log_file=''):
+def synapses_from_jk_anno(annotation,
+                          extractionMode='taskA',
+                          enable_heuristic=False,
+                          log_file=''):
     """
     Extracts synapse annotations from annotation objects.
     Each synapse node is labeled with a unique int identifier, multiple
