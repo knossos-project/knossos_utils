@@ -63,6 +63,7 @@ import requests
 import os
 import zipfile
 import collections
+from threading import Lock
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -371,6 +372,9 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+
+        self._cache_mutex = Lock()
+
         self._cube_cache = collections.OrderedDict()
         self._cube_cache_size = cache_size
 
@@ -378,11 +382,14 @@ class KnossosDataset(object):
         if not self._cube_cache_size:
             return
 
+        self._cache_mutex.acquire()
         if len(self._cube_cache) >= self._cube_cache_size:
             # remove the oldest (i.e. first inserted) cache element
             self._cube_cache.popitem(last=False)
 
         self._cube_cache[str(c) + str(mode)] = values
+        self._cache_mutex.release()
+
         return
 
     def _test_all_cache_satisfied(self, coordinates, mode):
@@ -398,11 +405,17 @@ class KnossosDataset(object):
         return all([self._cube_cache.has_key(str(c) + str(mode)) for c in coordinates])
 
     def _cube_from_cache(self, c, mode):
+
+        self._cache_mutex.acquire()
+
         try:
-            return self._cube_cache[str(c) + str(mode)]
+            values = self._cube_cache[str(c) + str(mode)]
         except KeyError:
-            # cache miss
-            return None
+            values = None
+
+        self._cache_mutex.release()
+        return values
+
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
@@ -958,12 +971,14 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+
         def _read_cube(c):
             pos = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
             valid_values = False
 
             # check cache first
             values = self._cube_from_cache(c, mode)
+
             if values is not None:
                 #print('Cache hit')
                 if zyx_mode:
