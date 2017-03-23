@@ -1136,7 +1136,7 @@ class KnossosDataset(object):
                 size[dim] -= offset[dim] + size[dim] - self.boundary[dim]
 
             if size[dim] < 0:
-                raise Exception("Given block is totally out ouf bounce!")
+                raise Exception("Given block is totally out ouf bounds!")
 
         start = self.get_first_blocks(offset)
         end = self.get_last_blocks(offset, size)
@@ -1162,7 +1162,8 @@ class KnossosDataset(object):
                     cube_coordinates.append([x, y, z])
 
         if nb_threads > 1:
-            if not self._test_all_cache_satisfied(cube_coordinates, mode):
+            if not self._test_all_cache_satisfied(cube_coordinates, mode)\
+                    and len(cube_coordinates) > 1:
                 pool = ThreadPool(nb_threads)
                 results = pool.map(_read_cube, cube_coordinates)
                 pool.close()
