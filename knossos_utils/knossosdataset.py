@@ -62,6 +62,8 @@ import time
 import requests
 import os
 import zipfile
+import collections
+from threading import Lock
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -360,6 +362,61 @@ class KnossosDataset(object):
     def get_last_blocks(self, offset, size):
         return ((offset+size-1) // self.cube_shape) + 1
 
+    def _initialize_cache(self, cache_size):
+        """ Initializes the internal RAM cache for repeated look-ups.
+        max_size: Maximum number of cubes to hold before replacing existing cubes.
+
+        :param max_size: int
+            path to knossos.conf
+
+        :return:
+            nothing
+        """
+
+        self._cache_mutex = Lock()
+
+        self._cube_cache = collections.OrderedDict()
+        self._cube_cache_size = cache_size
+
+    def _add_to_cube_cache(self, c, mode, values):
+        if not self._cube_cache_size:
+            return
+
+        self._cache_mutex.acquire()
+        if len(self._cube_cache) >= self._cube_cache_size:
+            # remove the oldest (i.e. first inserted) cache element
+            self._cube_cache.popitem(last=False)
+
+        self._cube_cache[str(c) + str(mode)] = values
+        self._cache_mutex.release()
+
+        return
+
+    def _test_all_cache_satisfied(self, coordinates, mode):
+        """
+        Tests whether all supplied cube coordinates can be
+        provided from the cache.
+
+        :param coordinates: iterable
+            cube coordinate iterable
+        :return: bool
+            Whether all cubes are currently in the cache
+        """
+        return all([self._cube_cache.has_key(str(c) + str(mode)) for c in coordinates])
+
+    def _cube_from_cache(self, c, mode):
+
+        self._cache_mutex.acquire()
+
+        try:
+            values = self._cube_cache[str(c) + str(mode)]
+        except KeyError:
+            values = None
+
+        self._cache_mutex.release()
+        return values
+
+
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
 
@@ -421,8 +478,8 @@ class KnossosDataset(object):
             np.array(np.ceil(self.boundary.astype(np.float) /
                              self.cube_shape), dtype=np.int)
 
-    def initialize_from_knossos_path(self, path, fixed_mag=None,
-                                     use_abs_path=False, verbose=False):
+    def initialize_from_knossos_path(self, path, fixed_mag=None, http_max_tries=10,
+                                     use_abs_path=False, verbose=False, cache_size=0):
         """ Initializes the dataset by parsing the knossos.conf in path + "mag1"
 
         :param path: str
@@ -456,11 +513,25 @@ class KnossosDataset(object):
                     for mag_test_nb in range(10):
                         mag_folder = self.http_url + \
                                      self.name_mag_folder + str(2**mag_test_nb)
-                        request = requests.get(mag_folder,
-                                               auth=self.http_auth)
-                        if request.status_code == 200:
-                            self._mag.append(2**mag_test_nb)
-                        else:
+                        tries = 0
+                        while tries < http_max_tries:
+                            try:
+                                request = requests.get(mag_folder,
+                                                       auth=self.http_auth,
+                                                       timeout=10)
+                                if request.status_code == 200:
+                                    self._mag.append(2 ** mag_test_nb)
+                                    break
+
+                                request.raise_for_status()
+                            except:
+                                tries += 1
+                                if tries >= http_max_tries:
+                                    break
+                                else:
+                                    continue
+
+                        if tries >= http_max_tries:
                             break
             else:
                 folder = os.path.basename(os.path.dirname(path))
@@ -513,13 +584,15 @@ class KnossosDataset(object):
         if use_abs_path:
             self._knossos_path = os.path.abspath(self.knossos_path)
 
+        self._initialize_cache(cache_size)
+
         if verbose:
             _print("Initialization finished successfully")
         self._initialized = True
 
     def initialize_without_conf(self, path, boundary, scale, experiment_name,
                                 mags=None, make_mag_folders=True,
-                                create_knossos_conf=True, verbose=False):
+                                create_knossos_conf=True, verbose=False, cache_size=0):
         """ Initializes the dataset without a knossos.conf
 
             This function creates mag folders and knossos.conf's if requested.
@@ -602,12 +675,15 @@ class KnossosDataset(object):
                     f.write('magnification %s;' % this_mag)
         if verbose:
             _print("Initialization finished successfully")
+
+        self._initialize_cache(cache_size)
+
         self._initialized = True
 
     def initialize_from_matrix(self, path, scale, experiment_name,
                                offset=None, boundary=None, fast_downsampling=True,
                                data=None, data_path=None, hdf5_names=None,
-                               mags=None, verbose=False):
+                               mags=None, verbose=False, cache_size=0):
         """ Initializes the dataset with matrix
             Only for use with "small" matrices (~10^3 edgelength)
 
@@ -662,6 +738,8 @@ class KnossosDataset(object):
 
         if mags is None:
             mags = [1]
+
+        self._initialize_cache(cache_size)
 
         self.initialize_without_conf(path, boundary, scale, experiment_name,
                                      mags=mags, make_mag_folders=True,
@@ -795,12 +873,17 @@ class KnossosDataset(object):
         if return_errors:
             return errors
 
-    def from_raw_cubes_to_list(self, vx_list):
+    def from_cubes_to_list(self, vx_list, raw=True, datatype=np.uint32):
         """ Read voxel values vectorized
-        WARNING: voxels have to be clustered, otherwise: runtime -> inf
+        WARNING: voxels have to be clustered, otherwise: RAM & runtime -> inf
 
         :param vx_list:  list or array of 3 sequence of int
             list of voxels which values should be returned
+        :param raw: bool
+            True: read from raw cubes
+            False: read from overlaycubes
+        :param datatype: np.dtype
+            defines np.dtype, only relevant for overlaycubes (raw=False)
         :return: array of int
             array of voxel values corresponding to vx_list
         """
@@ -809,14 +892,45 @@ class KnossosDataset(object):
                         np.max(vx_list, axis=0)]
         size = boundary_box[1] - boundary_box[0] + np.array([1, 1, 1])
 
-        block = self.from_raw_cubes_to_matrix(size, boundary_box[0],
-                                              show_progress=False)
+        if raw:
+            block = self.from_raw_cubes_to_matrix(size, boundary_box[0],
+                                                  show_progress=False)
+        else:
+            block = self.from_overlaycubes_to_matrix(size, boundary_box[0],
+                                                     datatype=datatype,
+                                                     show_progress=False)
 
         vx_list -= boundary_box[0]
 
         return block[vx_list[:, 0], vx_list[:, 1], vx_list[:, 2]]
 
-    def from_cubes_to_matrix(self, size, offset, type, mag=1, datatype=np.uint8,
+    def from_raw_cubes_to_list(self, vx_list):
+        """ Read voxel values vectorized
+        WARNING: voxels have to be clustered, otherwise: RAM & runtime -> inf
+
+        :param vx_list:  list or array of 3 sequence of int
+            list of voxels which values should be returned
+        :return: array of int
+            array of voxel values corresponding to vx_list
+        """
+
+        return self.from_cubes_to_list(vx_list, raw=True, datatype=np.uint8)
+
+    def from_overlaycubes_to_list(self, vx_list, datatype=np.uint32):
+        """ Read voxel values vectorized
+        WARNING: voxels have to be clustered, otherwise: RAM & runtime -> inf
+
+        :param vx_list:  list or array of 3 sequence of int
+            list of voxels which values should be returned
+        :param datatype: np.dtype
+            defines np.dtype
+        :return: array of int
+            array of voxel values corresponding to vx_list
+        """
+
+        return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
+
+    def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
                              mirror_oob=False, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
@@ -829,7 +943,7 @@ class KnossosDataset(object):
             size of requested data block
         :param offset: 3 sequence of ints
             coordinate of the corner closest to (0, 0, 0)
-        :param type: str
+        :param mode: str
             either 'raw' or 'overlay'
         :param mag: int
             magnification of the requested data block
@@ -857,118 +971,140 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+
         def _read_cube(c):
+            pos = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
             valid_values = False
-            if from_raw:
-                path = self.knossos_path + \
-                       self.name_mag_folder + \
-                       "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                       self.experiment_name + \
-                       "_mag%d_x%04d_y%04d_z%04d.raw" % (mag, c[0], c[1], c[2])
 
-                if self.in_http_mode:
-                    tries = 0
-                    while tries < http_max_tries:
-                        try:
-                            request = requests.get(path,
-                                                   auth=self.http_auth,
-                                                   timeout=2)
-                            request.raise_for_status()
-                            values = np.fromstring(request.content,
-                                                   dtype=datatype)
-                            valid_values = True
+            # check cache first
+            values = self._cube_from_cache(c, mode)
 
-                        except requests.exceptions.Timeout as e:
-                            return e
-                        except requests.exceptions.TooManyRedirects as e:
-                            return e
-                        except requests.exceptions.RequestException as e:
-                            return e
-                        except requests.exceptions.ConnectionError as e:
-                            tries += 1
-                            if tries == http_max_tries:
-                                return e
-                            else:
-                                continue
-                        except requests.exceptions.HTTPError as e:
-                            return e
-                        break
+            if values is not None:
+                #print('Cache hit')
+                if zyx_mode:
+                    output[pos[2]: pos[2] + self.cube_shape[2],
+                           pos[1]: pos[1] + self.cube_shape[1],
+                           pos[0]: pos[0] + self.cube_shape[0]] = \
+                        values
                 else:
-                    try:
-                        flat_shape = int(np.prod(self.cube_shape))
-                        values = np.fromfile(path, dtype=np.uint8,
-                                             count=flat_shape)
-                        valid_values = True
-                    except:
-                        if verbose:
-                            _print("Cube does not exist, cube with zeros "
-                                   "only assigned")
+                    output[pos[0]: pos[0] + self.cube_shape[0],
+                           pos[1]: pos[1] + self.cube_shape[1],
+                           pos[2]: pos[2] + self.cube_shape[2]] = \
+                        values
             else:
-                path = self.knossos_path + \
-                       self.name_mag_folder + \
-                       "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                       self.experiment_name + \
-                       "_mag%d_x%04d_y%04d_z%04d.seg.sz" % \
-                       (mag, c[0], c[1], c[2])
+                if from_raw:
+                    path = self.knossos_path + \
+                           self.name_mag_folder + \
+                           "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
+                           self.experiment_name + \
+                           "_mag%d_x%04d_y%04d_z%04d.raw" % (mag, c[0], c[1], c[2])
 
-                if self.in_http_mode:
-                    tries = 0
-                    while tries < http_max_tries:
+                    if self.in_http_mode:
+                        tries = 0
+                        while tries < http_max_tries:
+                            try:
+                                request = requests.get(path,
+                                                       auth=self.http_auth,
+                                                       timeout=2)
+                                request.raise_for_status()
+                                values = np.fromstring(request.content,
+                                                       dtype=datatype)
+                                valid_values = True
+
+                            except requests.exceptions.Timeout as e:
+                                return e
+                            except requests.exceptions.TooManyRedirects as e:
+                                return e
+                            except requests.exceptions.RequestException as e:
+                                return e
+                            except requests.exceptions.ConnectionError as e:
+                                tries += 1
+                                if tries == http_max_tries:
+                                    return e
+                                else:
+                                    continue
+                            except requests.exceptions.HTTPError as e:
+                                return e
+                            break
+                    else:
                         try:
-                            request = requests.get(path + ".zip",
-                                                   auth=self.http_auth,
-                                                   timeout=2)
-                            request.raise_for_status()
-                            with zipfile.ZipFile(BytesIO(
-                                    request.content), "r") \
-                                    as zf:
+                            flat_shape = int(np.prod(self.cube_shape))
+                            values = np.fromfile(path, dtype=np.uint8,
+                                                 count=flat_shape)
+                            valid_values = True
+                        except:
+                            if verbose:
+                                _print("Cube does not exist, cube with zeros "
+                                       "only assigned")
+                else:
+                    path = self.knossos_path + \
+                           self.name_mag_folder + \
+                           "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
+                           self.experiment_name + \
+                           "_mag%d_x%04d_y%04d_z%04d.seg.sz" % \
+                           (mag, c[0], c[1], c[2])
+
+                    if self.in_http_mode:
+                        tries = 0
+                        while tries < http_max_tries:
+                            try:
+                                request = requests.get(path + ".zip",
+                                                       auth=self.http_auth,
+                                                       timeout=2)
+                                request.raise_for_status()
+                                with zipfile.ZipFile(BytesIO(
+                                        request.content), "r") \
+                                        as zf:
+                                    values = np.fromstring(
+                                        self.module_wide["snappy"].decompress(
+                                            zf.read(os.path.basename(path))),
+                                        dtype=datatype)
+                                    valid_values = True
+
+                            except requests.exceptions.Timeout as e:
+                                return e
+                            except requests.exceptions.TooManyRedirects as e:
+                                return e
+                            except requests.exceptions.RequestException as e:
+                                return e
+                            except requests.exceptions.ConnectionError as e:
+                                tries += 1
+                                if tries == http_max_tries:
+                                    return e
+                                else:
+                                    continue
+                            except requests.exceptions.HTTPError as e:
+                                return e
+                            break
+                    else:
+                        try:
+                            with zipfile.ZipFile(path + ".zip", "r") as zf:
                                 values = np.fromstring(
                                     self.module_wide["snappy"].decompress(
                                         zf.read(os.path.basename(path))),
                                     dtype=datatype)
+                                valid_values = True
+                        except:
+                            if verbose:
+                                _print("Cube does not exist, cube with zeros "
+                                       "only assigned")
 
-                        except requests.exceptions.Timeout as e:
-                            return e
-                        except requests.exceptions.TooManyRedirects as e:
-                            return e
-                        except requests.exceptions.RequestException as e:
-                            return e
-                        except requests.exceptions.ConnectionError as e:
-                            tries += 1
-                            if tries == http_max_tries:
-                                return e
-                            else:
-                                continue
-                        except requests.exceptions.HTTPError as e:
-                            return e
-                        break
-                else:
-                    try:
-                        with zipfile.ZipFile(path + ".zip", "r") as zf:
-                            values = np.fromstring(
-                                self.module_wide["snappy"].decompress(
-                                    zf.read(os.path.basename(path))),
-                                dtype=datatype)
-                            valid_values = True
-                    except:
-                        if verbose:
-                            _print("Cube does not exist, cube with zeros "
-                                   "only assigned")
+                if valid_values:
+                    if zyx_mode:
+                        values = values.reshape(self.cube_shape)
+                        self._add_to_cube_cache(c, mode, values)
+                        output[pos[2]: pos[2]+self.cube_shape[2],
+                               pos[1]: pos[1]+self.cube_shape[1],
+                               pos[0]: pos[0]+self.cube_shape[0]] = \
+                            values
 
-            pos = np.subtract([c[0], c[1], c[2]], start)*self.cube_shape
-
-            if valid_values:
-                if zyx_mode:
-                    output[pos[2]: pos[2]+self.cube_shape[2],
-                           pos[1]: pos[1]+self.cube_shape[1],
-                           pos[0]: pos[0]+self.cube_shape[0]] = \
-                        values.reshape(self.cube_shape)
-
-                else:
-                    output[pos[0]: pos[0]+self.cube_shape[0],
-                           pos[1]: pos[1]+self.cube_shape[1],
-                           pos[2]: pos[2]+self.cube_shape[2]] = \
-                        values.reshape(self.cube_shape).T
+                    else:
+                        values = values.reshape(self.cube_shape).T
+                        self._add_to_cube_cache(c, mode, values)
+                        output[pos[0]: pos[0]+self.cube_shape[0],
+                               pos[1]: pos[1]+self.cube_shape[1],
+                               pos[2]: pos[2]+self.cube_shape[2]] = \
+                            values
 
         t0 = time.time()
 
@@ -978,17 +1114,21 @@ class KnossosDataset(object):
         if mag not in self._mag:
             raise Exception("Magnification not supported")
 
+        if 0 in size:
+            raise Exception("The first parameter is size! - "
+                            "at least one dimension was set to 0 ...")
+
         if verbose and show_progress:
             show_progress = False
             _print("when choosing verbose, show_progress is automatically "
                    "disabled")
 
-        if type == 'raw':
+        if mode == 'raw':
             from_raw = True
-        elif type == 'overlay':
+        elif mode == 'overlay':
             from_raw = False
         else:
-            raise NotImplementedError("type has to be 'raw' or 'overlay'")
+            raise NotImplementedError("mode has to be 'raw' or 'overlay'")
 
         size = np.array(size, dtype=np.int)
         offset = np.array(offset, dtype=np.int)
@@ -1011,7 +1151,7 @@ class KnossosDataset(object):
                 size[dim] -= offset[dim] + size[dim] - self.boundary[dim]
 
             if size[dim] < 0:
-                raise Exception("Given block is totally out ouf bounce!")
+                raise Exception("Given block is totally out ouf bounds!")
 
         start = self.get_first_blocks(offset)
         end = self.get_last_blocks(offset, size)
@@ -1037,10 +1177,16 @@ class KnossosDataset(object):
                     cube_coordinates.append([x, y, z])
 
         if nb_threads > 1:
-            pool = ThreadPool(nb_threads)
-            results = pool.map(_read_cube, cube_coordinates)
-            pool.close()
-            pool.join()
+            if not self._test_all_cache_satisfied(cube_coordinates, mode)\
+                    and len(cube_coordinates) > 1:
+                pool = ThreadPool(nb_threads)
+                results = pool.map(_read_cube, cube_coordinates)
+                pool.close()
+                pool.join()
+            else:
+                results = []
+                for c in cube_coordinates:
+                    results.append(_read_cube(c))
         else:
             results = []
             for c in cube_coordinates:
@@ -1075,7 +1221,7 @@ class KnossosDataset(object):
             _stdout('\rProgress: finished\n')
             dt = time.time()-t0
             speed = np.product(output.shape) * 1.0/1000000/dt
-            if type == "raw":
+            if mode == "raw":
                 _stdout('\rSpeed: %.3f MB or MPix /s, time %s\n' % (speed, dt))
             else:
                 _stdout('\rSpeed: %.3f MPix /s, time %s\n' % (speed, dt))
@@ -1152,7 +1298,7 @@ class KnossosDataset(object):
             raise Exception("Dataset is not initialized")
 
         return self.from_cubes_to_matrix(size, offset,
-                                         type='raw',
+                                         mode='raw',
                                          mag=mag,
                                          datatype=datatype,
                                          mirror_oob=mirror_oob,
@@ -1208,7 +1354,7 @@ class KnossosDataset(object):
             raise Exception("Dataset is not initialized")
 
         return self.from_cubes_to_matrix(size, offset,
-                                         type='overlay',
+                                         mode='overlay',
                                          mag=mag,
                                          datatype=datatype,
                                          mirror_oob=mirror_oob,
@@ -1465,11 +1611,17 @@ class KnossosDataset(object):
         :param verbose: bool
             True: prints several information
         :param overwrite: bool
-            True: whole KNOSSOS cube is overwritten
-            False: cube entries where data == 0 are contained
-            eg.: Two different function calls write different parts of one
-                 KNOSSOS cube. When overwrite is set to False, the second call
-                 won't overwrite the output of the first one.
+            True: whole KNOSSOS cube is overwritten with new data
+            False: cube entries where new data == 0 are contained
+            eg.: Two different function calls write to two non-overlapping parts
+                 of one KNOSSOS cube. When overwrite is set to False, the second
+                 call won't overwrite the output of the first one. When they
+                 overlap however, the second call will overwrite the data
+                 from the first call at all voxels where the second data block
+                 has non-zero entries. If overwrite is set to True for the
+                 second call the full block gets replaced with the new data
+                 regardless of its values. In the current implementation this
+                 effects all data within all knossos cubes that are accessed.
         :param kzip_path: str
             is not None: overlay data is written as kzip to this path
         :param annotation_str: str
@@ -1767,14 +1919,50 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+        self.delete_all_cubes(raw=False, nb_processes=nb_processes,
+                              verbose=verbose)
+
+    def delete_all_rawcubes(self, nb_processes=4, verbose=False):
+        """  Deletes all overlaycubes
+
+        :param nb_processes: int
+            if < 2: no multiprocessing
+        :param verbose: bool
+            True: prints several information
+        :return:
+            nothing
+        """
+        self.delete_all_cubes(raw=True, nb_processes=nb_processes,
+                              verbose=verbose)
+
+    def delete_all_cubes(self, raw, nb_processes=4, verbose=False):
+        """  Deletes all overlaycubes
+
+        :param raw: bool
+            wether to delete raw or overlay cubes
+        :param nb_processes: int
+            if < 2: no multiprocessing
+        :param verbose: bool
+            True: prints several information
+        :return:
+            nothing
+        """
         multi_params = []
         for mag in range(32):
             if os.path.exists(self._knossos_path+self._name_mag_folder +
                               str(2**mag)):
                 for x_cube in range(self._number_of_cubes[0] // 2**mag+1):
-                    glob_input = self._knossos_path + self._name_mag_folder + \
-                                 str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
-                                 self._experiment_name + "*seg*"
+                    if raw:
+                        glob_input = self._knossos_path + \
+                                     self._name_mag_folder + \
+                                     str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
+                                     self._experiment_name + "*.raw"
+                    else:
+                        glob_input = self._knossos_path + \
+                                     self._name_mag_folder + \
+                                     str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
+                                     self._experiment_name + "*seg*"
+
                     multi_params.append([glob_input, verbose])
 
         if not self.initialized:
