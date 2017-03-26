@@ -1222,7 +1222,7 @@ class KnossosDataset(object):
                                          http_verbose=http_verbose,
                                          show_progress=show_progress)
 
-    def from_kzip_to_matrix(self, path, size, offset, empty_cube_label=0,
+    def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64, verbose=False):
         """ Extracts a 3D matrix from a kzip file
 
@@ -1278,8 +1278,9 @@ class KnossosDataset(object):
                         _stdout('\rProgress: %.2f%%' % progress)
 
                     this_path = self._experiment_name +\
-                                '_mag1_mag1x%dy%dz%d.seg.sz' % \
-                                (current[0], current[1], current[2])
+                                '_mag1_mag%dx%dy%dz%d.seg.sz' % \
+                                (mag, current[0], current[1], current[2])
+                    print(this_path)
 
                     if self._experiment_name == \
                                 "20130410.membrane.striatum.10x10x30nm":
