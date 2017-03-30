@@ -1541,12 +1541,16 @@ class KnossosDataset(object):
 
         z_coord_cnt = 0
 
+        stop = False
+
         scaled_cube_layer_size = (self.boundary[0]//mag,
                                   self.boundary[1]//mag,
                                   self._cube_shape[2])
 
         for curr_z_cube in range(0, 1 + int(np.ceil(
                 self._number_of_cubes[2]) / float(mag))):
+            if stop:
+                break
 
             layer = self.from_raw_cubes_to_matrix(
                 size=scaled_cube_layer_size,
@@ -1562,7 +1566,12 @@ class KnossosDataset(object):
 
                 # the swap is necessary to have the same visual
                 # appearence in knossos and the resulting image stack
-                swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
+                try:
+                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
+                except IndexError:
+                    stop = True
+                    break
+
                 if out_format == 'png':
                     scipy.misc.imsave(file_path, swapped)
                     # this_img = Image.fromarray(swapped)
