@@ -1527,12 +1527,19 @@ class KnossosDataset(object):
             scipy.misc.imsave(output_path + "/" + name + "_%d." + output_format,
                               data[:, :, z])
 
-    def export_to_image_stack(self, out_format='tif', out_path='', mag=1):
+    def export_to_image_stack(self,
+                              mode='raw',
+                              out_dtype=np.uint8,
+                              out_format='tif',
+                              out_path='',
+                              mag=1):
         """
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
-        Make sure to have enough RAM available. There is still a bug at the
-        final layers, tifs containing no image data are written out at the end.
+        Make sure to have enough RAM available. Supports raw data and
+        overlay export (only raw file).
 
+        :param mode: string
+        :param out_dtype: numpy dtype
         :param out_format: string
         :param out_path: string
         :return:
@@ -1553,21 +1560,29 @@ class KnossosDataset(object):
                 self._number_of_cubes[2]) / float(mag))):
             if stop:
                 break
+            if mode == 'raw':
+                layer = self.from_raw_cubes_to_matrix(
+                    size=scaled_cube_layer_size,
+                    offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
+                    mag=mag)
+            elif mode == 'overlay':
+                layer = self.from_overlaycubes_to_matrix(
+                    size=scaled_cube_layer_size,
+                    offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
+                    mag=mag)
 
-            layer = self.from_raw_cubes_to_matrix(
-                size=scaled_cube_layer_size,
-                offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
-                mag=mag)
+            layer = layer.astype(out_dtype)
 
             for curr_z_coord in range(0, self._cube_shape[2]):
 
-                file_path = "{0}_{1}_{2:06d}.{3}".format(out_path,
-                                                         self.experiment_name,
+                file_path = "{0}{1}_{2:06d}.{3}".format(out_path,
+                                                         mode,
                                                          z_coord_cnt,
                                                          out_format)
 
                 # the swap is necessary to have the same visual
                 # appearence in knossos and the resulting image stack
+                # => needs further investigation?
                 try:
                     swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
                 except IndexError:
