@@ -1597,7 +1597,7 @@ class KnossosDataset(object):
                     swapped.tofile(file_path)
 
                 _print("Writing layer {0} of {1} in total.".format(
-                    z_coord_cnt, self.boundary[2]//mag))
+                    z_coord_cnt+1, self.boundary[2]//mag))
 
                 z_coord_cnt += 1
 
