@@ -1525,7 +1525,7 @@ class KnossosDataset(object):
             scipy.misc.imsave(output_path + "/" + name + "_%d." + output_format,
                               data[:, :, z])
 
-    def export_to_image_stack(self, out_format='png', out_path='', mag=1):
+    def export_to_image_stack(self, out_format='tif', out_path='', mag=1):
         """
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
         Make sure to have enough RAM available. There is still a bug at the
@@ -1572,11 +1572,11 @@ class KnossosDataset(object):
                     stop = True
                     break
 
-                if out_format == 'png':
+                if out_format != 'raw':
                     scipy.misc.imsave(file_path, swapped)
                     # this_img = Image.fromarray(swapped)
                     # this_img.save(file_path)
-                elif out_format == 'raw':
+                else:
                     swapped.tofile(file_path)
 
                 _print("Writing layer {0} of {1} in total.".format(
@@ -1642,6 +1642,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+
         def _write_cubes(args):
             """ Helper function for multithreading """
             folder_path = args[0]
@@ -1664,6 +1665,7 @@ class KnossosDataset(object):
             cube = cube.reshape(np.prod(self.cube_shape))
 
             if kzip_path is None:
+
                 if not os.path.exists(folder_path):
                     os.makedirs(folder_path)
 
@@ -1695,12 +1697,12 @@ class KnossosDataset(object):
                                 dtype=np.uint64)
                     indices = np.where(cube == 0)
                     cube[indices] = existing_cube[indices]
-
                 if as_raw:
                     f = open(path, "wb")
                     f.write(cube)
                     f.close()
                 else:
+
                     arc_path = os.path.basename(path)
                     with zipfile.ZipFile(path + ".zip", "w") as zf:
                         zf.writestr(arc_path,
