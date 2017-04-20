@@ -894,11 +894,13 @@ class KnossosDataset(object):
 
         if raw:
             block = self.from_raw_cubes_to_matrix(size, boundary_box[0],
-                                                  show_progress=False)
+                                                  show_progress=False,
+                                                  mirror_oob=True)
         else:
             block = self.from_overlaycubes_to_matrix(size, boundary_box[0],
                                                      datatype=datatype,
-                                                     show_progress=False)
+                                                     show_progress=False,
+                                                     mirror_oob=True)
 
         vx_list -= boundary_box[0]
 
@@ -931,7 +933,7 @@ class KnossosDataset(object):
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
     def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
-                             mirror_oob=False, hdf5_path=None,
+                             mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
                              nb_threads=40, verbose=False, show_progress=True,
