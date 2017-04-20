@@ -64,6 +64,7 @@ import os
 import zipfile
 import collections
 from threading import Lock
+from PIL import Image
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -1537,6 +1538,8 @@ class KnossosDataset(object):
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
         Make sure to have enough RAM available. Supports raw data and
         overlay export (only raw file).
+        Please be aware that overlay tif export can be problematic, regarding
+        the datatype. Usage of the raw format is advised.
 
         :param mode: string
         :param out_dtype: numpy dtype
@@ -1590,9 +1593,9 @@ class KnossosDataset(object):
                     break
 
                 if out_format != 'raw':
-                    scipy.misc.imsave(file_path, swapped)
-                    # this_img = Image.fromarray(swapped)
-                    # this_img.save(file_path)
+                    img = Image.fromarray(swapped)
+                    with open(file_path, 'w') as fp:
+                        img.save(fp)
                 else:
                     swapped.tofile(file_path)
 
