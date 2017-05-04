@@ -65,6 +65,7 @@ import zipfile
 import collections
 from threading import Lock
 import traceback
+from PIL import Image
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -896,11 +897,13 @@ class KnossosDataset(object):
 
         if raw:
             block = self.from_raw_cubes_to_matrix(size, boundary_box[0],
-                                                  show_progress=False)
+                                                  show_progress=False,
+                                                  mirror_oob=True)
         else:
             block = self.from_overlaycubes_to_matrix(size, boundary_box[0],
                                                      datatype=datatype,
-                                                     show_progress=False)
+                                                     show_progress=False,
+                                                     mirror_oob=True)
 
         vx_list -= boundary_box[0]
 
@@ -933,7 +936,7 @@ class KnossosDataset(object):
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
     def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
-                             mirror_oob=False, hdf5_path=None,
+                             mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
                              nb_threads=40, verbose=False, show_progress=True,
@@ -1375,7 +1378,7 @@ class KnossosDataset(object):
                                          http_verbose=http_verbose,
                                          show_progress=show_progress)
 
-    def from_kzip_to_matrix(self, path, size, offset, empty_cube_label=0,
+    def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64, verbose=False):
         """ Extracts a 3D matrix from a kzip file
 
@@ -1431,8 +1434,9 @@ class KnossosDataset(object):
                         _stdout('\rProgress: %.2f%%' % progress)
 
                     this_path = self._experiment_name +\
-                                '_mag1_mag1x%dy%dz%d.seg.sz' % \
-                                (current[0], current[1], current[2])
+                                '_mag1_mag%dx%dy%dz%d.seg.sz' % \
+                                (mag, current[0], current[1], current[2])
+                    print(this_path)
 
                     if self._experiment_name == \
                                 "20130410.membrane.striatum.10x10x30nm":
@@ -1531,12 +1535,21 @@ class KnossosDataset(object):
             scipy.misc.imsave(output_path + "/" + name + "_%d." + output_format,
                               data[:, :, z])
 
-    def export_to_image_stack(self, out_format='png', out_path='', mag=1):
+    def export_to_image_stack(self,
+                              mode='raw',
+                              out_dtype=np.uint8,
+                              out_format='tif',
+                              out_path='',
+                              mag=1):
         """
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
-        Make sure to have enough RAM available. There is still a bug at the
-        final layers, tifs containing no image data are written out at the end.
+        Make sure to have enough RAM available. Supports raw data and
+        overlay export (only raw file).
+        Please be aware that overlay tif export can be problematic, regarding
+        the datatype. Usage of the raw format is advised.
 
+        :param mode: string
+        :param out_dtype: numpy dtype
         :param out_format: string
         :param out_path: string
         :return:
@@ -1547,37 +1560,54 @@ class KnossosDataset(object):
 
         z_coord_cnt = 0
 
+        stop = False
+
         scaled_cube_layer_size = (self.boundary[0]//mag,
                                   self.boundary[1]//mag,
                                   self._cube_shape[2])
 
         for curr_z_cube in range(0, 1 + int(np.ceil(
                 self._number_of_cubes[2]) / float(mag))):
+            if stop:
+                break
+            if mode == 'raw':
+                layer = self.from_raw_cubes_to_matrix(
+                    size=scaled_cube_layer_size,
+                    offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
+                    mag=mag)
+            elif mode == 'overlay':
+                layer = self.from_overlaycubes_to_matrix(
+                    size=scaled_cube_layer_size,
+                    offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
+                    mag=mag)
 
-            layer = self.from_raw_cubes_to_matrix(
-                size=scaled_cube_layer_size,
-                offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
-                mag=mag)
+            layer = layer.astype(out_dtype)
 
             for curr_z_coord in range(0, self._cube_shape[2]):
 
-                file_path = "{0}_{1}_{2:06d}.{3}".format(out_path,
-                                                         self.experiment_name,
+                file_path = "{0}{1}_{2:06d}.{3}".format(out_path,
+                                                         mode,
                                                          z_coord_cnt,
                                                          out_format)
 
                 # the swap is necessary to have the same visual
                 # appearence in knossos and the resulting image stack
-                swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
-                if out_format == 'png':
-                    scipy.misc.imsave(file_path, swapped)
-                    # this_img = Image.fromarray(swapped)
-                    # this_img.save(file_path)
-                elif out_format == 'raw':
+                # => needs further investigation?
+                try:
+                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
+                except IndexError:
+                    stop = True
+                    break
+
+                if out_format != 'raw':
+                    img = Image.fromarray(swapped)
+                    with open(file_path, 'w') as fp:
+                        img.save(fp)
+                else:
                     swapped.tofile(file_path)
 
                 _print("Writing layer {0} of {1} in total.".format(
-                    z_coord_cnt, self.boundary[2]//mag))
+                    z_coord_cnt+1, self.boundary[2]//mag))
 
                 z_coord_cnt += 1
 
@@ -1639,6 +1669,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+
         def _write_cubes(args):
             """ Helper function for multithreading """
             folder_path = args[0]
@@ -1661,6 +1692,7 @@ class KnossosDataset(object):
             cube = cube.reshape(np.prod(self.cube_shape))
 
             if kzip_path is None:
+
                 if not os.path.exists(folder_path):
                     os.makedirs(folder_path)
 
@@ -1692,12 +1724,12 @@ class KnossosDataset(object):
                                 dtype=np.uint64)
                     indices = np.where(cube == 0)
                     cube[indices] = existing_cube[indices]
-
                 if as_raw:
                     f = open(path, "wb")
                     f.write(cube)
                     f.close()
                 else:
+
                     arc_path = os.path.basename(path)
                     with zipfile.ZipFile(path + ".zip", "w") as zf:
                         zf.writestr(arc_path,
