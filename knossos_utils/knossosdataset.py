@@ -64,6 +64,7 @@ import os
 import zipfile
 import collections
 from threading import Lock
+import traceback
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -412,6 +413,7 @@ class KnossosDataset(object):
             values = self._cube_cache[str(c) + str(mode)]
         except KeyError:
             values = None
+
 
         self._cache_mutex.release()
         return values
@@ -1099,7 +1101,12 @@ class KnossosDataset(object):
                             values
 
                     else:
-                        values = values.reshape(self.cube_shape).T
+                        try:
+                            values = values.reshape(self.cube_shape).T
+                        except:
+                            print('Exception in reshape: values.shape {0}'.format(values.shape))
+                            print('Exception in reshape:self.cube_shape {0}'.format(self.cube_shape))
+                            raise
                         self._add_to_cube_cache(c, mode, values)
                         output[pos[0]: pos[0]+self.cube_shape[0],
                                pos[1]: pos[1]+self.cube_shape[1],
@@ -1733,7 +1740,7 @@ class KnossosDataset(object):
                 _print("kzip path created, notice that kzips can only be "
                        "created in mag1")
 
-            mags = [1]
+            #mags = [1]
             if not 1 in self.mag:
                 raise Exception("kzips have to be in mag1 but dataset does not"
                                 "support mag1")
@@ -1760,7 +1767,7 @@ class KnossosDataset(object):
 
         if (not isinstance(data, list)) and \
                 (not data is None):
-            data = np.array(data)
+            data = np.array(data, copy=False)
         else:
             for ii in range(len(data)):
                 data[ii] = np.array(data[ii])
@@ -1783,7 +1790,9 @@ class KnossosDataset(object):
                                                              order=3),
                                           dtype=datatype)
             else:
-                data_inter = np.array(np.copy(data), dtype=datatype)
+                # copy=False means in this context that a copy is only made
+                # when necessary (e.g. type change)
+                data_inter = data.astype(datatype, copy=False)
 
             offset_mag = np.array(offset, dtype=np.int) // mag
             size_mag = np.array(data_inter.shape, dtype=np.int)
@@ -1886,7 +1895,9 @@ class KnossosDataset(object):
                     zf.writestr("annotation.xml", annotation_str)
             shutil.rmtree(kzip_path)
 
-    def from_overlaycubes_to_kzip(self, size, offset, output_path, mag=1):
+    def from_overlaycubes_to_kzip(self, size, offset, output_path,
+                                  src_mag=1, trg_mags=[1,2,4,8],
+                                  nb_threads=5):
         """ Copies chunk from overlay cubes and saves them as kzip
 
         :param size: 3 sequence of ints
@@ -1895,18 +1906,27 @@ class KnossosDataset(object):
             coordinate of the corner closest to (0, 0, 0)
         :param output_path: str
             path to .k.zip file without extension
-        :param mag: int
-            desired magnification
+        :param src_mag: int
+            source mag from knossos dataset
+        :param trg_mags: iterable of ints
+            target mags to write to kzip
+        :param nb_threads: int
+            number of worker threads
         :return:
             nothing
         """
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        overlay = self.from_overlaycubes_to_matrix(size, offset, mag=mag)
+        overlay = self.from_overlaycubes_to_matrix(size,
+                                                   offset,
+                                                   mag=src_mag,
+                                                   nb_threads=nb_threads)
 
         self.from_matrix_to_cubes(offset, data=overlay,
-                                  kzip_path=output_path)
+                                  kzip_path=output_path,
+                                  nb_threads=nb_threads,
+                                  mags=trg_mags)
 
     def delete_all_overlaycubes(self, nb_processes=4, verbose=False):
         """  Deletes all overlaycubes
