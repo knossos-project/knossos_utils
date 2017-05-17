@@ -1244,10 +1244,17 @@ class KnossosDataset(object):
             if verbose:
                 _print("Shape was verified")
 
-        if mirror_oob and np.any(mirror_overlap != 0) and not zyx_mode:
-            output = np.lib.pad(output, mirror_overlap, 'symmetric')
-        elif mirror_oob and np.any(mirror_overlap != 0) and zyx_mode:
-            output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
+        if np.any(mirror_overlap != 0):
+            if not zyx_mode:
+                if mirror_oob:
+                    output = np.lib.pad(output, mirror_overlap, 'symmetric')
+                else:
+                    output = np.lib.pad(output, mirror_overlap, 'constant')
+            else:
+                if mirror_oob:
+                    output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
+                else:
+                    output = np.lib.pad(output, mirror_overlap[::-1], 'constant')
 
         if output.dtype != datatype:
             raise Exception("Wrong datatype! - for unknown reasons...")
