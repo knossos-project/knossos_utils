@@ -1476,10 +1476,11 @@ class KnossosDataset(object):
 
                     pos = (current-start)*self.cube_shape
 
+                    _print(np.unique(values, return_counts=True))
                     values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
-                    output[pos[0] : pos[0] + self.cube_shape[0],
-                           pos[1] : pos[1] + self.cube_shape[1],
-                           pos[2] : pos[2] + self.cube_shape[2]] = values
+                    output[pos[0]: pos[0] + self.cube_shape[0],
+                           pos[1]: pos[1] + self.cube_shape[1],
+                           pos[2]: pos[2] + self.cube_shape[2]] = values
                     cnt += 1
                     current[0] += 1
                 current[1] += 1
@@ -1851,10 +1852,12 @@ class KnossosDataset(object):
                         np.array(data.shape) * inv_mag_ratio,
                         dtype=data.dtype)
 
-                    for i_step in range(inv_mag_ratio):
-                        data_inter[i_step:: inv_mag_ratio,
-                                   i_step:: inv_mag_ratio,
-                                   i_step:: inv_mag_ratio] = data
+                    for x in range(inv_mag_ratio):
+                        for y in range(inv_mag_ratio):
+                            for z in range(inv_mag_ratio):
+                                data_inter[x:: inv_mag_ratio,
+                                           y:: inv_mag_ratio,
+                                           z:: inv_mag_ratio] = data
 
                     data_inter = data_inter.astype(dtype=datatype, copy=False)
                 else:
