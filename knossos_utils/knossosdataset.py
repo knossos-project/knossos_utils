@@ -755,7 +755,8 @@ class KnossosDataset(object):
                                   as_raw=True)
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
-                     stride=256, return_errors=False, nb_threads=20):
+                     stride=256, return_errors=False, nb_threads=20,
+                     verbose=True):
         """ Copies a dataset to another dataset - especially useful for
             downloading remote datasets
 
@@ -782,7 +783,8 @@ class KnossosDataset(object):
                 raw = self.from_raw_cubes_to_matrix(size, offset, mag=mag,
                                                     http_verbose=True,
                                                     nb_threads=1,
-                                                    show_progress=False)
+                                                    show_progress=False,
+                                                    verbose=verbose)
 
                 if isinstance(raw, tuple):
                     err = raw[1]
@@ -792,7 +794,8 @@ class KnossosDataset(object):
 
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=raw, datatype=np.uint8,
-                                            as_raw=True, nb_threads=1)
+                                            as_raw=True, nb_threads=1,
+                                            verbose=verbose)
 
                 return err
             else:
@@ -820,7 +823,7 @@ class KnossosDataset(object):
         else:
             data_range = [[0, 0, 0], self.boundary]
 
-        if not mags:
+        if mags is None:
             mags = self.mag
 
         if isinstance(mags, int):
@@ -940,8 +943,8 @@ class KnossosDataset(object):
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
-                             nb_threads=40, verbose=False, show_progress=True,
-                             http_max_tries=10, http_verbose=False):
+                             nb_threads=40, verbose=True, show_progress=True,
+                             http_max_tries=50, http_verbose=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -1011,11 +1014,36 @@ class KnossosDataset(object):
                             try:
                                 request = requests.get(path,
                                                        auth=self.http_auth,
-                                                       timeout=2)
+                                                       timeout=60)
                                 request.raise_for_status()
                                 values = np.fromstring(request.content,
                                                        dtype=datatype)
-
+                                if values.sum() == 0:
+                                    if verbose:
+                                        _print("\nZero value array encountered for"
+                                              " %d time. (%s)\n" % (1+tries, path))
+                                    tries += 1
+                                    time.sleep(0.1)
+                                    if tries == http_max_tries:
+                                        if verbose:
+                                            _print("Max. #tries reached.")
+                                        return "Max-try error"
+                                    else:
+                                        continue
+                                try:
+                                    values.reshape(self.cube_shape)
+                                except ValueError:
+                                    if verbose:
+                                        _print("\nReshape error encountered for"
+                                          " %d time. (%s)\n" % (1+tries, path))
+                                    tries += 1
+                                    time.sleep(0.1)
+                                    if tries == http_max_tries:
+                                        if verbose:
+                                            _print("Reshape error.")
+                                        return "Reshape error"
+                                    else:
+                                        continue
                                 valid_values = True
 
                             except requests.exceptions.Timeout as e:
@@ -1026,7 +1054,10 @@ class KnossosDataset(object):
                                 return e
                             except requests.exceptions.ConnectionError as e:
                                 tries += 1
+                                time.sleep(0.1)
                                 if tries == http_max_tries:
+                                    if verbose:
+                                        _print("Max. #tries reached.")
                                     return e
                                 else:
                                     continue
@@ -1057,7 +1088,7 @@ class KnossosDataset(object):
                             try:
                                 request = requests.get(path + ".zip",
                                                        auth=self.http_auth,
-                                                       timeout=2)
+                                                       timeout=60)
                                 request.raise_for_status()
                                 with zipfile.ZipFile(BytesIO(
                                         request.content), "r") \
@@ -1066,8 +1097,23 @@ class KnossosDataset(object):
                                         self.module_wide["snappy"].decompress(
                                             zf.read(os.path.basename(path))),
                                         dtype=datatype)
-                                    valid_values = True
-
+                                # check if requested values match shape
+                                try:
+                                    values.reshape(self.cube_shape)
+                                except ValueError:
+                                    if verbose:
+                                        _print("\nReshape error encountered for"
+                                               " %d time. (%s)\n" %
+                                               (1 + tries, path))
+                                    tries += 1
+                                    time.sleep(0.1)
+                                    if tries == http_max_tries:
+                                        if verbose:
+                                            _print("Reshape error.")
+                                        return "Reshape error"
+                                    else:
+                                        continue
+                                valid_values = True
                             except requests.exceptions.Timeout as e:
                                 return e
                             except requests.exceptions.TooManyRedirects as e:
@@ -1076,8 +1122,10 @@ class KnossosDataset(object):
                                 return e
                             except requests.exceptions.ConnectionError as e:
                                 tries += 1
+                                time.sleep(0.1)
                                 if tries == http_max_tries:
-                                    return e
+                                    if verbose:
+                                        _print("Max. #tries reached.")
                                 else:
                                     continue
                             except requests.exceptions.HTTPError as e:
@@ -1223,7 +1271,7 @@ class KnossosDataset(object):
                             errors[errno] += 1
                         else:
                             errors[errno] = 1
-            if verbose and len(errors):
+            if verbose and len(errors) > 0:
                 _print("%d errors appeared! Keep in mind that Error 404 might be "
                        "totally fine. Overview:" %len(errors))
                 for errno in errors:
@@ -1290,7 +1338,7 @@ class KnossosDataset(object):
                                  pickle_path=None, invert_data=False,
                                  zyx_mode=False, nb_threads=40,
                                  verbose=False, http_verbose=False,
-                                 http_max_tries=10, show_progress=True):
+                                 http_max_tries=50, show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset raw cubes
 
         :param size: 3 sequence of ints
@@ -1476,11 +1524,10 @@ class KnossosDataset(object):
 
                     pos = (current-start)*self.cube_shape
 
-                    _print(np.unique(values, return_counts=True))
                     values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
-                    output[pos[0]: pos[0] + self.cube_shape[0],
-                           pos[1]: pos[1] + self.cube_shape[1],
-                           pos[2]: pos[2] + self.cube_shape[2]] = values
+                    output[pos[0] : pos[0] + self.cube_shape[0],
+                           pos[1] : pos[1] + self.cube_shape[1],
+                           pos[2] : pos[2] + self.cube_shape[2]] = values
                     cnt += 1
                     current[0] += 1
                 current[1] += 1
@@ -1636,7 +1683,7 @@ class KnossosDataset(object):
     def from_matrix_to_cubes(self, offset, mags=1, data=None, data_mag=1,
                              data_path=None, hdf5_names=None,
                              datatype=np.uint64, fast_downsampling=True,
-                             force_unique_labels=False, verbose=False,
+                             force_unique_labels=False, verbose=True,
                              overwrite=True, kzip_path=None,
                              overwrite_kzip=False, annotation_str=None,
                              as_raw=False, nb_threads=20):
@@ -1852,12 +1899,10 @@ class KnossosDataset(object):
                         np.array(data.shape) * inv_mag_ratio,
                         dtype=data.dtype)
 
-                    for x in range(inv_mag_ratio):
-                        for y in range(inv_mag_ratio):
-                            for z in range(inv_mag_ratio):
-                                data_inter[x:: inv_mag_ratio,
-                                           y:: inv_mag_ratio,
-                                           z:: inv_mag_ratio] = data
+                    for i_step in range(inv_mag_ratio):
+                        data_inter[i_step:: inv_mag_ratio,
+                                   i_step:: inv_mag_ratio,
+                                   i_step:: inv_mag_ratio] = data
 
                     data_inter = data_inter.astype(dtype=datatype, copy=False)
                 else:
