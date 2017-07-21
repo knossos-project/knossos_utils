@@ -132,14 +132,17 @@ def moduleInit():
     try:
         import snappy
         module_wide["snappy"] = snappy
-    except:
+        assert hasattr(module_wide["snappy"], "decompress"), \
+            "Snappy does not contain method 'decompress'. You probably have " \
+            "to install 'python-snappy', instead of 'snappy'."
+    except ImportError:
         _print("snappy is not available - you won't be able to write/read "
                "overlaycubes and k.zips. Reference for snappy: "
                "https://pypi.python.org/pypi/python-snappy/")
     try:
         import fadvise
         module_wide["fadvise"] = fadvise
-    except:
+    except ImportError:
         pass
     return
 
@@ -199,31 +202,33 @@ def load_from_h5py(path, hdf5_names, as_dict=False):
     return data
 
 
-def save_to_h5py(data, path, hdf5_names=None, compression=False,
-                 overwrite=True):
-    """ Helper for saving h5-files
+def save_to_h5py(data, path, hdf5_names=None, overwrite=False, compression=True):
+    """
+    Saves data to h5py File.
 
-    :param data: list or dict of arrays
+    Parameters
+    ----------
+    data: list or dict of np.arrays
         if list, hdf5_names has to be set.
-    :param path: str
+    path: str
         forward-slash separated path to file
-    :param hdf5_names: list of str
-        same order as data
-    :param compression: bool
+    hdf5_names: list of str
+        has to be the same length as data
+    overwrite : bool
+        determines whether existing files are overwritten
+    compression : bool
         True: compression='gzip' is used which is recommended for sparse and
         ordered data
-    :param overwrite: bool
-        determines whether an existing file is overwritten
-    :return:
-        nothing
+
+    Returns
+    -------
+    nothing
+
     """
     if (not type(data) is dict) and hdf5_names is None:
-        raise Exception("hdf5names has to be given, when data is a list")
+        raise Exception("hdf5names has to be set, when data is a list")
     if os.path.isfile(path) and overwrite:
         os.remove(path)
-    else:
-        raise Exception("File already exists and overwriting it is not "
-                        "allowed.")
     f = h5py.File(path, "w")
     if type(data) is dict:
         for key in data.keys():
@@ -412,9 +417,10 @@ class KnossosDataset(object):
 
         try:
             values = self._cube_cache[str(c) + str(mode)]
+            if np.sum(values) == 0:
+                raise KeyError
         except KeyError:
             values = None
-
 
         self._cache_mutex.release()
         return values
@@ -756,7 +762,7 @@ class KnossosDataset(object):
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
                      stride=256, return_errors=False, nb_threads=20,
-                     verbose=True):
+                     verbose=True, apply_func=None):
         """ Copies a dataset to another dataset - especially useful for
             downloading remote datasets
 
@@ -776,7 +782,13 @@ class KnossosDataset(object):
             stride for copying
         :param nb_threads: int
             number of threads to be used (recommended: 2 * number of cpus)
+        :param apply_func: function
+            function which will be applied to raw data before writing to new
+            dataset folder
         """
+        if apply_func is not None:
+            assert callable(apply_func)
+
         def _copy_block_thread(args):
             mag, size, offset, do_raw = args
             if do_raw:
@@ -791,7 +803,8 @@ class KnossosDataset(object):
                     raw = raw[0]
                 else:
                     err = None
-
+                if apply_func is not None:
+                    raw = apply_func(raw)
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=raw, datatype=np.uint8,
                                             as_raw=True, nb_threads=1,
@@ -799,6 +812,7 @@ class KnossosDataset(object):
 
                 return err
             else:
+                assert apply_func is None
                 overlay = self.from_overlaycubes_to_matrix(size, offset,
                                                            mag=mag,
                                                            http_verbose=True,
@@ -944,7 +958,7 @@ class KnossosDataset(object):
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
                              nb_threads=40, verbose=True, show_progress=True,
-                             http_max_tries=50, http_verbose=False):
+                             http_max_tries=2000, http_verbose=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -1010,7 +1024,7 @@ class KnossosDataset(object):
 
                     if self.in_http_mode:
                         tries = 0
-                        while tries < http_max_tries:
+                        while True:
                             try:
                                 request = requests.get(path,
                                                        auth=self.http_auth,
@@ -1019,51 +1033,42 @@ class KnossosDataset(object):
                                 values = np.fromstring(request.content,
                                                        dtype=datatype)
                                 if values.sum() == 0:
-                                    if verbose:
-                                        _print("\nZero value array encountered for"
-                                              " %d time. (%s)\n" % (1+tries, path))
-                                    tries += 1
-                                    time.sleep(0.1)
-                                    if tries == http_max_tries:
-                                        if verbose:
-                                            _print("Max. #tries reached.")
-                                        return "Max-try error"
-                                    else:
-                                        continue
-                                try:
-                                    values.reshape(self.cube_shape)
-                                except ValueError:
-                                    if verbose:
-                                        _print("\nReshape error encountered for"
-                                          " %d time. (%s)\n" % (1+tries, path))
-                                    tries += 1
-                                    time.sleep(0.1)
-                                    if tries == http_max_tries:
-                                        if verbose:
-                                            _print("Reshape error.")
-                                        return "Reshape error"
-                                    else:
-                                        continue
-                                valid_values = True
-
-                            except requests.exceptions.Timeout as e:
-                                return e
-                            except requests.exceptions.TooManyRedirects as e:
-                                return e
-                            except requests.exceptions.RequestException as e:
-                                return e
-                            except requests.exceptions.ConnectionError as e:
-                                tries += 1
-                                time.sleep(0.1)
-                                if tries == http_max_tries:
-                                    if verbose:
-                                        _print("Max. #tries reached.")
-                                    return e
+                                    pass
+                                    # if http_verbose:
+                                    #     _print("Zero value array encountered("
+                                    #           "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
                                 else:
-                                    continue
+                                    try:
+                                        values.reshape(self.cube_shape)
+                                        valid_values = True
+                                        break
+                                    except ValueError:
+                                        # if verbose:
+                                        #     _print("Reshape error("
+                                        #       "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
+                                        pass
+                            except requests.exceptions.Timeout as e:
+                                if http_verbose:
+                                    _print(e)
+                            except requests.exceptions.TooManyRedirects as e:
+                                if http_verbose:
+                                    _print(e)
+                            except requests.exceptions.RequestException as e:
+                                if http_verbose:
+                                    _print(e)
+                            except requests.exceptions.ConnectionError as e:
+                                if http_verbose:
+                                    _print(e)
                             except requests.exceptions.HTTPError as e:
-                                return e
-                            break
+                                if http_verbose:
+                                    _print(e)
+                            tries += 1
+                            if tries >= http_max_tries:
+                                _print("Max. #tries reached.")
+                                return "Max-try error"
+                            _print("[%s] Error occured (%d/%d)\n" %
+                                   (path, tries, http_max_tries))
+                            time.sleep(1)
                     else:
                         try:
                             flat_shape = int(np.prod(self.cube_shape))
@@ -1122,7 +1127,7 @@ class KnossosDataset(object):
                                 return e
                             except requests.exceptions.ConnectionError as e:
                                 tries += 1
-                                time.sleep(0.1)
+                                time.sleep(1)
                                 if tries == http_max_tries:
                                     if verbose:
                                         _print("Max. #tries reached.")
@@ -1338,7 +1343,7 @@ class KnossosDataset(object):
                                  pickle_path=None, invert_data=False,
                                  zyx_mode=False, nb_threads=40,
                                  verbose=False, http_verbose=False,
-                                 http_max_tries=50, show_progress=True):
+                                 http_max_tries=2000, show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset raw cubes
 
         :param size: 3 sequence of ints
@@ -1519,7 +1524,7 @@ class KnossosDataset(object):
                         values = np.fromstring(
                             module_wide["snappy"].decompress(
                                 archive.read(this_path)), dtype=datatype)
-                    except:
+                    except Exception:
                         if verbose:
                             _print("Cube does not exist, cube with %d only " \
                                   "assigned" % empty_cube_label)
