@@ -1446,7 +1446,9 @@ class KnossosDataset(object):
                                          show_progress=show_progress)
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
-                            datatype=np.uint64, verbose=False):
+                            datatype=np.uint64,
+                            verbose=False,
+                            apply_mergelist=True):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
@@ -1461,6 +1463,8 @@ class KnossosDataset(object):
             typically np.uint8
         :param verbose: bool
             True: prints several information
+        :param apply_mergelist: bool
+            True: Merges IDs based on the kzip mergelist
         :return: 3D numpy array
         """
         if not self.initialized:
@@ -1535,9 +1539,10 @@ class KnossosDataset(object):
 
         output = cut_matrix(output, offset_start, offset_end, self.cube_shape,
                             start, end)
-        if verbose:
-            _print("applying mergelist now")
-        mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
+        if apply_mergelist:
+            if verbose:
+                _print("applying mergelist now")
+            mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
 
         if False in [output.shape[dim] == size[dim] for dim in range(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",
@@ -1661,7 +1666,7 @@ class KnossosDataset(object):
                 # appearence in knossos and the resulting image stack
                 # => needs further investigation?
                 try:
-                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
+                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 1)
                 except IndexError:
                     stop = True
                     break
