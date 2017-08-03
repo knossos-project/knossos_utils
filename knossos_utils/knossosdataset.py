@@ -202,31 +202,33 @@ def load_from_h5py(path, hdf5_names, as_dict=False):
     return data
 
 
-def save_to_h5py(data, path, hdf5_names=None, compression=False,
-                 overwrite=True):
-    """ Helper for saving h5-files
+def save_to_h5py(data, path, hdf5_names=None, overwrite=False, compression=True):
+    """
+    Saves data to h5py File.
 
-    :param data: list or dict of arrays
+    Parameters
+    ----------
+    data: list or dict of np.arrays
         if list, hdf5_names has to be set.
-    :param path: str
+    path: str
         forward-slash separated path to file
-    :param hdf5_names: list of str
-        same order as data
-    :param compression: bool
+    hdf5_names: list of str
+        has to be the same length as data
+    overwrite : bool
+        determines whether existing files are overwritten
+    compression : bool
         True: compression='gzip' is used which is recommended for sparse and
         ordered data
-    :param overwrite: bool
-        determines whether an existing file is overwritten
-    :return:
-        nothing
+
+    Returns
+    -------
+    nothing
+
     """
     if (not type(data) is dict) and hdf5_names is None:
-        raise Exception("hdf5names has to be given, when data is a list")
+        raise Exception("hdf5names has to be set, when data is a list")
     if os.path.isfile(path) and overwrite:
         os.remove(path)
-    else:
-        raise Exception("File already exists and overwriting it is not "
-                        "allowed.")
     f = h5py.File(path, "w")
     if type(data) is dict:
         for key in data.keys():
