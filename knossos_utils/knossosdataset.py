@@ -1523,8 +1523,13 @@ class KnossosDataset(object):
                     try:
                         values = np.fromstring(
                             module_wide["snappy"].decompress(
-                                archive.read(this_path)), dtype=datatype)
-                    except Exception:
+                                archive.read(this_path)), dtype=np.uint64)
+                        if datatype != values.dtype:
+                            # this conversion can go wrong and
+                            # it is the responsibility of the user to make
+                            # sure it makes sense
+                            values = values.astype(datatype)
+                    except KeyError:
                         if verbose:
                             _print("Cube does not exist, cube with %d only " \
                                   "assigned" % empty_cube_label)
@@ -1534,6 +1539,7 @@ class KnossosDataset(object):
                     pos = (current-start)*self.cube_shape
 
                     values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
+
                     output[pos[0] : pos[0] + self.cube_shape[0],
                            pos[1] : pos[1] + self.cube_shape[1],
                            pos[2] : pos[2] + self.cube_shape[2]] = values
