@@ -1621,8 +1621,9 @@ class KnossosDataset(object):
     def export_to_image_stack(self,
                               mode='raw',
                               out_dtype=np.uint8,
-                              out_format='tif',
                               out_path='',
+                              xy_zoom=1.,
+                              out_format='tif',
                               mag=1):
         """
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
@@ -1681,6 +1682,12 @@ class KnossosDataset(object):
                 except IndexError:
                     stop = True
                     break
+
+                if xy_zoom != 1.:
+                    if mode == 'overlay':
+                        swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=0)
+                    elif mode == 'raw':
+                        swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=1)
 
                 if out_format != 'raw':
                     img = Image.fromarray(swapped)
