@@ -47,7 +47,7 @@ try:
 except:
     fadvise_available = False
 
-from knossos_utils import knossosdataset
+from . import knossosdataset
 
 
 def wrapper(func, args, kwargs):

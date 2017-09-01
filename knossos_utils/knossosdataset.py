@@ -47,11 +47,11 @@ from io import BytesIO
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 try:
-    from knossos_utils import mergelist_tools
+    from . import mergelist_tools
 except ImportError:
     print('mergelist_tools not available, using slow python fallback. '
           'Try to build the cython version of it.')
-    from knossos_utils import mergelist_tools_fallback as mergelist_tools
+    from . import mergelist_tools_fallback as mergelist_tools
 import numpy as np
 import re
 import scipy.misc

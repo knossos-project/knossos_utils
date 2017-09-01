@@ -5,5 +5,5 @@ from functools import reduce
 
 __all__ = ["knossosdataset", "chunky"]
 
-from knossos_utils.knossosdataset import *
-from knossos_utils.chunky import *
+from .knossosdataset import *
+from .chunky import *
