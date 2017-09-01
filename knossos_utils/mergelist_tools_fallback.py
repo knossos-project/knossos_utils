@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
 from functools import reduce
-
+import warnings
 import numpy as np
 
 
@@ -47,7 +47,15 @@ def apply_mergelist(segmentation, mergelist_content, background_id=0, pad=0, mis
                 subobject_id = segmentation[x, y, z]
                 if subobject_id == background_id:
                     continue
-                object_id = subobject_map[subobject_id]
+                # ghost ID's in overlay cubes
+                try:
+                    object_id = subobject_map[subobject_id]
+                except KeyError:
+                    warnings.warn("Found label (%d) in overlay which is not "
+                                  "contained in mergelist." % subobject_id,
+                                  RuntimeWarning)
+                    segmentation[x, y, z] = background_id
+                    continue
                 if object_id == background_id and missing_subobjects_to_background:
                     segmentation[x, y, z] = background_id
                     continue

@@ -132,14 +132,17 @@ def moduleInit():
     try:
         import snappy
         module_wide["snappy"] = snappy
-    except:
+        assert hasattr(module_wide["snappy"], "decompress"), \
+            "Snappy does not contain method 'decompress'. You probably have " \
+            "to install 'python-snappy', instead of 'snappy'."
+    except ImportError:
         _print("snappy is not available - you won't be able to write/read "
                "overlaycubes and k.zips. Reference for snappy: "
                "https://pypi.python.org/pypi/python-snappy/")
     try:
         import fadvise
         module_wide["fadvise"] = fadvise
-    except:
+    except ImportError:
         pass
     return
 
@@ -199,31 +202,33 @@ def load_from_h5py(path, hdf5_names, as_dict=False):
     return data
 
 
-def save_to_h5py(data, path, hdf5_names=None, compression=False,
-                 overwrite=True):
-    """ Helper for saving h5-files
+def save_to_h5py(data, path, hdf5_names=None, overwrite=False, compression=True):
+    """
+    Saves data to h5py File.
 
-    :param data: list or dict of arrays
+    Parameters
+    ----------
+    data: list or dict of np.arrays
         if list, hdf5_names has to be set.
-    :param path: str
+    path: str
         forward-slash separated path to file
-    :param hdf5_names: list of str
-        same order as data
-    :param compression: bool
+    hdf5_names: list of str
+        has to be the same length as data
+    overwrite : bool
+        determines whether existing files are overwritten
+    compression : bool
         True: compression='gzip' is used which is recommended for sparse and
         ordered data
-    :param overwrite: bool
-        determines whether an existing file is overwritten
-    :return:
-        nothing
+
+    Returns
+    -------
+    nothing
+
     """
     if (not type(data) is dict) and hdf5_names is None:
-        raise Exception("hdf5names has to be given, when data is a list")
+        raise Exception("hdf5names has to be set, when data is a list")
     if os.path.isfile(path) and overwrite:
         os.remove(path)
-    else:
-        raise Exception("File already exists and overwriting it is not "
-                        "allowed.")
     f = h5py.File(path, "w")
     if type(data) is dict:
         for key in data.keys():
@@ -412,9 +417,10 @@ class KnossosDataset(object):
 
         try:
             values = self._cube_cache[str(c) + str(mode)]
+            if np.sum(values) == 0:
+                raise KeyError
         except KeyError:
             values = None
-
 
         self._cache_mutex.release()
         return values
@@ -516,16 +522,17 @@ class KnossosDataset(object):
                     for mag_test_nb in range(10):
                         mag_folder = self.http_url + \
                                      self.name_mag_folder + str(2**mag_test_nb)
+
                         tries = 0
                         while tries < http_max_tries:
                             try:
                                 request = requests.get(mag_folder,
                                                        auth=self.http_auth,
                                                        timeout=10)
+
                                 if request.status_code == 200:
                                     self._mag.append(2 ** mag_test_nb)
                                     break
-
                                 request.raise_for_status()
                             except:
                                 tries += 1
@@ -754,7 +761,8 @@ class KnossosDataset(object):
                                   as_raw=True)
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
-                     stride=256, return_errors=False, nb_threads=20):
+                     stride=256, return_errors=False, nb_threads=20,
+                     verbose=True, apply_func=None):
         """ Copies a dataset to another dataset - especially useful for
             downloading remote datasets
 
@@ -774,27 +782,37 @@ class KnossosDataset(object):
             stride for copying
         :param nb_threads: int
             number of threads to be used (recommended: 2 * number of cpus)
+        :param apply_func: function
+            function which will be applied to raw data before writing to new
+            dataset folder
         """
+        if apply_func is not None:
+            assert callable(apply_func)
+
         def _copy_block_thread(args):
             mag, size, offset, do_raw = args
             if do_raw:
                 raw = self.from_raw_cubes_to_matrix(size, offset, mag=mag,
                                                     http_verbose=True,
                                                     nb_threads=1,
-                                                    show_progress=False)
+                                                    show_progress=False,
+                                                    verbose=verbose)
 
                 if isinstance(raw, tuple):
                     err = raw[1]
                     raw = raw[0]
                 else:
                     err = None
-
+                if apply_func is not None:
+                    raw = apply_func(raw)
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=raw, datatype=np.uint8,
-                                            as_raw=True, nb_threads=1)
+                                            as_raw=True, nb_threads=1,
+                                            verbose=verbose)
 
                 return err
             else:
+                assert apply_func is None
                 overlay = self.from_overlaycubes_to_matrix(size, offset,
                                                            mag=mag,
                                                            http_verbose=True,
@@ -819,7 +837,7 @@ class KnossosDataset(object):
         else:
             data_range = [[0, 0, 0], self.boundary]
 
-        if not mags:
+        if mags is None:
             mags = self.mag
 
         if isinstance(mags, int):
@@ -939,8 +957,8 @@ class KnossosDataset(object):
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
-                             nb_threads=40, verbose=False, show_progress=True,
-                             http_max_tries=10, http_verbose=False):
+                             nb_threads=40, verbose=True, show_progress=True,
+                             http_max_tries=2000, http_verbose=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -1006,31 +1024,51 @@ class KnossosDataset(object):
 
                     if self.in_http_mode:
                         tries = 0
-                        while tries < http_max_tries:
+                        while True:
                             try:
                                 request = requests.get(path,
                                                        auth=self.http_auth,
-                                                       timeout=2)
+                                                       timeout=60)
                                 request.raise_for_status()
                                 values = np.fromstring(request.content,
                                                        dtype=datatype)
-                                valid_values = True
-
-                            except requests.exceptions.Timeout as e:
-                                return e
-                            except requests.exceptions.TooManyRedirects as e:
-                                return e
-                            except requests.exceptions.RequestException as e:
-                                return e
-                            except requests.exceptions.ConnectionError as e:
-                                tries += 1
-                                if tries == http_max_tries:
-                                    return e
+                                if values.sum() == 0:
+                                    pass
+                                    # if http_verbose:
+                                    #     _print("Zero value array encountered("
+                                    #           "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
                                 else:
-                                    continue
+                                    try:
+                                        values.reshape(self.cube_shape)
+                                        valid_values = True
+                                        break
+                                    except ValueError:
+                                        # if verbose:
+                                        #     _print("Reshape error("
+                                        #       "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
+                                        pass
+                            except requests.exceptions.Timeout as e:
+                                if http_verbose:
+                                    _print(e)
+                            except requests.exceptions.TooManyRedirects as e:
+                                if http_verbose:
+                                    _print(e)
+                            except requests.exceptions.RequestException as e:
+                                if http_verbose:
+                                    _print(e)
+                            except requests.exceptions.ConnectionError as e:
+                                if http_verbose:
+                                    _print(e)
                             except requests.exceptions.HTTPError as e:
-                                return e
-                            break
+                                if http_verbose:
+                                    _print(e)
+                            tries += 1
+                            if tries >= http_max_tries:
+                                _print("Max. #tries reached.")
+                                return "Max-try error"
+                            _print("[%s] Error occured (%d/%d)\n" %
+                                   (path, tries, http_max_tries))
+                            time.sleep(1)
                     else:
                         try:
                             flat_shape = int(np.prod(self.cube_shape))
@@ -1055,7 +1093,7 @@ class KnossosDataset(object):
                             try:
                                 request = requests.get(path + ".zip",
                                                        auth=self.http_auth,
-                                                       timeout=2)
+                                                       timeout=60)
                                 request.raise_for_status()
                                 with zipfile.ZipFile(BytesIO(
                                         request.content), "r") \
@@ -1064,8 +1102,23 @@ class KnossosDataset(object):
                                         self.module_wide["snappy"].decompress(
                                             zf.read(os.path.basename(path))),
                                         dtype=datatype)
-                                    valid_values = True
-
+                                # check if requested values match shape
+                                try:
+                                    values.reshape(self.cube_shape)
+                                except ValueError:
+                                    if verbose:
+                                        _print("\nReshape error encountered for"
+                                               " %d time. (%s)\n" %
+                                               (1 + tries, path))
+                                    tries += 1
+                                    time.sleep(0.1)
+                                    if tries == http_max_tries:
+                                        if verbose:
+                                            _print("Reshape error.")
+                                        return "Reshape error"
+                                    else:
+                                        continue
+                                valid_values = True
                             except requests.exceptions.Timeout as e:
                                 return e
                             except requests.exceptions.TooManyRedirects as e:
@@ -1074,8 +1127,10 @@ class KnossosDataset(object):
                                 return e
                             except requests.exceptions.ConnectionError as e:
                                 tries += 1
+                                time.sleep(1)
                                 if tries == http_max_tries:
-                                    return e
+                                    if verbose:
+                                        _print("Max. #tries reached.")
                                 else:
                                     continue
                             except requests.exceptions.HTTPError as e:
@@ -1107,9 +1162,16 @@ class KnossosDataset(object):
                         try:
                             values = values.reshape(self.cube_shape).T
                         except:
-                            print('Exception in reshape: values.shape {0}'.format(values.shape))
-                            print('Exception in reshape:self.cube_shape {0}'.format(self.cube_shape))
-                            raise
+                            # _print('Exception in reshape: values.shape {0}'.
+                            #        format(values.shape))
+                            # _print('Exception in reshape:self.cube_shape {0}'.
+                            #        format(self.cube_shape))
+                            # if verbose:
+                            _print("Cube is invalid, cube with zeros "
+                                   "only assigned")
+                            _print(c)
+                            values = np.zeros(self.cube_shape)
+
                         self._add_to_cube_cache(c, mode, values)
                         output[pos[0]: pos[0]+self.cube_shape[0],
                                pos[1]: pos[1]+self.cube_shape[1],
@@ -1161,7 +1223,9 @@ class KnossosDataset(object):
                 size[dim] -= offset[dim] + size[dim] - self.boundary[dim]
 
             if size[dim] < 0:
-                raise Exception("Given block is totally out ouf bounds!")
+                raise Exception("Given block is totally out ouf bounds with "
+                                "offset: [%d, %d, %d]!" %
+                                (offset[0], offset[1], offset[2]))
 
         start = self.get_first_blocks(offset)
         end = self.get_last_blocks(offset, size)
@@ -1212,9 +1276,9 @@ class KnossosDataset(object):
                             errors[errno] += 1
                         else:
                             errors[errno] = 1
-            if verbose and len(errors):
-                _print("Errors appeared! Keep in mind that Error 404 might be "
-                       "totally fine. Overview:")
+            if verbose and len(errors) > 0:
+                _print("%d errors appeared! Keep in mind that Error 404 might be "
+                       "totally fine. Overview:" %len(errors))
                 for errno in errors:
                     _print("%d: %dx" % (errno, errors[errno]))
 
@@ -1244,10 +1308,17 @@ class KnossosDataset(object):
             if verbose:
                 _print("Shape was verified")
 
-        if mirror_oob and np.any(mirror_overlap != 0) and not zyx_mode:
-            output = np.lib.pad(output, mirror_overlap, 'symmetric')
-        elif mirror_oob and np.any(mirror_overlap != 0) and zyx_mode:
-            output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
+        if np.any(mirror_overlap != 0):
+            if not zyx_mode:
+                if mirror_oob:
+                    output = np.lib.pad(output, mirror_overlap, 'symmetric')
+                else:
+                    output = np.lib.pad(output, mirror_overlap, 'constant')
+            else:
+                if mirror_oob:
+                    output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
+                else:
+                    output = np.lib.pad(output, mirror_overlap[::-1], 'constant')
 
         if output.dtype != datatype:
             raise Exception("Wrong datatype! - for unknown reasons...")
@@ -1272,7 +1343,7 @@ class KnossosDataset(object):
                                  pickle_path=None, invert_data=False,
                                  zyx_mode=False, nb_threads=40,
                                  verbose=False, http_verbose=False,
-                                 show_progress=True):
+                                 http_max_tries=2000, show_progress=True):
         """ Extracts a 3D matrix from the KNOSSOS-dataset raw cubes
 
         :param size: 3 sequence of ints
@@ -1319,6 +1390,7 @@ class KnossosDataset(object):
                                          zyx_mode=zyx_mode,
                                          nb_threads=nb_threads,
                                          verbose=verbose,
+                                         http_max_tries=http_max_tries,
                                          http_verbose=http_verbose,
                                          show_progress=show_progress)
 
@@ -1379,7 +1451,9 @@ class KnossosDataset(object):
                                          show_progress=show_progress)
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
-                            datatype=np.uint64, verbose=False):
+                            datatype=np.uint64,
+                            verbose=False,
+                            apply_mergelist=True):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
@@ -1394,6 +1468,8 @@ class KnossosDataset(object):
             typically np.uint8
         :param verbose: bool
             True: prints several information
+        :param apply_mergelist: bool
+            True: Merges IDs based on the kzip mergelist
         :return: 3D numpy array
         """
         if not self.initialized:
@@ -1447,8 +1523,13 @@ class KnossosDataset(object):
                     try:
                         values = np.fromstring(
                             module_wide["snappy"].decompress(
-                                archive.read(this_path)), dtype=datatype)
-                    except:
+                                archive.read(this_path)), dtype=np.uint64)
+                        if datatype != values.dtype:
+                            # this conversion can go wrong and
+                            # it is the responsibility of the user to make
+                            # sure it makes sense
+                            values = values.astype(datatype)
+                    except KeyError:
                         if verbose:
                             _print("Cube does not exist, cube with %d only " \
                                   "assigned" % empty_cube_label)
@@ -1458,6 +1539,7 @@ class KnossosDataset(object):
                     pos = (current-start)*self.cube_shape
 
                     values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
+
                     output[pos[0] : pos[0] + self.cube_shape[0],
                            pos[1] : pos[1] + self.cube_shape[1],
                            pos[2] : pos[2] + self.cube_shape[2]] = values
@@ -1468,9 +1550,10 @@ class KnossosDataset(object):
 
         output = cut_matrix(output, offset_start, offset_end, self.cube_shape,
                             start, end)
-        if verbose:
-            _print("applying mergelist now")
-        mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
+        if apply_mergelist:
+            if verbose:
+                _print("applying mergelist now")
+            mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
 
         if False in [output.shape[dim] == size[dim] for dim in range(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",
@@ -1538,8 +1621,9 @@ class KnossosDataset(object):
     def export_to_image_stack(self,
                               mode='raw',
                               out_dtype=np.uint8,
-                              out_format='tif',
                               out_path='',
+                              xy_zoom=1.,
+                              out_format='tif',
                               mag=1):
         """
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
@@ -1594,10 +1678,16 @@ class KnossosDataset(object):
                 # appearence in knossos and the resulting image stack
                 # => needs further investigation?
                 try:
-                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
+                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 1)
                 except IndexError:
                     stop = True
                     break
+
+                if xy_zoom != 1.:
+                    if mode == 'overlay':
+                        swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=0)
+                    elif mode == 'raw':
+                        swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=1)
 
                 if out_format != 'raw':
                     img = Image.fromarray(swapped)
@@ -1613,11 +1703,13 @@ class KnossosDataset(object):
 
         return
 
-    def from_matrix_to_cubes(self, offset, mags=1, data=None, data_path=None,
-                             hdf5_names=None, datatype=np.uint64,
-                             fast_downsampling=True, force_unique_labels=False,
-                             verbose=False, overwrite=True, kzip_path=None,
-                             annotation_str=None, as_raw=False, nb_threads=20):
+    def from_matrix_to_cubes(self, offset, mags=1, data=None, data_mag=1,
+                             data_path=None, hdf5_names=None,
+                             datatype=np.uint64, fast_downsampling=True,
+                             force_unique_labels=False, verbose=True,
+                             overwrite=True, kzip_path=None,
+                             overwrite_kzip=False, annotation_str=None,
+                             as_raw=False, nb_threads=20):
         """ Cubes data for viewing and editing in KNOSSOS
             one can choose from
                 a) (Over-)writing overlay cubes in the dataset
@@ -1773,9 +1865,9 @@ class KnossosDataset(object):
                        "created in mag1")
 
             #mags = [1]
-            if not 1 in self.mag:
-                raise Exception("kzips have to be in mag1 but dataset does not"
-                                "support mag1")
+            # if not 1 in self.mag:
+            #     raise Exception("kzips have to be in mag1 but dataset does not"
+            #                     "support mag1")
 
         if not data_path is None:
             if '.h5' in data_path:
@@ -1813,20 +1905,39 @@ class KnossosDataset(object):
             data = np.max(np.array(data), axis=0)
 
         for mag in mags:
-            if mag > 1:
+            mag_ratio = float(mag) / data_mag
+            if mag_ratio > 1:
+                mag_ratio = int(mag_ratio)
                 if fast_downsampling:
-                    data_inter = np.array(data[::mag, ::mag, ::mag],
+                    data_inter = np.array(data[::mag_ratio, ::mag_ratio, ::mag_ratio],
                                           dtype=datatype)
                 else:
-                    data_inter = np.array(scipy.ndimage.zoom(data, 1.0/mag,
-                                                             order=3),
-                                          dtype=datatype)
+                    data_inter = \
+                        scipy.ndimage.zoom(data, 1.0/mag_ratio, order=3).\
+                            astype(datatype, copy=False)
+            elif mag_ratio < 1:
+                inv_mag_ratio = int(1./mag_ratio)
+                if fast_downsampling:
+                    data_inter = np.zeros(
+                        np.array(data.shape) * inv_mag_ratio,
+                        dtype=data.dtype)
+
+                    for i_step in range(inv_mag_ratio):
+                        data_inter[i_step:: inv_mag_ratio,
+                                   i_step:: inv_mag_ratio,
+                                   i_step:: inv_mag_ratio] = data
+
+                    data_inter = data_inter.astype(dtype=datatype, copy=False)
+                else:
+                    data_inter = \
+                        scipy.ndimage.zoom(data, inv_mag_ratio, order=3).\
+                            astype(datatype, copy=False)
             else:
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
 
-            offset_mag = np.array(offset, dtype=np.int) // mag
+            offset_mag = np.array(offset, dtype=np.int) // mag_ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
             if verbose:
@@ -1852,7 +1963,7 @@ class KnossosDataset(object):
                     current[0] = start[0]
                     while current[0] < end[0]:
                         this_cube_info = []
-                        path = self._knossos_path+self._name_mag_folder + \
+                        path = self.knossos_path + self.name_mag_folder + \
                                str(mag) + "/" + "x%04d/y%04d/z%04d/" \
                                         % (current[0], current[1], current[2])
 
@@ -1860,21 +1971,19 @@ class KnossosDataset(object):
 
                         if kzip_path is None:
                             if as_raw:
-                                path += self._experiment_name \
+                                path += self.experiment_name \
                                         + "_mag"+str(mag)+\
                                         "_x%04d_y%04d_z%04d.raw" \
                                         % (current[0], current[1], current[2])
                             else:
-                                path += self._experiment_name \
+                                path += self.experiment_name \
                                         + "_mag"+str(mag) + \
                                         "_x%04d_y%04d_z%04d.seg.sz" \
                                         % (current[0], current[1], current[2])
                         else:
-                            path = kzip_path+"/"+self.experiment_name + \
-                                   "_mag"+str(mag)+"_mag"+str(mag) + \
-                                   "x%dy%dz%d.seg.sz" \
-                                   % (current[0], current[1], current[2])
-
+                            path = kzip_path+"/"+self._experiment_name + \
+                                   '_mag1_mag%dx%dy%dz%d.seg.sz' % \
+                                   (mag, current[0], current[1], current[2])
                         this_cube_info.append(path)
 
                         cube_coords = current*self.cube_shape
@@ -1921,8 +2030,8 @@ class KnossosDataset(object):
                         zf.write(os.path.join(root, file), file)
                 zf.writestr("mergelist.txt",
                             mergelist_tools.gen_mergelist_from_segmentation(
-                                data, offsets=np.array(offset,
-                                                       dtype=np.uint64)))
+                                data.astype(datatype, copy=False),
+                                offsets=np.array(offset, dtype=np.uint64)))
                 if annotation_str is not None:
                     zf.writestr("annotation.xml", annotation_str)
             shutil.rmtree(kzip_path)

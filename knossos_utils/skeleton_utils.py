@@ -33,6 +33,7 @@ from collections import Counter
 from glob import glob
 from scipy import spatial
 from scipy.spatial import ConvexHull
+import xml.etree.ElementTree as et
 
 import networkx as nx
 
@@ -2540,3 +2541,30 @@ def get_subsegment_by_distance(annotation, start_node, end_node,
     subsegment = segment.get_subsegment(segment_start_node, segment_end_node)
 
     return subsegment
+
+
+def get_movement_area(filename):
+    """
+    Returns the movement area from a kzip or xml / nml
+    
+    :param filename : str
+        path to file
+    :return: dict
+        movement area
+    """
+
+    if filename.endswith('k.zip'):
+        zipper = zipfile.ZipFile(filename)
+
+        if not 'annotation.xml' in zipper.namelist():
+            raise Exception("k.zip file does not contain annotation.xml")
+
+        xml_string = zipper.read('annotation.xml')
+        root = et.fromstring(xml_string)
+    elif filename.endswith(".xml") or filename.endswith(".nml"):
+        tree = et.parse(filename)
+        root = tree.getroot()
+    else:
+        raise InvalidFileFormatException
+
+    return root.find("parameters").find("MovementArea").attrib

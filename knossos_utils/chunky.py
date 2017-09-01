@@ -282,6 +282,7 @@ class ChunkDataset(object):
         nothing so far
         """
 
+        box_size = np.array(box_size).copy()
         if fit_box_size:
             for dim in range(3):
                 if not box_size[dim] % chunk_size[dim] == 0:
@@ -573,8 +574,7 @@ class ChunkDataset(object):
 
                         offset = np.zeros(3, dtype=np.int)
                         for dim in range(3):
-                            if values.shape[dim] != self.chunk_size[dim] * \
-                                    interpolated_data[dim]:
+                            if values.shape[dim] != self.chunk_size[dim] * interpolated_data[dim]:
                                 offset[dim] = \
                                     int((values.shape[dim]-self.chunk_size[dim] *
                                         interpolated_data[dim])//2)
@@ -595,12 +595,9 @@ class ChunkDataset(object):
                                  :values.shape[2] - offset[2]]
 
                         output_matrix[hdf5_name][
-                        sub[0]: sub[0] + self.chunk_size[0] * interpolated_data[
-                            0],
-                        sub[1]: sub[1] + self.chunk_size[1] * interpolated_data[
-                            1],
-                        sub[2]: sub[2] + self.chunk_size[2] * interpolated_data[
-                            2]] \
+                        sub[0]: sub[0] + self.chunk_size[0] * interpolated_data[0],
+                        sub[1]: sub[1] + self.chunk_size[1] * interpolated_data[1],
+                        sub[2]: sub[2] + self.chunk_size[2] * interpolated_data[2]] \
                             = np.swapaxes(np.array(values).reshape(
                             self.chunk_size[0] * interpolated_data[0],
                             self.chunk_size[1] * interpolated_data[1],
