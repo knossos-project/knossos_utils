@@ -1184,7 +1184,8 @@ class KnossosDataset(object):
             raise Exception("Dataset is not initialized")
 
         if mag not in self._mag:
-            raise Exception("Magnification not supported")
+            raise Exception("Requested mag {0} not available, only mags {1} are "
+                            "available.".format(mag, self._mag))
 
         if 0 in size:
             raise Exception("The first parameter is size! - "
@@ -1453,7 +1454,9 @@ class KnossosDataset(object):
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
                             verbose=False,
-                            apply_mergelist=True):
+                            show_progress=True,
+                            apply_mergelist=True,
+                            binarize_overlay=False):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
@@ -1505,14 +1508,14 @@ class KnossosDataset(object):
             while current[1] < end[1]:
                 current[0] = start[0]
                 while current[0] < end[0]:
-                    if not verbose:
+                    if show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout('\rProgress: %.2f%%' % progress)
-
                     this_path = self._experiment_name +\
                                 '_mag1_mag%dx%dy%dz%d.seg.sz' % \
                                 (mag, current[0], current[1], current[2])
-                    print(this_path)
+                    if verbose:
+                        print(this_path)
 
                     if self._experiment_name == \
                                 "20130410.membrane.striatum.10x10x30nm":
@@ -1524,6 +1527,8 @@ class KnossosDataset(object):
                         values = np.fromstring(
                             module_wide["snappy"].decompress(
                                 archive.read(this_path)), dtype=np.uint64)
+                        if binarize_overlay:
+                            values[values > 1] = 1
                         if datatype != values.dtype:
                             # this conversion can go wrong and
                             # it is the responsibility of the user to make
