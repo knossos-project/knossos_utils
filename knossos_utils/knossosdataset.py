@@ -1456,6 +1456,7 @@ class KnossosDataset(object):
                             verbose=False,
                             show_progress=True,
                             apply_mergelist=True,
+                            alt_exp_name_kzip_path_mode=False,
                             binarize_overlay=False):
         """ Extracts a 3D matrix from a kzip file
 
@@ -1514,6 +1515,11 @@ class KnossosDataset(object):
                     this_path = self._experiment_name +\
                                 '_mag1_mag%dx%dy%dz%d.seg.sz' % \
                                 (mag, current[0], current[1], current[2])
+
+                    if alt_exp_name_kzip_path_mode:
+                        this_path = self._experiment_name +\
+                                    '_mag%dx%dy%dz%d.seg.sz' % \
+                                    (mag, current[0], current[1], current[2])
                     if verbose:
                         print(this_path)
 
