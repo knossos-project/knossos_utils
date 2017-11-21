@@ -9,8 +9,8 @@ from distutils.extension import Extension
 #
 
 extensions = [
-    Extension('mergelist_tools',
-        sources=['mergelist_tools.pyx'],
+    Extension('knossos_utils.mergelist_tools',
+        sources=['knossos_utils/mergelist_tools.pyx'],
         include_dirs = [np.get_include()],
         language='c++',
         extra_compile_args=["-std=c++11"],
