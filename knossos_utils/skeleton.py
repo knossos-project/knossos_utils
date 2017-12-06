@@ -202,9 +202,9 @@ class Skeleton:
                 raise Exception("k.zip file does not contain annotation.xml")
 
             xml_string = zipper.read('annotation.xml')
-	    doc = minidom.parseString(xml_string)
-	else:
-	    doc = minidom.parse(filename)
+            doc = minidom.parseString(xml_string)
+        else:
+            doc = minidom.parse(filename)
 
         self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=meta_info_only)
 
