@@ -1,7 +1,5 @@
 # coding=utf-8
 ################################################################################
-#  This file provides a class representation of a KNOSSOS-dataset for reading
-#  and writing raw and overlay data.
 #
 #  (C) Copyright 2015 - now
 #  Max-Planck-Gesellschaft zur Foerderung der Wissenschaften e.V.
@@ -29,6 +27,11 @@
 # KNOSSOS for writing or reading data.
 #
 ################################################################################
+
+
+"""This file provides a class representation of a KNOSSOS-dataset for
+reading and writing raw and overlay data."""
+
 
 from __future__ import absolute_import, division, print_function
 

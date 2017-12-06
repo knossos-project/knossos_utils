@@ -1,7 +1,5 @@
 # coding=utf-8
 ################################################################################
-#  This file provides a class representation of a KNOSSOS-dataset for reading
-#  and writing raw and overlay data.
 #
 #  (C) Copyright 2015
 #  Max-Planck-Gesellschaft zur Foerderung der Wissenschaften e.V.
@@ -20,6 +18,11 @@
 #
 #
 ################################################################################
+
+
+"""This file provides a class representation of a KNOSSOS-dataset for
+reading and writing raw and overlay data."""
+
 
 from __future__ import absolute_import, division, print_function
 
@@ -42,7 +45,7 @@ from . import knossosdataset
 
 
 def wrapper(func, args, kwargs):
-    """ wrapper function, calls a function with a variable number
+    """wrapper function, calls a function with a variable number
     of args and kwargs
 
     Parameters:
@@ -56,7 +59,7 @@ def wrapper(func, args, kwargs):
 
 
 def _export_cset_as_kd_thread(args):
-    """ Helper function
+    """Helper function
     """
     coords = args[0]
     size = np.copy(args[1])
