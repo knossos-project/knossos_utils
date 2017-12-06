@@ -983,7 +983,7 @@ class SkeletonAnnotation:
         return
 
     def setRoot(self, root):
-        if self.getRoot() <> None:
+        if self.getRoot() is not None:
             raise RuntimeError("Root already exists!")
         root.setRoot()
         return
@@ -999,7 +999,7 @@ class SkeletonAnnotation:
         return
 
     def resetRoot(self, new_root):
-        if self.getRoot() <> None:
+        if self.getRoot() is not None:
             self.unRoot()
         self.setRoot(new_root)
         return
@@ -1384,12 +1384,12 @@ class SkeletonNode:
 
     def getSingleParent(self):
         parents = self.getParents()
-        if len(parents) <> 1:
+        if len(parents) is not 1:
             raise RuntimeError("Not a Single Parent!")
         return list(parents)[0]
 
     def setSingleParent(self, parent):
-        if self.getSingleParent() <> None:
+        if self.getSingleParent() is not None:
             raise RuntimeError("Parent Already Set!")
         self.addParent(parent)
         return
