@@ -27,15 +27,15 @@ import re as re
 import numpy as np
 import networkx as nx
 import itertools as itools
-from skeleton import Skeleton, SkeletonAnnotation
-from skeleton_utils import split_by_connected_component,\
+from .skeleton import Skeleton, SkeletonAnnotation
+from .skeleton_utils import split_by_connected_component,\
     annotation_from_nodes, get_reachable_nodes, merge_annotations,\
     get_nodes_with_comment, get_largest_annotation
-from skeleton_utils import EnhancedAnnotation, KDtree
-from skeleton_utils import average_coordinate, Coordinate
-from skeleton_utils import gen_random_pass
+from .skeleton_utils import EnhancedAnnotation, KDtree
+from .skeleton_utils import average_coordinate, Coordinate
+from .skeleton_utils import gen_random_pass
 from random import randint
-import skeleton_utils as au
+import knossos_utils.skeleton_utils as au
 import matplotlib.pyplot as mplot
 import math
 import copy

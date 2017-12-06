@@ -36,7 +36,7 @@ import xml.etree.ElementTree as et
 
 import networkx as nx
 
-from skeleton import SkeletonAnnotation, Skeleton, SkeletonNode, \
+from .skeleton import SkeletonAnnotation, Skeleton, SkeletonNode, \
                      integer_checksum, euclidian_distance
 
 
