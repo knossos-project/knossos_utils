@@ -466,7 +466,7 @@ class Skeleton:
             f = open(filename, "w")
             f.write(self.to_xml_string(save_empty))
             f.close()
-        except Exception, e:
+        except Exception as e:
             print("Couldn't open file for writing.")
             print(e)
         return
@@ -488,13 +488,13 @@ class Skeleton:
                     remove_from_zip(filename, 'annotation.xml')
                     with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
                         zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception, e:
+            except Exception as e:
                 print("Couldn't open file for reading and overwriting.", e)
         else:
             try:
                 with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
                     zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception, e:
+            except Exception as e:
                 print("Couldn't open file for writing.", e)
         return
 

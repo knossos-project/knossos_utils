@@ -1448,7 +1448,7 @@ def load_skeleton(path):
     try:
         annotations = loadj0126NML(path)
     # TODO: specific exception handling
-    except Exception, e:
+    except Exception as e:
         print(e)
         annotations = []
 
