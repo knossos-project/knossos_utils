@@ -33,8 +33,6 @@
 reading and writing raw and overlay data."""
 
 
-from __future__ import absolute_import, division, print_function
-
 try:
     import cPickle as pickle
 except ImportError:
