@@ -41,6 +41,8 @@ install_requires = [
     "scipy>=0.16",
     "networkx>=1.11",
     "requests>=2.12",
+    "matplotlib",
+    "Pillow"
 ]
 
 if sys.version_info[0] < 3:
