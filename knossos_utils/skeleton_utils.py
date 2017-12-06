@@ -36,9 +36,6 @@ from .skeleton import SkeletonAnnotation, Skeleton, SkeletonNode, \
                      integer_checksum, euclidian_distance
 
 
-
-
-
 class InvalidFileFormatException(Exception):
     pass
 
@@ -2609,7 +2606,7 @@ def get_subsegment_by_distance(annotation, start_node, end_node,
 def get_movement_area(filename):
     """
     Returns the movement area from a kzip or xml / nml
-    
+
     :param filename : str
         path to file
     :return: dict
