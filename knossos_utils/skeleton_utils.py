@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ################################################################################
 #  This file provides a class representation of a KNOSSOS-dataset for reading
 #  and writing raw and overlay data.

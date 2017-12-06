@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ################################################################################
 #  This file provides a functions and classes for working with synapse annotations.
 #  and writing raw and overlay data.
