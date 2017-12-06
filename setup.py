@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 import os
 import sys
@@ -41,9 +41,6 @@ install_requires = [
     "matplotlib",
     "Pillow"
 ]
-
-if sys.version_info[0] < 3:
-    install_requires.append("future>=0.15")
 
 
 def read(fname):

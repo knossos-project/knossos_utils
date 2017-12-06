@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ################################################################################
 #  This file provides a class representation of a KNOSSOS-dataset for reading
 #  and writing raw and overlay data.
@@ -17,10 +16,6 @@
 #
 #
 ################################################################################
-
-import sys
-if sys.version_info[0] >= 3:
-    raise ImportError('{} currently only supports Python 2.7.'.format(__file__))
 
 from xml.dom import minidom
 import xml.etree.cElementTree as cElementTree
@@ -422,7 +417,7 @@ class Skeleton:
         try:
             comment_elems = root.find("comments").findall("comment")
         except:
-            print "'NoneType' object has no attribute 'findall'"
+            print("'NoneType' object has no attribute 'findall'")
             comment_elems = []
 
 
@@ -467,9 +462,9 @@ class Skeleton:
             f = open(filename, "w")
             f.write(self.to_xml_string(save_empty))
             f.close()
-        except Exception, e:
-            print "Couldn't open file for writing."
-            print e
+        except Exception as e:
+            print("Couldn't open file for writing.")
+            print(e)
         return
 
     def to_kzip(self, filename, save_empty=True, force_overwrite=False):
@@ -489,14 +484,14 @@ class Skeleton:
                     remove_from_zip(filename, 'annotation.xml')
                     with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
                         zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception, e:
-                print "Couldn't open file for reading and overwriting.", e
+            except Exception as e:
+                print("Couldn't open file for reading and overwriting.", e)
         else:
             try:
                 with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
                     zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception, e:
-                print "Couldn't open file for writing.", e
+            except Exception as e:
+                print("Couldn't open file for writing.", e)
         return
 
     def to_xml_string(self, save_empty=True):
@@ -763,7 +758,7 @@ class SkeletonAnnotation:
                 target_node = self.node_ID_to_node[target_ID]
                 source_node.addChild(target_node)
             except KeyError:
-                print 'Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID)
+                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
 
         self.scaling = skeleton.scaling
 
@@ -813,7 +808,7 @@ class SkeletonAnnotation:
                 target_node = self.node_ID_to_node[target_ID]
                 source_node.addChild(target_node)
             except KeyError:
-                print 'Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID)
+                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
 
         # Read patches
         patch_elems = []
@@ -983,7 +978,7 @@ class SkeletonAnnotation:
         return
 
     def setRoot(self, root):
-        if self.getRoot() <> None:
+        if self.getRoot() is not None:
             raise RuntimeError("Root already exists!")
         root.setRoot()
         return
@@ -999,7 +994,7 @@ class SkeletonAnnotation:
         return
 
     def resetRoot(self, new_root):
-        if self.getRoot() <> None:
+        if self.getRoot() is not None:
             self.unRoot()
         self.setRoot(new_root)
         return
@@ -1384,12 +1379,12 @@ class SkeletonNode:
 
     def getSingleParent(self):
         parents = self.getParents()
-        if len(parents) <> 1:
+        if len(parents) is not 1:
             raise RuntimeError("Not a Single Parent!")
         return list(parents)[0]
 
     def setSingleParent(self, parent):
-        if self.getSingleParent() <> None:
+        if self.getSingleParent() is not None:
             raise RuntimeError("Parent Already Set!")
         self.addParent(parent)
         return
@@ -1561,7 +1556,7 @@ class SkeletonLoop:
                     while False in \
                             (2 > abs(currentcoord[dim]-self.last.getCoordinates()[dim]) \
                             for dim in range(3)):
-                        print "Warning: Loop with hole detected"
+                        print("Warning: Loop with hole detected")
                         self.fillHole(currentcoord, self.last.getCoordinates())
 
                 self.add(point)

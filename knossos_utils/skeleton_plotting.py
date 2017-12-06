@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ################################################################################
 #  This file provides a functions and classes for working with synapse annotations.
 #  and writing raw and overlay data.
@@ -26,10 +25,11 @@ Class and function definitions that allow the plotting of SkeletoAnnotation obje
 try:
     import mayavi.mlab as mlab
 except:
-    print "mayavi not installed"
+    print("mayavi not installed")
 import numpy as np
 import matplotlib as mplt
 import random
+
 
 def add_spheres_to_mayavi_window(sphere_coords,
                                  radii,
@@ -124,7 +124,7 @@ def add_synapses_to_mayavi_window(syns,
     add_spheres_to_mayavi_window(coords, radii, color)
 
 
-    
+
     return
 
 
@@ -262,7 +262,7 @@ def add_anno_to_mayavi_window(anno,
     # separate x, y and z; mlab needs that
     #datasetDims = np.array(anno.datasetDims)
 
-    
+
     x = [el[0] for el in sc[0].tolist()]
     y = [el[0] for el in sc[1].tolist()]
     z = [el[0] for el in sc[2].tolist()]
@@ -284,14 +284,14 @@ def add_anno_to_mayavi_window(anno,
     nodeIndexMapping = {}
     for nodeIndex, node in enumerate(nodes):
         nodeIndexMapping[node] = nodeIndex
-    
+
     edges = []
     for node in nodes:
         for child in node.getChildren():
             try:
                 edges.append((nodeIndexMapping[node], nodeIndexMapping[child]))
             except:
-                print 'Phantom child node, annotation object inconsistent'
+                print('Phantom child node, annotation object inconsistent')
 
 
     # plot the edges
@@ -348,8 +348,8 @@ def visualize_annotation(anno,
                               edge_radius=edge_radius,
                               show_outline=show_outline,
                               dataset_identifier=dataset_identifier)
-    
+
     #mlab.view(49, 31.5, 52.8, (4.2, 37.3, 20.6))
     #mlab.xlabel('x')
-    #mlab.ylabel('y')    
+    #mlab.ylabel('y')
     #mlab.zlabel('z')

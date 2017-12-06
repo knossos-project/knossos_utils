@@ -1,4 +1,3 @@
-# coding=utf-8
 ################################################################################
 #
 #  (C) Copyright 2015
@@ -23,13 +22,7 @@
 """This file provides a class representation of a KNOSSOS-dataset for
 reading and writing raw and overlay data."""
 
-
-from __future__ import absolute_import, division, print_function
-
-try:
-    import cPickle as pkl
-except ImportError:
-    import pickle as pkl
+import pickle as pkl
 import glob
 import h5py
 from multiprocessing.pool import ThreadPool
@@ -469,7 +462,7 @@ class ChunkDataset(object):
                         else:
                             neighbours.append(-1)
                         pos.append([x-1, y-1, z-1])
-                              
+
         pos = np.array(pos)
         neighbours = np.array(neighbours)
         return neighbours, pos
@@ -1095,7 +1088,7 @@ class ChunkDistributor(object):
 
     def next(self, exclude_running=True):
         if self.lock is not None:
-            self.lock.release()   
+            self.lock.release()
 
         for _ in range(2 * len(self.chunklist)):
             if not os.path.exists(self._path_lock(self.next_id, status=3)):
@@ -1105,13 +1098,13 @@ class ChunkDistributor(object):
                     continue
                 elif running:
                     os.remove(self._path_lock(self.next_id, status=1))
-                
+
                 self.lock = FSLock(self._path_lock(self.next_id, status=1))
                 if self.lock.acquire():
                     return self.cset.chunk_dict[self.next_id]
 
             self._increase_id()
-           
+
         print("No chunks left")
         self.get_status()
         return None
