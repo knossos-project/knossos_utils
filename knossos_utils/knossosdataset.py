@@ -32,10 +32,7 @@
 reading and writing raw and overlay data."""
 
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+import pickle
 import glob
 import h5py
 from io import BytesIO

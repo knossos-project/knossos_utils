@@ -22,11 +22,7 @@
 """This file provides a class representation of a KNOSSOS-dataset for
 reading and writing raw and overlay data."""
 
-
-try:
-    import cPickle as pkl
-except ImportError:
-    import pickle as pkl
+import pickle as pkl
 import glob
 import h5py
 from multiprocessing.pool import ThreadPool
