@@ -25,7 +25,7 @@ Class and function definitions that allow the plotting of SkeletoAnnotation obje
 try:
     import mayavi.mlab as mlab
 except:
-    print "mayavi not installed"
+    print("mayavi not installed")
 import numpy as np
 import matplotlib as mplt
 import random
@@ -290,7 +290,7 @@ def add_anno_to_mayavi_window(anno,
             try:
                 edges.append((nodeIndexMapping[node], nodeIndexMapping[child]))
             except:
-                print 'Phantom child node, annotation object inconsistent'
+                print('Phantom child node, annotation object inconsistent')
 
 
     # plot the edges

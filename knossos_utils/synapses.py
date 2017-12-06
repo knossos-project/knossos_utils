@@ -325,7 +325,7 @@ class Synapse(object):
         if npPostC.sum() and npPreC.sum():
             return True
         else:
-            print 'Warning: Pre - or post coord not properly set!'
+            print('Warning: Pre - or post coord not properly set!')
             return False
 
     def euclDistToOtherSyn(self, otherSyn):
@@ -1054,7 +1054,7 @@ def synapse_to_annotation(synapse,
     if len(az_comment_node) > 1:
         #print [x.getComment() for x in az_comment_node]
         if len(set([x.getComment() for x in az_comment_node])) > 1:
-            print [x.getComment() for x in az_comment_node]
+            print([x.getComment() for x in az_comment_node])
             #raise Exception('Something bad happened.')
     if len(az_comment_node) == 0:
         az_comment_node = list(new_anno.getNodes())[0]
@@ -1185,7 +1185,7 @@ def j0126_axon_syn_analysis(path_to_dir):
     #    for s
 
     for nmlfile in allNMLfiles:
-        print 'loading ' + nmlfile
+        print('loading ' + nmlfile)
         annos = au.loadj0126NML(os.path.join(path_to_dir, nmlfile))
 
     return
@@ -2098,8 +2098,8 @@ def synDiscrepancyHighlighter(listOfPathsToNMLs,
             #print 'len ' + str(len(currAnnotators[redAnnoUsername]))
             if len(currAnnotators[redAnnoUsername]) > 1:
                 if verbose:
-                    print 'Found a synapse with two partner synapses from ' \
-                          'the same other annotator.'
+                    print('Found a synapse with two partner synapses from ' \
+                          'the same other annotator.')
 
         if len(synsWithPartners[syn]) < reqRedundancy - 1:
             try:
@@ -2177,8 +2177,8 @@ def synDiscrepancyAnalysis(listOfPathsToNMLs,
         [synswithp, rednotmet] = synDiscrepancyHighlighter(listOfPathsToNMLs,
             spotlightRadius=currRadius)
 
-        print 'radius: ' + str(currRadius) + ' syns without spatial match: ' + \
-              str(len({x for v in rednotmet.itervalues() for x in v}))
+        print('radius: ' + str(currRadius) + ' syns without spatial match: ' + \
+              str(len({x for v in rednotmet.itervalues() for x in v})))
 
         numLonelyByRadius.append(
             len({x for v in rednotmet.itervalues() for x in v}))
@@ -2201,7 +2201,7 @@ def synDiscrepancyAnalysis(listOfPathsToNMLs,
         thispairwise = []
         for syn2 in allsyns:
             thispairwise.append(syn.euclDistToOtherSyn(syn2))
-        print 'this dist: ' + str(sorted(thispairwise)[1])
+        print('this dist: ' + str(sorted(thispairwise)[1]))
         pairwisedistancesClosest.append(sorted(thispairwise)[1])
 
     mplot.figure()

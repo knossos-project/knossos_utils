@@ -421,7 +421,7 @@ class Skeleton:
         try:
             comment_elems = root.find("comments").findall("comment")
         except:
-            print "'NoneType' object has no attribute 'findall'"
+            print("'NoneType' object has no attribute 'findall'")
             comment_elems = []
 
 
@@ -467,8 +467,8 @@ class Skeleton:
             f.write(self.to_xml_string(save_empty))
             f.close()
         except Exception, e:
-            print "Couldn't open file for writing."
-            print e
+            print("Couldn't open file for writing.")
+            print(e)
         return
 
     def to_kzip(self, filename, save_empty=True, force_overwrite=False):
@@ -489,13 +489,13 @@ class Skeleton:
                     with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
                         zf.writestr('annotation.xml', self.to_xml_string(save_empty))
             except Exception, e:
-                print "Couldn't open file for reading and overwriting.", e
+                print("Couldn't open file for reading and overwriting.", e)
         else:
             try:
                 with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
                     zf.writestr('annotation.xml', self.to_xml_string(save_empty))
             except Exception, e:
-                print "Couldn't open file for writing.", e
+                print("Couldn't open file for writing.", e)
         return
 
     def to_xml_string(self, save_empty=True):
@@ -762,7 +762,7 @@ class SkeletonAnnotation:
                 target_node = self.node_ID_to_node[target_ID]
                 source_node.addChild(target_node)
             except KeyError:
-                print 'Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID)
+                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
 
         self.scaling = skeleton.scaling
 
@@ -812,7 +812,7 @@ class SkeletonAnnotation:
                 target_node = self.node_ID_to_node[target_ID]
                 source_node.addChild(target_node)
             except KeyError:
-                print 'Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID)
+                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
 
         # Read patches
         patch_elems = []
@@ -1560,7 +1560,7 @@ class SkeletonLoop:
                     while False in \
                             (2 > abs(currentcoord[dim]-self.last.getCoordinates()[dim]) \
                             for dim in range(3)):
-                        print "Warning: Loop with hole detected"
+                        print("Warning: Loop with hole detected")
                         self.fillHole(currentcoord, self.last.getCoordinates())
 
                 self.add(point)

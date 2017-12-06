@@ -1286,7 +1286,7 @@ def loadj0126ConsensusNMLsInDir(directory):
                    if file.lower().endswith('.nml')]
 
     for nmlfile in allNMLfiles:
-        print 'loading ' + nmlfile
+        print('loading ' + nmlfile)
         annos = loadj0126NML(os.path.join(directory, nmlfile))
 
         # test the number of annotations, must be 1
@@ -1302,8 +1302,8 @@ def loadj0126ConsensusNMLsInDir(directory):
                         raise Exception('File ' + nmlfile +
                                         ' contains more than'
                                         ' one annotation with nodes.')
-                        print 'File ' + nmlfile +\
-                              ' contains more than one annotation with nodes.'
+                        print('File ' + nmlfile +
+                              ' contains more than one annotation with nodes.')
             anno = thisanno
         else:
             anno = annos[0]
@@ -1319,11 +1319,11 @@ def loadj0126ConsensusNMLsInDir(directory):
         # only a single connected component allowed
         currNxg = annoToNXGraph(anno)[0]
         if nx.number_connected_components(currNxg) > 1:
-            print 'File ' + nmlfile + ' contains more than' \
-                                      ' one connected component.'
+            print('File ' + nmlfile + ' contains more than'
+                  ' one connected component.')
             for nodesInC in nx.connected_components(currNxg):
-                print 'This connected component contains ' +\
-                      str(len(nodesInC)) + '  nodes.'
+                print('This connected component contains ' +
+                      str(len(nodesInC)) + '  nodes.')
 
             raise Exception('File ' + nmlfile +
                             ' contains more than one connected component.')
@@ -1353,7 +1353,7 @@ def loadj0126NMLbyRegex(regex):
         # perform re matching and copy file to targetDir if sucessful
         mObj = regObj.search(nml)
         if mObj:
-            print 'Found nml: ', nml
+            print('Found nml: ', nml)
             annos = loadj0126NML(nml)
             matches[annos[0].seedID] = annos
 
@@ -1449,7 +1449,7 @@ def load_skeleton(path):
         annotations = loadj0126NML(path)
     # TODO: specific exception handling
     except Exception, e:
-        print e
+        print(e)
         annotations = []
 
     for anno in annotations:
@@ -2073,8 +2073,7 @@ def annoToNXGraph(annotations, merge_annotations_to_single_graph=False):
                     nxG.add_edge(node, child,
                                  weight=node.distance_scaled(child))
                 except:
-                    print 'Phantom child node, annotation' \
-                          'object inconsistent'
+                    print('Phantom child node, annotation object inconsistent')
         graphs = nxG
 
         # ugly code duplication here, don't look at it! ;)
@@ -2090,8 +2089,7 @@ def annoToNXGraph(annotations, merge_annotations_to_single_graph=False):
                         nxG.add_edge(node, child,
                                      weight=node.distance_scaled(child))
                     except:
-                        print 'Phantom child node, annotation' \
-                              'object inconsistent'
+                        print('Phantom child node, annotation object inconsistent')
             graphs.append(nxG)
 
     return (graphs)
@@ -2229,7 +2227,7 @@ def annosToNMLFile(annos, filename):
         currBaseID += (ids[-1] + 1)
         anno.setNodeBaseID(currBaseID)
         skel.annotations.add(anno)
-        print currBaseID
+        print(currBaseID)
 
     skel.toNml(filename)
     return
