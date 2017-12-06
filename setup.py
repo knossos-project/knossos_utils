@@ -1,7 +1,4 @@
 #!/usr/bin/env python2
-from __future__ import absolute_import, division, print_function
-# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from functools import reduce
 
 import os
 import sys
