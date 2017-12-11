@@ -4,11 +4,11 @@ from general_utilities.dummy_exception import DummyException
 import smtplib
 from getpass import getpass
 
-from email.MIMEMultipart import MIMEMultipart
-from email.MIMEBase import MIMEBase
-from email.MIMEText import MIMEText
-from email.Utils import COMMASPACE, formatdate
-from email import Encoders
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email.utils import COMMASPACE, formatdate   
+ import email.encoders as Encoders
 
 
 class Mailer():
