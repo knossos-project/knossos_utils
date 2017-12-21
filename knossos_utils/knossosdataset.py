@@ -401,7 +401,7 @@ class KnossosDataset(object):
         :return: bool
             Whether all cubes are currently in the cache
         """
-        return all([self._cube_cache.has_key(str(c) + str(mode)) for c in coordinates])
+        return all([str(c) + str(mode) in self._cube_cache.keys() for c in coordinates])
 
     def _cube_from_cache(self, c, mode):
 
@@ -1556,7 +1556,7 @@ class KnossosDataset(object):
         if apply_mergelist:
             if verbose:
                 _print("applying mergelist now")
-            mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt"))
+            mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
 
         if False in [output.shape[dim] == size[dim] for dim in range(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",

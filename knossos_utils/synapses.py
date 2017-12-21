@@ -603,7 +603,7 @@ def load_consolidated_synapses(synapses):
     for cur_synapse in synapses:
         synapses_by_collection.setdefault(cur_synapse.collection_id,
             []).append(cur_synapse)
-    for cur_collection_id, cur_synapses in synapses_by_collection.iteritems():
+    for cur_collection_id, cur_synapses in synapses_by_collection.items():
         consensus_synapses_all.add(ConsolidatedSynapse(cur_synapses,
             collection_id=cur_collection_id))
     for cur_consolidated_synapse in consensus_synapses_all:
@@ -795,7 +795,7 @@ def synapses_from_f0097(skeleton, synapse_direction='to', source_anno='dummy',
 
     # Find the active zones for which we can assign a number,
     # because their matching synapse has a number
-    for cur_s, cur_id in compartments_numbered['synapse'].iteritems():
+    for cur_s, cur_id in compartments_numbered['synapse'].items():
         # compartments_numbered stores both the IDs as keys and the
         # actual node objects, we are only interested in the actual node
         # objects here
@@ -860,7 +860,7 @@ def synapses_from_f0097(skeleton, synapse_direction='to', source_anno='dummy',
             annotation=compartments_unassigned['other'][0].annotation)
         unassigned_other = EnhancedAnnotation(unassigned_other)
 
-        for cur_az, cur_s in non_numbered_matches['active_zone'].iteritems():
+        for cur_az, cur_s in non_numbered_matches['active_zone'].items():
             az_avg_coordinate = average_coordinate(
                 [x.getCoordinate_scaled() for x in cur_az.getNodes()])
             az_avg_coordinate_dataset = [int(y) for y in average_coordinate(
@@ -904,14 +904,14 @@ def synapses_from_f0097(skeleton, synapse_direction='to', source_anno='dummy',
     synapses_out = set()
 
     for cur_other, (cur_az, cur_syn_node) in \
-            non_numbered_matches['other'].iteritems():
+            non_numbered_matches['other'].items():
         new_synapse = Synapse(az_nodes=[x for x in cur_az.getNodes()],
             pre_node=cur_other,
             post_node=cur_syn_node,
             source_anno=source_anno)
         synapses_out.add(new_synapse)
 
-    for cur_other, cur_syn_id in compartments_numbered['other'].iteritems():
+    for cur_other, cur_syn_id in compartments_numbered['other'].items():
         if not isinstance(cur_syn_id, str):
             continue
         cur_az = compartments_numbered['active_zone'][cur_syn_id]
@@ -951,7 +951,7 @@ def consensus_synapses_to_skeleton(consensus_synapses):
     s = Skeleton()
     cur_id = 1
 
-    for redundancy, consensus_syns in consensus_synapses.iteritems():
+    for redundancy, consensus_syns in consensus_synapses.items():
         for cur_consensus_syn in consensus_syns:
             if redundancy == 1:
                 identifier_node_comment = '(todo) collection %d' % (cur_id,)
@@ -1309,7 +1309,7 @@ def synapses_from_jk_anno(annotation,
     comment_nodes_kd = au.KDtree(all_comment_nodes)
 
     # create a synapse object for each key
-    for synID, synNodes in synapses.iteritems():
+    for synID, synNodes in synapses.items():
         if len(synNodes) > 4:
             print("Unplausible number of synapse nodes for: {0}".format(synID))
             if enable_heuristic == False: continue

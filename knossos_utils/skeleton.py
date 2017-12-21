@@ -304,7 +304,7 @@ class Skeleton:
         comment_elems = doc.getElementsByTagName("comment")
         for comment_elem in comment_elems:
             [nodeID, comment] = parse_attributes(comment_elem, [["node",
-                int], ["content", unicode]])
+                int], ["content", str]])
             node_ID_to_node[nodeID + base_id].setComment(comment)
 
         # Read branch points
@@ -430,7 +430,7 @@ class Skeleton:
                       '' + str(nodeID))
             except UnicodeEncodeError:
                 # this means that a comment contains a non-ascii letter
-                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", unicode]])
+                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
                 ascii_comment = unicodedata.normalize('NFKD', comment).encode('ascii','ignore')
                 node_ID_to_node[nodeID + base_id].setComment(ascii_comment)
         # Read branch points
@@ -533,7 +533,7 @@ class Skeleton:
         #  node is sufficient
         property_names = []
         for n in self.getNodes():
-            for key, val in n.data.iteritems():
+            for key, val in n.data.items():
                 if key not in property_names+orig_keys:
                     property_names.append(key)
                     prop_entry = doc.createElement("property")
@@ -826,7 +826,7 @@ class SkeletonAnnotation:
     def toNml(self, doc, annotations_elem, comments_elem, annotation_ID):
         annotation_elem = doc.createElement("thing")
         build_attributes(annotation_elem, [["id", annotation_ID]])
-        for k, v in self.data.iteritems():
+        for k, v in self.data.items():
             build_attributes(annotation_elem, [[k, v]])
         if self.getComment():
             annotation_elem.setAttribute("comment", self.getComment())
@@ -856,7 +856,7 @@ class SkeletonAnnotation:
         return self.nodes
 
     def iter_edges(self):
-        for cur_from_node, to_nodes in self.getEdges().iteritems():
+        for cur_from_node, to_nodes in self.getEdges().items():
             for cur_to_node in to_nodes:
                 yield (cur_from_node, cur_to_node)
 
@@ -903,7 +903,7 @@ class SkeletonAnnotation:
 
     def addNode(self, node):
         this_id = node.getID()
-        if this_id == None or self.node_ID_to_node.has_key(this_id):
+        if this_id == None or this_id in self.node_ID_to_node.keys():
             this_id = self.high_id + 1
             node.setID(this_id)
         if this_id > self.high_id:
@@ -1175,7 +1175,7 @@ class SkeletonNode:
         self.setDataElem("inMag", inMag)
         self.setDataElem("time", time)
 
-        for key, val in additional_attr.iteritems():
+        for key, val in additional_attr.items():
             self.setDataElem(key, val)
         return self
 
@@ -1186,7 +1186,7 @@ class SkeletonNode:
             ("inVp", self.data['inVp']), ("radius", self.data["radius"]),
             ("time", self.data["time"]), ("x", int(self.x)),
             ("y", int(self.y)), ("z", int(self.z))])
-        for key, val in self.data.iteritems():
+        for key, val in self.data.items():
             if key in ["inVp", "node", "id", "inMag", "radius", "time", "x",
                        "y", "z", "edge", "comment", "content", "target"]:
                 continue

@@ -1013,7 +1013,7 @@ def get_end_nodes(annotation):
         Annotation in which to search for end nodes
     """
 
-    return set([k for k, v in annotation.graph.degree().iteritems() if v == 1])
+    return set([k for k, v in annotation.graph.degree().items() if v == 1])
 
 
 def prune_short_end_branches(anno, length, debug_labels=False):
@@ -1305,7 +1305,7 @@ def loadj0126ConsensusNMLsInDir(directory):
         nxG = annoToNXGraph(anno)
         anno.pathLen = nxG[0].size(weight='weight') / 1000 # to microns
         anno.numBranchNodes = len(list({k for k, v
-                                        in nxG[0].degree().iteritems()
+                                        in nxG[0].degree().items()
                                         if v > 2}))
         anno.branchDensity = anno.numBranchNodes / anno.pathLen
 
@@ -1634,7 +1634,7 @@ def annotation_matcher(annotations,
     annoMatchGroup = dict()
     already_processed_same = dict()
     for anno in annotations:
-        if already_processed_same.has_key(anno):
+        if anno in already_processed_same.keys():
             print('Already processed, skipping ' + anno.filename)
             continue
         try:
@@ -1684,13 +1684,13 @@ def annotation_matcher(annotations,
             for match in matchSet:
                 #if same_annos.has_key(match):
                 #    print 'same match'
-                if not same_annos.has_key(match):
+                if match not in same_annos.keys():
                 #if anno != match:
                     if anno_node_len < samplesize:
                         this_samplesize = anno_node_len
                     else:
                         this_samplesize = samplesize
-                    if annoMatchGroup[anno].has_key(match):
+                    if match in annoMatchGroup[anno].keys():
                         annoMatchGroup[anno][match] += (1.0 / this_samplesize)
                     else:
                         annoMatchGroup[anno][match] = (1.0 / this_samplesize)
@@ -1724,8 +1724,8 @@ def annotation_matcher(annotations,
 
 
             if annoMatchGroup[anno][match] > thres:
-                if annoMatchGroup.has_key(match):
-                    if annoMatchGroup[match].has_key(anno):
+                if match in annoMatchGroup.keys():
+                    if anno in annoMatchGroup[match].keys():
                         #if annoMatchGroup[match][anno] > thres:
                             # reciprocal match found that satisfies threshold
                         matchGraph.add_edge(match, anno)
@@ -1808,7 +1808,7 @@ def prune_stub_branches(annotations,
         nx_g = annotation_to_nx_graph(new_anno)
 
         # find all tip nodes in an anno, ie degree 1 nodes
-        end_nodes = list({k for k, v in nx_g.degree().iteritems() if v == 1})
+        end_nodes = list({k for k, v in nx_g.degree().items() if v == 1})
 
         # DFS to first branch node
         for end_node in end_nodes:
@@ -1848,9 +1848,9 @@ def estimateDisagreementRate(annotations, spotlightRadius):
 
     #for g in nxGs:
         # get a set of all branch nodes deg > 2 for all annotations
-    #    bNodes.append({k for k, v in g.degree().iteritems() if v > 2})
+    #    bNodes.append({k for k, v in g.degree().items() if v > 2})
         # get a set of all end nodes for each annotation, i.e. deg == 1
-    #    eNodes.append({k for k, v in g.degree().iteritems() if v == 1})
+    #    eNodes.append({k for k, v in g.degree().items() if v == 1})
 
     #for bNodes1, eNodes1, nxG, kdT in itertools.izip(bNodes, eNodes, nxGs, kdTs):
     #    for bNode1, bNode2 in itertools.combinations(bNodes1, bNodes2):
@@ -1896,7 +1896,7 @@ def genSeedNodes(annotations, reqRedundancy, spotlightRadius):
 
     for anno in annotations:
         # get a set of all end nodes for each annotation, i.e. deg == 1
-        anno.eNodes = list({k for k, v in anno.nxG.degree().iteritems() if v == 1})
+        anno.eNodes = list({k for k, v in anno.nxG.degree().items() if v == 1})
         anno.lonelyENodes = dict()
         # remove non-lonely eNodes of current anno: the tracing is complete if lonelyENodes remains empty
         for eNode in anno.eNodes:
@@ -1904,7 +1904,7 @@ def genSeedNodes(annotations, reqRedundancy, spotlightRadius):
             for otherAnno in annotations.difference(set([anno])):
                 if otherAnno.kdT.query_ball_point(eNode.getCoordinate_scaled(), spotlightRadius):
                     anno.lonelyENodes[eNode] += 1
-            if anno.lonelyENodes.has_key(eNode):
+            if eNode in anno.lonelyENodes.keys():
                 if anno.lonelyENodes[eNode] > reqRedundancy:
                     del(anno.lonelyENodes[eNode])
                     break
@@ -2190,7 +2190,7 @@ def setAnnotationStats(annos):
     for anno in annos:
         nxG = annoToNXGraph(anno)
         anno.pathLen = nxG[0].size(weight='weight') / 1000
-        anno.numBranchNodes = len(list({k for k, v in nxG[0].degree().iteritems() if v > 2}))
+        anno.numBranchNodes = len(list({k for k, v in nxG[0].degree().items() if v > 2}))
         anno.branchDensity = anno.numBranchNodes / anno.pathLen
         # avgBranchLen
         #anno.avgBranchLen =
