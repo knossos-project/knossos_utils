@@ -445,6 +445,45 @@ class Skeleton:
 
         return self
 
+    def from_skeletopyze_skel(self, pyze_skel, coord_offset=[0, 0, 0]):
+        try:
+            import skeletopyze
+        except ImportError:
+            print("ImportError: Please install the missing dependency skeletopyze for this function: https://github.com/funkey/skeletopyze")
+        def pyzenode2knode(pyze_skel, annotation, node_id, offset):
+            k_node = SkeletonNode()
+            k_node.annotation = annotation
+            k_node.ID = node_id
+            pos = pyze_skel.locations(node_id)
+            # knossos origin is at 1, 1, 1
+            k_node.x, k_node.y, k_node.z = np.array([pos.x(), pos.y(), pos.z()]) + offset + 1
+            k_node.setDataElem("inVp", 0)
+            k_node.setDataElem("radius", pyze_skel.diameters(node_id) / 2)
+            k_node.setDataElem("inMag", 1)
+            k_node.setDataElem("time", 0)
+            return k_node
+
+        annotation = SkeletonAnnotation()
+        annotation.resetObject()
+        annotation.nodeBaseID = 0
+
+        k_nodes = {}
+        for node in pyze_skel.nodes():
+            k_node = pyzenode2knode(pyze_skel, annotation, node, coord_offset)
+            k_nodes[node] = k_node
+            annotation.clearNodeEdges(k_node)
+
+        annotation.nodes = set(k_nodes.values())
+        annotation.root = k_nodes[0]
+        annotation.node_ID_to_node = k_nodes
+
+        for edge in pyze_skel.edges():
+            annotation.addEdge(k_nodes[edge.u], k_nodes[edge.v])
+
+        self.annotations.add(annotation)
+        return self
+
+
     def get_high_node_id(self):
         """
         Return highest node ID in any annotation in the skeleton.

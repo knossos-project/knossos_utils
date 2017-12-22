@@ -64,6 +64,7 @@ setup(
     install_requires=install_requires,
     extras_require={
         "snappy": ["python-snappy>=0.5"],
+        # "skeletopyze": only needed for importing skeletopyze skeletons. See https://github.com/funkey/skeletopyze
     },
     classifiers=[
         'Development Status :: 4 - Beta',

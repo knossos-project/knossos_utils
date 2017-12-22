@@ -27,7 +27,7 @@ requirements:
     - python-snappy >=0.5
     - networkx >=1.11
     - requests >=2.12
-
+    # - skeletopyze (add, when channels can be specified)
 about:
   home: https://github.com/knossos-project/knossos_python_tools
   license: GPLv2
