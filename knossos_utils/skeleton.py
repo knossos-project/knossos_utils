@@ -490,10 +490,7 @@ class Skeleton:
         """
         high_ids = [0]
         for cur_anno in self.annotations:
-            high_ids.append(cur_anno.nodeBaseID + cur_anno.high_id) # this
-            # could be buggy : in my understanding, nodeBaseID should not be
-            # added to the high_id; jk 20.01.15 - not changing it to not
-            # break stuff
+            high_ids.append(cur_anno.high_id)
         return max(high_ids)
 
     def toNml(self, filename, save_empty=True):
