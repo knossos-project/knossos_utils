@@ -465,15 +465,16 @@ class Skeleton:
 
         annotation = SkeletonAnnotation()
         annotation.resetObject()
-        annotation.nodeBaseID = 0
+        annotation.nodeBaseID = self.get_high_node_id() + 1
 
         k_nodes = {}
         for node in pyze_skel.nodes():
-            k_node = pyzenode2knode(pyze_skel, annotation, node, coord_offset)
+            k_node = pyzenode2knode(pyze_skel, annotation, node + annotation.nodeBaseID, coord_offset)
             k_nodes[node] = k_node
             annotation.clearNodeEdges(k_node)
 
         annotation.nodes = set(k_nodes.values())
+        annotation.high_id = annotation.nodeBaseID + len(annotation.nodes)
         annotation.root = k_nodes[0]
         annotation.node_ID_to_node = k_nodes
 
