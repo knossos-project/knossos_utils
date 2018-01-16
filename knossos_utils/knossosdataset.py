@@ -2114,7 +2114,7 @@ class KnossosDataset(object):
         for mag in range(32):
             if os.path.exists(self._knossos_path+self._name_mag_folder +
                               str(2**mag)):
-                for x_cube in range(self._number_of_cubes[0] // 2**mag+1):
+                for x_cube in range(int(self._number_of_cubes[0] // 2**mag+1)):
                     if raw:
                         glob_input = self._knossos_path + \
                                      self._name_mag_folder + \

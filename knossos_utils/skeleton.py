@@ -637,17 +637,16 @@ class Skeleton:
             return self.skeleton_idletime
 
     def get_version(self):
-        # Check whether the version strings are in the format
-        # x.y.z
+        # Check whether the version string consists of a number or dot separated numbers.
         try:
-            int(self.created_version.translate(None, '.'))
+            int(self.created_version.replace('.', ""))
         except ValueError:
             created_version = [0,]
         else:
             created_version = [int(x) for x in self.created_version.split('.')]
 
         try:
-            int(self.last_saved_version.translate(None, '.'))
+            int(self.last_saved_version.replace('.', ""))
         except ValueError:
             last_saved_version = [0,]
         else:
