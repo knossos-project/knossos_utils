@@ -189,7 +189,7 @@ class Skeleton:
         :return:
         """
 
-    def fromNml(self, filename, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False):
+    def fromNml(self, filename, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         if filename.endswith('k.zip'):
             zipper = zipfile.ZipFile(filename)
 
@@ -201,17 +201,17 @@ class Skeleton:
         else:
             doc = minidom.parse(filename)
 
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=meta_info_only)
+        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=meta_info_only, read_time=read_time)
 
         return self
 
-    def fromNmlString(self, nmlString, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False):
+    def fromNmlString(self, nmlString, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         doc = minidom.parseString(nmlString)
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=False)
+        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=False, read_time=read_time)
 
         return self
 
-    def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False):
+    def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         try:
             [self.experiment_name] = parse_attributes(
                 doc.getElementsByTagName(
@@ -221,39 +221,40 @@ class Skeleton:
             self.experiment_name = None
 
         try_time_slice_version = False
-        # Read skeleton time and idle time
-        try:
-            [self.skeleton_time, skeleton_time_checksum] = parse_attributes(
-                    doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                    [["ms", int], ["checksum", str]])
-            [self.skeleton_idletime, idletime_checksum] = parse_attributes(
-                    doc.getElementsByTagName("parameters")[0].getElementsByTagName("idleTime")[0],
-                    [["ms", int], ["checksum", str]])
-
-        except IndexError:
-            self.skeleton_time = None
-            self.skeleton_idletime = None
-            try_time_slice_version = True
-
-        if try_time_slice_version:
-            # Time slicing version
-            self.skeleton_time, skeleton_time_checksum = parse_attributes(
-                    doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                    [["min", int], ["checksum", str]])
-            if self.skeleton_time is None:
-                self.skeleton_time, skeleton_time_checksum = parse_attributes(
+        if read_time:
+            # Read skeleton time and idle time
+            try:
+                [self.skeleton_time, skeleton_time_checksum] = parse_attributes(
                         doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
                         [["ms", int], ["checksum", str]])
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                    raise Exception("Checksum mismatch")
-            else:
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                    raise Exception("Checksum mismatch")
-                self.skeleton_time = self.skeleton_time * 60 * 1000
-                skeleton_time_checksum = integer_checksum(self.skeleton_time)
+                [self.skeleton_idletime, idletime_checksum] = parse_attributes(
+                        doc.getElementsByTagName("parameters")[0].getElementsByTagName("idleTime")[0],
+                        [["ms", int], ["checksum", str]])
 
-            self.skeleton_idletime = 0
-            idletime_checksum = integer_checksum(0)
+            except IndexError:
+                self.skeleton_time = None
+                self.skeleton_idletime = None
+                try_time_slice_version = True
+
+            if try_time_slice_version:
+                # Time slicing version
+                self.skeleton_time, skeleton_time_checksum = parse_attributes(
+                        doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
+                        [["min", int], ["checksum", str]])
+                if self.skeleton_time is None:
+                    self.skeleton_time, skeleton_time_checksum = parse_attributes(
+                            doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
+                            [["ms", int], ["checksum", str]])
+                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                        raise Exception("Checksum mismatch")
+                else:
+                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                        raise Exception("Checksum mismatch")
+                    self.skeleton_time = self.skeleton_time * 60 * 1000
+                    skeleton_time_checksum = integer_checksum(self.skeleton_time)
+
+                self.skeleton_idletime = 0
+                idletime_checksum = integer_checksum(0)
 
         if use_file_scaling == True:
             self.scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
@@ -272,14 +273,15 @@ class Skeleton:
         except IndexError:
             self.created_version = '0'
 
-        if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
-            # Has SHA256 checksums
-            if self.skeleton_time is not None and self.skeleton_idletime is not None:
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time) or \
-                   idletime_checksum != integer_checksum(self.skeleton_idletime):
-                       raise Exception('Checksum mismatch!')
-            else:
-                raise Exception('No time records exist!')
+        if read_time:
+            if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
+                # Has SHA256 checksums
+                if self.skeleton_time is not None and self.skeleton_idletime is not None:
+                    if skeleton_time_checksum != integer_checksum(self.skeleton_time) or \
+                       idletime_checksum != integer_checksum(self.skeleton_idletime):
+                           raise Exception('Checksum mismatch!')
+                else:
+                    raise Exception('No time records exist!')
 
         if meta_info_only:
             return self
@@ -1842,8 +1844,11 @@ def parse_attributes(xml_elem, parse_input):
     attributes = xml_elem.attributes
     for x in parse_input:
         try:
-            parse_output.append(x[1](attributes[x[0]].value))
-        except KeyError:
+            if x[1] == int:
+                parse_output.append(int(float(attributes[x[0]].value)))  # ensure float strings can be parsed too
+            else:
+                parse_output.append(x[1](attributes[x[0]].value))
+        except (KeyError, ValueError):
             parse_output.append(None)
     return parse_output
 
