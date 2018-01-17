@@ -32,9 +32,11 @@
 reading and writing raw and overlay data."""
 
 
-import pickle
+import collections
+from enum import Enum
 import glob
 import h5py
+import imageio
 from io import BytesIO
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
@@ -45,19 +47,19 @@ except ImportError:
           'Try to build the cython version of it.')
     from . import mergelist_tools_fallback as mergelist_tools
 import numpy as np
+import os
+import pickle
+from PIL import Image
 import re
+import requests
 import scipy.misc
 import scipy.ndimage
 import shutil
 import sys
 import time
-import requests
-import os
-import zipfile
-import collections
 from threading import Lock
 import traceback
-from PIL import Image
+import zipfile
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -266,6 +268,10 @@ def _find_and_delete_cubes_process(args):
 class KnossosDataset(object):
     """ Class that contains information and operations for a Knossos-Dataset
     """
+    class CubeType(Enum):
+        RAW = 0,
+        COMPRESSED = 1
+
     def __init__(self):
         moduleInit()
         global module_wide
@@ -282,6 +288,7 @@ class KnossosDataset(object):
         self._scale = np.ones(3, dtype=np.float)
         self._number_of_cubes = np.zeros(3)
         self._cube_shape = np.full(3, 128, dtype=np.int)
+        self._cube_type = KnossosDataset.CubeType.RAW
         self._initialized = False
 
     @property
@@ -417,6 +424,56 @@ class KnossosDataset(object):
         self._cache_mutex.release()
         return values
 
+    def parse_pyknossos_conf(self, path_to_pyknossos_conf):
+        """ Parse a pyknossos conf
+
+        :param path_to_pyknossos_conf: str
+        :param verbose: bool
+        :return:
+            nothing
+        """
+        try:
+            f = open(path_to_pyknossos_conf)
+            lines = f.readlines()
+            f.close()
+        except FileNotFoundError as e:
+            raise NotImplementedError("Could not read .conf: {}".format(e))
+
+        self._conf_path = path_to_pyknossos_conf
+
+        for line in lines:
+            tokens = re.split(" = |,|\n", line)
+            key = tokens[0]
+            if key == "_BaseName":
+                self._experiment_name = tokens[1]
+            elif key == "_DataScale":
+                self._scale[0] = float(tokens[1])
+                self._scale[1] = float(tokens[2])
+                self._scale[2] = float(tokens[3])
+            elif key == "_FileType":
+                self._cube_type = KnossosDataset.CubeType.RAW\
+                                  if int(tokens[1]) == 0\
+                                  else KnossosDataset.CubeType.COMPRESSED
+            elif key == "_NumberofCubes":
+                self._number_of_cubes[0] = int(tokens[1])
+                self._number_of_cubes[1] = int(tokens[2])
+                self._number_of_cubes[2] = int(tokens[3])
+            elif key == "_Extent":
+                self._boundary[0] = float(tokens[1])
+                self._boundary[1] = float(tokens[2])
+                self._boundary[2] = float(tokens[3])
+            else:
+                print("Skipping parameter " + key)
+        self._cube_shape = [128, 128, 128]  # hardcoded cube shape, others are not supported
+
+    def initialize_from_pyknossos_path(self, path):
+        self.parse_pyknossos_conf(path)
+        self._knossos_path = os.path.dirname(path) + "/"
+        self._name_mag_folder = "mag"
+        mag_dirs = [os.path.basename(magdir) for magdir in glob.glob(self._knossos_path + "/{0}*".format(self.name_mag_folder))]
+        self._mag = [int(name[3:]) for name in mag_dirs]
+        self._initialized = True
+        self._initialize_cache(0)
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
@@ -1063,9 +1120,13 @@ class KnossosDataset(object):
                             time.sleep(1)
                     else:
                         try:
-                            flat_shape = int(np.prod(self.cube_shape))
-                            values = np.fromfile(path, dtype=np.uint8,
-                                                 count=flat_shape)
+                            values = None
+                            if self._cube_type == KnossosDataset.CubeType.RAW:
+                                flat_shape = int(np.prod(self.cube_shape))
+                                values = np.fromfile(path, dtype=np.uint8,
+                                                     count=flat_shape)
+                            else: # compressed
+                                values = imageio.imread(path)
                             valid_values = True
                         except FileNotFoundError:
                             if verbose:
