@@ -498,7 +498,7 @@ class KnossosDataset(object):
             path = path[:-1]
 
         if not os.path.exists(path):
-            raise Exception("No directory or file found")
+            raise Exception("Does not exist: {0}".format(path))
 
         if os.path.isfile(path):
             self.parse_knossos_conf(path, verbose=verbose)
@@ -1067,10 +1067,10 @@ class KnossosDataset(object):
                             values = np.fromfile(path, dtype=np.uint8,
                                                  count=flat_shape)
                             valid_values = True
-                        except:
+                        except FileNotFoundError:
                             if verbose:
-                                _print("Cube does not exist, cube with zeros "
-                                       "only assigned")
+                                _print("Cube {} does not exist, cube with zeros "
+                                       "only assigned".format(path))
                 else:
                     path = self.knossos_path + \
                            self.name_mag_folder + \
