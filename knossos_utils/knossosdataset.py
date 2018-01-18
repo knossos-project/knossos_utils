@@ -1772,8 +1772,7 @@ class KnossosDataset(object):
                              datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=True,
                              overwrite=True, kzip_path=None,
-                             overwrite_kzip=False, annotation_str=None,
-                             as_raw=False, nb_threads=20):
+                             annotation_str=None, as_raw=False, nb_threads=20):
         """ Cubes data for viewing and editing in KNOSSOS
             one can choose from
                 a) (Over-)writing overlay cubes in the dataset
@@ -1895,9 +1894,13 @@ class KnossosDataset(object):
                 os.rmdir(folder_path+"block")   # ------------------------------
 
             else:
-                f = open(path, "wb")
-                f.write(self.module_wide["snappy"].compress(cube))
-                f.close()
+                if not overwrite and os.path.isfile(path):
+                    with open(path, "rb") as existing_file:
+                        existing_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
+                        indices = np.where(cube == 0)
+                        cube[indices] = existing_cube[indices]
+                with open(path, "wb") as new_file:
+                    new_file.write(self.module_wide["snappy"].compress(cube))
 
         # Main Function
         if not self.initialized:
@@ -1924,14 +1927,9 @@ class KnossosDataset(object):
 
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
-            if verbose:
-                _print("kzip path created, notice that kzips can only be "
-                       "created in mag1")
-
-            #mags = [1]
-            # if not 1 in self.mag:
-            #     raise Exception("kzips have to be in mag1 but dataset does not"
-            #                     "support mag1")
+                if verbose:
+                    _print("kzip path created, notice that kzips can only be "
+                           "created in mag1")
 
         if not data_path is None:
             if '.h5' in data_path:
