@@ -1510,7 +1510,8 @@ class KnossosDataset(object):
                             show_progress=True,
                             apply_mergelist=True,
                             alt_exp_name_kzip_path_mode=False,
-                            binarize_overlay=False):
+                            binarize_overlay=False,
+                            return_empty_cube_if_nonexistent=True):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
@@ -1527,6 +1528,10 @@ class KnossosDataset(object):
             True: prints several information
         :param apply_mergelist: bool
             True: Merges IDs based on the kzip mergelist
+        :param return_empty_cube_if_nonexistent: bool
+            True: if kzip doesn't contain specified cube,
+            an empty cube (cube filled with empty_cube_label) is returned.
+            False: returns None instead.
         :return: 3D numpy array
         """
         if not self.initialized:
@@ -1594,11 +1599,14 @@ class KnossosDataset(object):
                             # sure it makes sense
                             values = values.astype(datatype)
                     except KeyError:
-                        if verbose:
-                            _print("Cube does not exist, cube with %d only " \
-                                  "assigned" % empty_cube_label)
-                        values = np.full(self.cube_shape, empty_cube_label,
-                                         dtype=datatype)
+                        if return_empty_cube_if_nonexistent:
+                            if verbose:
+                                _print("Cube does not exist, cube with {} only"\
+                                       " assigned".format(empty_cube_label))
+                            values = np.full(self.cube_shape, empty_cube_label,
+                                             dtype=datatype)
+                        else:
+                            return None
 
                     pos = (current-start)*self.cube_shape
 
