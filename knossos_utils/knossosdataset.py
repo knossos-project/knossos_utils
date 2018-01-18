@@ -1771,14 +1771,17 @@ class KnossosDataset(object):
                              data_path=None, hdf5_names=None,
                              datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=True,
-                             overwrite=True, kzip_path=None,
+                             overwrite=True, kzip_path=None, compress_kzip=True,
                              annotation_str=None, as_raw=False, nb_threads=20):
         """ Cubes data for viewing and editing in KNOSSOS
             one can choose from
                 a) (Over-)writing overlay cubes in the dataset
                 b) Writing a kzip which can be loaded in KNOSSOS
                 c) (Over-)writing raw cubes
-
+        :param compress_kzip: bool
+            If kzip_path selected, indicates if tmp output folder should be
+            compressed to the kzip. For multiple calls to this function with
+            same kzip target, it makes sense to only compress in the last call.
         :param offset: 3 sequence of ints
             coordinate of the corner closest to (0, 0, 0)
         :param mags: sequence of ints
@@ -2085,18 +2088,28 @@ class KnossosDataset(object):
                     _write_cubes(params)
 
         if kzip_path is not None:
-            with zipfile.ZipFile(kzip_path+".k.zip", "w",
-                                 zipfile.ZIP_DEFLATED) as zf:
-                for root, dirs, files in os.walk(kzip_path):
-                    for file in files:
-                        zf.write(os.path.join(root, file), file)
-                zf.writestr("mergelist.txt",
-                            mergelist_tools.gen_mergelist_from_segmentation(
-                                data.astype(datatype, copy=False),
-                                offsets=np.array(offset, dtype=np.uint64)))
+            if compress_kzip:
+                with zipfile.ZipFile(kzip_path+".k.zip", "w",
+                                     zipfile.ZIP_DEFLATED) as zf:
+                    for root, dirs, files in os.walk(kzip_path):
+                        for file in files:
+                            zf.write(os.path.join(root, file), file)
+                    zf.writestr("mergelist.txt",
+                                mergelist_tools.gen_mergelist_from_segmentation(
+                                    data.astype(datatype, copy=False),
+                                    offsets=np.array(offset, dtype=np.uint64)))
+                    if annotation_str is not None:
+                        zf.writestr("annotation.xml", annotation_str)
+                shutil.rmtree(kzip_path)
+            else: # don't compress tmp kzip dir
+                with open(kzip_path + "/mergelist.txt", "w") as mergelist_file:
+                    mergelist_file.write(
+                        mergelist_tools.gen_mergelist_from_segmentation(
+                            data.astype(datatype, copy=False),
+                            offsets=np.array(offset, dtype=np.uint64)))
                 if annotation_str is not None:
-                    zf.writestr("annotation.xml", annotation_str)
-            shutil.rmtree(kzip_path)
+                    with open(kzip_path + "/annotation.xml", "w") as anno_file:
+                        anno_file.write(annotation_str)
 
     def from_overlaycubes_to_kzip(self, size, offset, output_path,
                                   src_mag=1, trg_mags=[1,2,4,8],
