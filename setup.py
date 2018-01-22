@@ -8,6 +8,7 @@ import sys
 import setuptools
 from setuptools import setup, Extension
 from pkg_resources import parse_version
+from Cython.Build import cythonize
 
 
 # Setuptools >=18.0 is needed for Cython to work correctly.
@@ -61,7 +62,7 @@ setup(
     long_description=read("README.md"),
     packages=["knossos_utils"],
     data_files=[("", ["LICENSE"])],
-    ext_modules=extensions,
+    ext_modules=cythonize(extensions),
     setup_requires=[
         "cython>=0.23",
     ],

@@ -48,9 +48,9 @@ from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 try:
     from knossos_utils import mergelist_tools
-except ImportError:
+except ImportError as e:
     print('mergelist_tools not available, using slow python fallback. '
-          'Try to build the cython version of it.')
+          'Try to build the cython version of it.\n' + str(e))
     from knossos_utils import mergelist_tools_fallback as mergelist_tools
 import numpy as np
 import re
@@ -812,7 +812,6 @@ class KnossosDataset(object):
 
                 return err
             else:
-                assert apply_func is None
                 overlay = self.from_overlaycubes_to_matrix(size, offset,
                                                            mag=mag,
                                                            http_verbose=True,
@@ -824,9 +823,10 @@ class KnossosDataset(object):
                     overlay = overlay[0]
                 else:
                     err = None
-
+                if apply_func is not None:
+                    overlay = apply_func(overlay)
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
-                                            data=overlay, datatype=np.uint32,
+                                            data=overlay, datatype=np.uint64,
                                             nb_threads=1)
                 return err
 
@@ -1161,7 +1161,7 @@ class KnossosDataset(object):
                     else:
                         try:
                             values = values.reshape(self.cube_shape).T
-                        except:
+                        except Exception as e:
                             # _print('Exception in reshape: values.shape {0}'.
                             #        format(values.shape))
                             # _print('Exception in reshape:self.cube_shape {0}'.
@@ -1170,6 +1170,7 @@ class KnossosDataset(object):
                             _print("Cube is invalid, cube with zeros "
                                    "only assigned")
                             _print(c)
+                            _print(e)
                             values = np.zeros(self.cube_shape)
 
                         self._add_to_cube_cache(c, mode, values)
@@ -1654,6 +1655,93 @@ class KnossosDataset(object):
                     offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
                     mag=mag)
 
+            for curr_z_coord in range(0, self._cube_shape[2]):
+
+                file_path = "{0}{1}_{2:06d}.{3}".format(out_path,
+                                                         mode,
+                                                         z_coord_cnt,
+                                                         out_format)
+
+                # the swap is necessary to have the same visual
+                # appearence in knossos and the resulting image stack
+                # => needs further investigation?
+                try:
+                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 1).astype(out_dtype)
+                except IndexError:
+                    stop = True
+                    break
+
+                if xy_zoom != 1.:
+                    if mode == 'overlay':
+                        swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=0)
+                    elif mode == 'raw':
+                        swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=1)
+
+                if out_format != 'raw':
+                    img = Image.fromarray(swapped)
+                    with open(file_path, 'w') as fp:
+                        img.save(fp)
+                else:
+                    swapped.tofile(file_path)
+
+                _print("Writing layer {0} of {1} in total.".format(
+                    z_coord_cnt+1, self.boundary[2]//mag))
+
+                z_coord_cnt += 1
+            del layer
+        return
+
+    def export_partially_to_image_stack(self,
+                              mode='raw',
+                              out_dtype=np.uint8,
+                              out_path='',
+                              xy_zoom=1., bounding_box=None,
+                              out_format='tif',
+                              mag=1):
+        """
+        Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
+        Make sure to have enough RAM available. Supports raw data and
+        overlay export (only raw file).
+        Please be aware that overlay tif export can be problematic, regarding
+        the datatype. Usage of the raw format is advised.
+
+        :param mode: string
+        :param out_dtype: numpy dtype
+        :param out_format: string
+        :param out_path: string
+        :return:
+        """
+        if not bounding_box:
+            self.export_partially_to_image_stack(mode=mode, out_dtype=out_dtype, out_path=out_path,
+            xy_zoom=xy_zoom, out_format=out_format, mag=mag)
+        starting_offset = bounding_box[0]
+        size = bounding_box[1]
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
+
+        z_coord_cnt = 0
+
+        stop = False
+
+        scaled_cube_layer_size = (size[0]//mag,
+                                  size[1]//mag,
+                                  self._cube_shape[2])
+
+        end_z = 1 + int(np.ceil((starting_offset[2] + size[2]) // self._cube_shape[2]))
+        for curr_z_cube in range(starting_offset[2] // self.cube_shape[2], end_z):
+            if stop:
+                break
+            if mode == 'raw':
+                layer = self.from_raw_cubes_to_matrix(
+                    size=scaled_cube_layer_size,
+                    offset=np.array([starting_offset[0], starting_offset[1], curr_z_cube * self._cube_shape[2]]),
+                    mag=mag)
+            elif mode == 'overlay':
+                layer = self.from_overlaycubes_to_matrix(
+                    size=scaled_cube_layer_size,
+                    offset=np.array([starting_offset[0], starting_offset[1], curr_z_cube * self._cube_shape[2]]),
+                    mag=mag)
+
             layer = layer.astype(out_dtype)
 
             for curr_z_coord in range(0, self._cube_shape[2]):
@@ -1667,7 +1755,7 @@ class KnossosDataset(object):
                 # appearence in knossos and the resulting image stack
                 # => needs further investigation?
                 try:
-                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 0)
+                    swapped = np.swapaxes(layer[:, :, curr_z_coord], 0, 1)
                 except IndexError:
                     stop = True
                     break
@@ -2001,7 +2089,6 @@ class KnossosDataset(object):
                         current[0] += 1
                     current[1] += 1
                 current[2] += 1
-
             if nb_threads > 1:
                 pool = ThreadPool(nb_threads)
                 pool.map(_write_cubes, multithreading_params)
