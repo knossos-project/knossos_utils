@@ -982,10 +982,13 @@ class SkeletonAnnotation:
         self.reverse_edges[target_node].add(node)
         return
 
-    def removeEdge(self, node, target_node):
-        self.edges[node].remove(target_node)
-        self.reverse_edges[target_node].remove(node)
-        return
+    def removeEdge(self, node1, node2):
+        if node2 in self.edges[node1]:
+            self.edges[node1].remove(node2)
+            self.reverse_edges[node2].remove(node1)
+        else:
+            self.edges[node2].remove(node1)
+            self.reverse_edges[node1].remove(node2)
 
     def getNodeEdges(self, node):
         return self.edges[node]
