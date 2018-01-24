@@ -19,7 +19,7 @@
 
 from xml.dom import minidom
 import xml.etree.cElementTree as cElementTree
-from math import pow, sqrt
+import math
 import copy
 import tempfile
 import unicodedata
@@ -33,9 +33,9 @@ import zipfile
 from multiprocessing import Pool
 
 def euclidian_distance(c1, c2):
-    return sqrt(pow((c2[0] - c1[0]), 2) +
-     pow((c2[1] - c1[1]), 2) +
-     pow((c2[2] - c1[2]), 2))
+    return math.sqrt(math.pow((c2[0] - c1[0]), 2) +
+                     math.pow((c2[1] - c1[1]), 2) +
+                     math.pow((c2[2] - c1[2]), 2))
 
 class Skeleton:
     """
@@ -667,8 +667,6 @@ class Skeleton:
         return {'created': created_version, 'saved': last_saved_version}
     #
     def set_scaling(self, scaling):
-        if isinstance(scaling, str):
-            scaling = None
         self.scaling = scaling
         for annotation in self.annotations:
             annotation.scaling = scaling
@@ -1443,10 +1441,9 @@ class SkeletonNode:
         c_1 = self.getCoordinate_scaled()
         c_2 = to_node.getCoordinate_scaled()
 
-        dst = sqrt(pow(c_1[0] - c_2[0], 2) +
-                pow(c_1[1] - c_2[1], 2) +
-                pow(c_1[2] - c_2[2], 2))
-
+        dst = math.sqrt(math.pow(c_1[0] - c_2[0], 2) +
+                        math.pow(c_1[1] - c_2[1], 2) +
+                        math.pow(c_1[2] - c_2[2], 2))
         return dst
 
     def degree(self):
