@@ -1049,7 +1049,7 @@ class SkeletonAnnotation:
         return
 
     def getNodeByID(self, nodeID):
-        return self.node_ID_to_node[nodeID]
+        return self.node_ID_to_node[nodeID] if nodeID in self.node_ID_to_node else None
 
     def getNodeByUniqueID(self, uniqueNodeID):
         return self.getNodeByID(uniqueNodeID - self.getNodeBaseID())
