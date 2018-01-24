@@ -792,7 +792,7 @@ class SkeletonAnnotation:
             try:
                 source_node = self.node_ID_to_node[source_ID]
                 target_node = self.node_ID_to_node[target_ID]
-                source_node.addChild(target_node)
+                self.addEdge(source_node, target_node)
             except KeyError:
                 print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
 
@@ -939,7 +939,7 @@ class SkeletonAnnotation:
 
     def addNode(self, node):
         this_id = node.getID()
-        if this_id == None or this_id in self.node_ID_to_node.keys():
+        if this_id is None or this_id in self.node_ID_to_node.keys():
             this_id = self.high_id + 1
             node.setID(this_id)
         if this_id > self.high_id:
@@ -948,7 +948,7 @@ class SkeletonAnnotation:
         node.annotation = self
         self.node_ID_to_node[this_id] = node
         self.clearNodeEdges(node)
-        return id
+        return this_id
 
     def removeNode(self, node):
         if not node.annotation:
