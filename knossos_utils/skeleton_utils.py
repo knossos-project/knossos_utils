@@ -587,24 +587,25 @@ def annotation_from_nodes(nodes, annotation=None, preserve_scaling=True,
     new_anno : SkeletonAnnotation instance
     """
 
-    new_anno = SkeletonAnnotation()
+    new_annotation = SkeletonAnnotation()
+    if annotation is not None and preserve_scaling is True:
+        new_annotation.scaling = annotation.scaling
 
     for cur_n in nodes:
-        new_anno.addNode(cur_n)
+        new_node = SkeletonNode()
+        coords = cur_n.getCoordinate()
+        new_node.from_scratch(new_annotation, coords[0], coords[1], coords[2], ID=cur_n.ID)
+        new_id = new_annotation.addNode(new_node)
 
     if annotation is not None and connect is True:
-        for cur_n in nodes:
-            try:
-                new_anno.edges[cur_n] = annotation.edges[cur_n].copy()
-                new_anno.reverse_edges[cur_n] = \
-                    annotation.reverse_edges[cur_n].copy()
-            except KeyError:
-                pass
-
-    if annotation is not None and preserve_scaling is True:
-        new_anno.scaling = annotation.scaling
-
-    return new_anno
+        for src_node, trg_nodes in annotation.getEdges().items():
+            for trg_node in trg_nodes:
+                new_src = new_annotation.getNodeByID(src_node.ID)
+                new_trg = new_annotation.getNodeByID(trg_node.ID)
+                if new_src is not None and new_trg is not None:
+                    new_annotation.addEdge(new_src, new_trg)
+                # else this segment does not belong to the component
+    return new_annotation
 
 
 def split_by_connected_component(annotation):
