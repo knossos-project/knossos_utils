@@ -670,43 +670,41 @@ class Skeleton:
         if isinstance(scaling, str):
             scaling = None
         self.scaling = scaling
-    #
-    pass
 
 
 class SkeletonAnnotation:
+
     def interpolate_nodes(self, max_node_dist_scaled=50):
-        # test scaling available
-        # get all edges with length > max_node_distance_scaled
-        if not self.scaling:
+        """
+        Add interpolated nodes along edges so that no node distance exceeds max_node_dist_scaled.
+        :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
+        """
+        if self.scaling is None:
             raise Exception('Cannot interpolate without scaling.')
+        edges_copy = self.edges.copy()
+        for src_node in edges_copy:
+            for trg_node in edges_copy[src_node]:
+                distance = src_node.distance_scaled(trg_node)
+                if distance < max_node_dist_scaled:
+                    continue
 
-        interpolated_edges = 1
-        while interpolated_edges:
-            interpolated_edges = 0
-            for src_node in self.edges.keys():
-                for trg_node in self.edges[src_node]:
-                    if src_node.distance_scaled(trg_node) > max_node_dist_scaled:
-                        interpolated_edges += 1
-                        # remove this edge
-                        self.removeEdge(src_node, trg_node)
+                self.removeEdge(src_node, trg_node)
+                # number of nodes to be added along this edge
+                num_interpolation_nodes = math.floor(distance / max_node_dist_scaled)
 
-                        # get new node coordinate in between the old nodes
-                        a = src_node.getCoordinate()
-                        b = trg_node.getCoordinate()
-                        c = [int(round((a[0]+b[0])/2., 0)),
-                             int(round((a[1]+b[1])/2., 0)),
-                             int(round((a[2]+b[2])/2., 0))]
-
-                        # add node from scratch in between
-                        new_node = SkeletonNode()
-                        new_node.from_scratch(self, c[0], c[1], c[2])
-                        self.addNode(new_node)
-                        # add edges to new node, and from new node
-                        self.addEdge(src_node, new_node)
-                        self.addEdge(new_node, trg_node)
-
-        return
+                src_coords = np.array(src_node.getCoordinate())
+                trg_coords = np.array(trg_node.getCoordinate())
+                direction_vec = trg_coords - src_coords
+                direction_vec = direction_vec / np.linalg.norm(direction_vec) # normalize
+                last_node = src_node
+                for i in range(1, num_interpolation_nodes + 2):
+                    c = src_coords + np.round(direction_vec * i)
+                    new_node = SkeletonNode()
+                    new_node.from_scratch(self, c[0], c[1], c[2])
+                    self.addNode(new_node)
+                    self.addEdge(last_node, new_node)
+                    last_node = new_node
+                self.addEdge(last_node, trg_node)
 
     def resetObject(self):
         # Mandatory
