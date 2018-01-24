@@ -1012,6 +1012,9 @@ class SkeletonAnnotation:
     def getRoot(self):
         return self.root
 
+    def get_branch_points(self):
+        return [node for node in self.nodes if node.is_branch_point()]
+
     def setRootInternal(self, root):
         self.root = root
         return
@@ -1408,6 +1411,9 @@ class SkeletonNode:
 
     def getParents(self):
         return self.annotation.getNodeReverseEdges(self)
+
+    def is_branch_point(self):
+        return self.degree() > 2
 
     def addParent(self, parent):
         parent.addChild(self)
