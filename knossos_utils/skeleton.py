@@ -670,6 +670,8 @@ class Skeleton:
         if isinstance(scaling, str):
             scaling = None
         self.scaling = scaling
+        for annotation in self.annotations:
+            annotation.scaling = scaling
 
 
 class SkeletonAnnotation:
