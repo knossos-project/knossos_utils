@@ -46,6 +46,7 @@ import h5py
 from io import BytesIO
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
+from skimage.measure import block_reduce
 try:
     from knossos_utils import mergelist_tools
 except ImportError as e:
@@ -758,7 +759,7 @@ class KnossosDataset(object):
         self.from_matrix_to_cubes(offset, mags=mags, data=data,
                                   datatype=np.uint8,
                                   fast_downsampling=fast_downsampling,
-                                  as_raw=True)
+                                  as_raw=True, verbose=verbose)
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
                      stride=256, return_errors=False, nb_threads=20,
@@ -812,7 +813,7 @@ class KnossosDataset(object):
 
                 return err
             else:
-                overlay = self.from_overlaycubes_to_matrix(size, offset,
+                overlay = self.from_overlaycubes_to_matrix(size, offset, verbose=verbose,
                                                            mag=mag,
                                                            http_verbose=True,
                                                            nb_threads=1,
@@ -827,7 +828,7 @@ class KnossosDataset(object):
                     overlay = apply_func(overlay)
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=overlay, datatype=np.uint64,
-                                            nb_threads=1)
+                                            nb_threads=1, verbose=verbose)
                 return err
 
         if data_range:
@@ -869,7 +870,6 @@ class KnossosDataset(object):
                                    data_range[1][2], stride):
                         multi_params.append([1, [stride]*3, [x, y, z],
                                              False])
-
         if nb_threads > 1:
             pool = ThreadPool(nb_threads)
             results = pool.map(_copy_block_thread, multi_params)
@@ -1306,8 +1306,9 @@ class KnossosDataset(object):
             raise Exception("Incorrect shape! Should be", ref_size, "; got:",
                             output.shape)
         else:
-            if verbose:
-                _print("Shape was verified")
+            pass
+            # if verbose:
+            #     _print("Shape was verified")
 
         if np.any(mirror_overlap != 0):
             if not zyx_mode:
@@ -1509,7 +1510,7 @@ class KnossosDataset(object):
                     this_path = self._experiment_name +\
                                 '_mag1_mag%dx%dy%dz%d.seg.sz' % \
                                 (mag, current[0], current[1], current[2])
-                    print(this_path)
+                    # print(this_path)
 
                     if self._experiment_name == \
                                 "20130410.membrane.striatum.10x10x30nm":
@@ -1648,12 +1649,12 @@ class KnossosDataset(object):
                 layer = self.from_raw_cubes_to_matrix(
                     size=scaled_cube_layer_size,
                     offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
-                    mag=mag)
+                    mag=mag, verbose=True)
             elif mode == 'overlay':
                 layer = self.from_overlaycubes_to_matrix(
                     size=scaled_cube_layer_size,
                     offset=np.array([0, 0, curr_z_cube * self._cube_shape[2]]),
-                    mag=mag)
+                    mag=mag, verbose=True)
 
             for curr_z_coord in range(0, self._cube_shape[2]):
 
@@ -1735,12 +1736,12 @@ class KnossosDataset(object):
                 layer = self.from_raw_cubes_to_matrix(
                     size=scaled_cube_layer_size,
                     offset=np.array([starting_offset[0], starting_offset[1], curr_z_cube * self._cube_shape[2]]),
-                    mag=mag)
+                    mag=mag, verbose=True)
             elif mode == 'overlay':
                 layer = self.from_overlaycubes_to_matrix(
                     size=scaled_cube_layer_size,
                     offset=np.array([starting_offset[0], starting_offset[1], curr_z_cube * self._cube_shape[2]]),
-                    mag=mag)
+                    mag=mag, verbose=True)
 
             layer = layer.astype(out_dtype)
 
@@ -1980,7 +1981,9 @@ class KnossosDataset(object):
                     max_label_so_far = np.max(data[ii])
 
             data = np.max(np.array(data), axis=0)
-
+        # do not interpolate overlay cubes when downsampling
+        if not fast_downsampling:
+            order = 3 if as_raw else 0
         for mag in mags:
             mag_ratio = float(mag) / data_mag
             if mag_ratio > 1:
@@ -1988,13 +1991,14 @@ class KnossosDataset(object):
                 if fast_downsampling:
                     data_inter = np.array(data[::mag_ratio, ::mag_ratio, ::mag_ratio],
                                           dtype=datatype)
+
                 else:
                     data_inter = \
-                        scipy.ndimage.zoom(data, 1.0/mag_ratio, order=3).\
+                        scipy.ndimage.zoom(data, 1.0/mag_ratio, order=order).\
                             astype(datatype, copy=False)
             elif mag_ratio < 1:
                 inv_mag_ratio = int(1./mag_ratio)
-                if fast_downsampling:
+                if fast_downsampling is True:
                     data_inter = np.zeros(
                         np.array(data.shape) * inv_mag_ratio,
                         dtype=data.dtype)
@@ -2007,7 +2011,7 @@ class KnossosDataset(object):
                     data_inter = data_inter.astype(dtype=datatype, copy=False)
                 else:
                     data_inter = \
-                        scipy.ndimage.zoom(data, inv_mag_ratio, order=3).\
+                        scipy.ndimage.zoom(data, inv_mag_ratio, order=order).\
                             astype(datatype, copy=False)
             else:
                 # copy=False means in this context that a copy is only made
@@ -2212,3 +2216,51 @@ class KnossosDataset(object):
         else:
             for params in multi_params:
                 _find_and_delete_cubes_process(params)
+
+
+def downsample_kd(kd, orig_mag, target_mags,
+                  stride=[4 * 128, 4 * 128, 2 * 128],
+                  do_raw=False, fast_downsampling=False):
+    nb_threads = 1  # doesn't work multithreaded (multiple access to same files may happen, currently no locking)
+    assert orig_mag not in target_mags
+    data_range = [[0, 0, 0], kd.boundary]
+    multi_params = []
+    for x in range(data_range[0][0],
+                   data_range[1][0], stride[0]):
+        for y in range(data_range[0][1],
+                       data_range[1][1], stride[1]):
+            for z in range(data_range[0][2],
+                           data_range[1][2], stride[2]):
+                multi_params.append([kd.knossos_path, orig_mag, target_mags, stride, [x, y, z],
+                                     do_raw, fast_downsampling])
+
+    np.random.shuffle(multi_params)
+
+    if nb_threads > 1:
+        pool = Pool(processes=nb_threads)
+        pool.map(_downsample_kd_thread, multi_params)
+        pool.close()
+        pool.join()
+    else:
+        for params in multi_params:
+            _downsample_kd_thread(params)
+
+
+def _downsample_kd_thread(args):
+    kd_p, orig_mag, target_mags, size, offset, as_raw, fast_downsampling = args
+    kd = KnossosDataset()
+    kd.initialize_from_knossos_path(kd_p)
+    if as_raw:
+        data = kd.from_raw_cubes_to_matrix(size, offset, mag=orig_mag, nb_threads=8,
+                                           show_progress=False)
+    else:
+        data = kd.from_overlaycubes_to_matrix(size, offset, mag=orig_mag, nb_threads=8,
+                                              show_progress=False)
+    if as_raw:
+        datatype = np.uint8
+    else:
+        datatype = np.uint64
+    kd.from_matrix_to_cubes(offset, data_mag=orig_mag, mags=target_mags,
+                            data=data, as_raw=as_raw, nb_threads=8,
+                            overwrite=True, datatype=datatype, verbose=False,
+                            fast_downsampling=fast_downsampling)
