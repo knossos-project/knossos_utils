@@ -1194,7 +1194,7 @@ def avg_annotation_inter_node_distance(anno, outlier_filter=2000.):
     Calculates the average inter node distance for an annotation. Candidate
     for inclusion into the skeleton annotation object.
 
-    :param anno: annotation object
+    :param anno: SkeletonAnnotation object
     :param outlier_filter: float, ignore distances higher than value
     :return: float
     """
@@ -1217,13 +1217,9 @@ def avg_annotation_inter_node_distance(anno, outlier_filter=2000.):
         return
 
 
-def annoToKDtree(annotations):
-    """
-    Uses scipy kd-trees. Scaling must be set.
-    Only nodes are added to the tree, no edges currently. Creates
-    one kd-tree for every annotation.
-
-    """
+def annotations_to_KDtree_list(annotations):
+    """Returns a list of kd-trees: one per annotation.
+    Only nodes are added to the tree, no edges currently."""
 
     if not isinstance(annotations, (set, list)):
         annotations = [annotations]
@@ -1233,14 +1229,9 @@ def annoToKDtree(annotations):
     return trees
 
 
-def annosToKDtree(annotations):
-    """
-
-    Uses scipy kd-trees. Scaling must be set.
-    Only nodes are added to the tree, no edges currently. Inserts many
-    annotations into a single kd-tree.
-
-    """
+def annotations_to_KDtree(annotations):
+    """Inserts many annotations into a single kd-tree.
+    Only nodes are added to the tree, no edges currently."""
     nodes = []
     for anno in annotations:
         nodes.extend([node for node in anno.getNodes()])
@@ -1628,7 +1619,7 @@ def annotation_matcher(annotations,
 
     print('Starting with kd-tree construction')
     # Insert all annotations into a single kd-tree for fast spatial lookups
-    kdtree = annosToKDtree(annotations)
+    kdtree = annotations_to_KDtree(annotations)
     print('Done with kd-tree construction, starting with matching')
     # Query x random nodes of each annotation against the kd-tree
     # (query_ball_point search).
@@ -1888,7 +1879,7 @@ def genSeedNodes(annotations, reqRedundancy, spotlightRadius):
     newAnnos = []
     for anno in annotations:
         anno.nxG = annoToNXGraph(anno)[0]
-        anno.kdT = annoToKDtree(anno)[0]
+        anno.kdT = annotations_to_KDtree_list(anno)[0]
         newAnnos.append(anno)
 
     annotations = set(newAnnos)
@@ -2255,8 +2246,8 @@ class EnhancedAnnotation():
         #
         #self.kd_tree_spatial = annoToKDtree(annotation,
         #        interpolate=interpolate)[0]
-        self.kd_tree_spatial = annoToKDtree(annotation)[0]
-        self.kd_tree_nodes = annoToKDtree(annotation)[0]
+        self.kd_tree_spatial = annotations_to_KDtree_list(annotation)[0]
+        self.kd_tree_nodes = annotations_to_KDtree_list(annotation)[0]
         self.graph = annoToNXGraph(annotation)[0]
         self.annotation = annotation
 
