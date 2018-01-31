@@ -368,6 +368,16 @@ class KnossosDataset(object):
     def get_last_blocks(self, offset, size):
         return ((offset+size-1) // self.cube_shape) + 1
 
+    def get_cube_coordinates(self, cube_name):
+        x_pos = cube_name.rfind("x")
+        y_pos = cube_name.find("y", x_pos, len(cube_name))
+        z_pos = cube_name.find("z", y_pos, len(cube_name))
+        dot_pos = cube_name.find(".", z_pos, len(cube_name))
+        x = int(cube_name[x_pos + 1:y_pos])
+        y = int(cube_name[y_pos + 1:z_pos])
+        z = int(cube_name[z_pos + 1:dot_pos])
+        return [x, y, z]
+
     def _initialize_cache(self, cache_size):
         """ Initializes the internal RAM cache for repeated look-ups.
         max_size: Maximum number of cubes to hold before replacing existing cubes.
@@ -2115,15 +2125,6 @@ class KnossosDataset(object):
                     if annotation_str is not None:
                         zf.writestr("annotation.xml", annotation_str)
                 shutil.rmtree(kzip_path)
-            else: # don't compress tmp kzip dir
-                with open(kzip_path + "/mergelist.txt", "w") as mergelist_file:
-                    mergelist_file.write(
-                        mergelist_tools.gen_mergelist_from_segmentation(
-                            data.astype(datatype, copy=False),
-                            offsets=np.array(offset, dtype=np.uint64)))
-                if annotation_str is not None:
-                    with open(kzip_path + "/annotation.xml", "w") as anno_file:
-                        anno_file.write(annotation_str)
 
     def from_overlaycubes_to_kzip(self, size, offset, output_path,
                                   src_mag=1, trg_mags=[1,2,4,8],
@@ -2157,6 +2158,25 @@ class KnossosDataset(object):
                                   kzip_path=output_path,
                                   nb_threads=nb_threads,
                                   mags=trg_mags)
+
+    def add_mergelist_to_kzip(self, kzip_path):
+        subobj_pos_dict = {}
+        with zipfile.ZipFile(kzip_path, "r") as zf:
+            for cube_filename in [cube_name for cube_name in zf.namelist() if cube_name.endswith(".seg.sz")]:
+                cube_coords = np.array(self.cube_shape) * self.get_cube_coordinates(cube_filename)
+                cube = zf.read(os.path.basename(cube_filename))
+                cube = np.fromstring(self.module_wide["snappy"].decompress(cube), dtype=np.uint64)
+                subobj_ids, indices = np.unique(cube, return_index=True)
+                unravelled_indices = np.unravel_index(indices, [128, 128, 128])
+                for i in range(0, len(subobj_ids)):
+                    if subobj_ids[i] in subobj_pos_dict: continue
+                    subobj_coords = [unravelled_indices[2][i], unravelled_indices[1][i], unravelled_indices[0][i]]
+                    subobj_pos_dict[subobj_ids[i]] = subobj_coords + cube_coords
+
+        with zipfile.ZipFile(kzip_path, "a") as zf:
+            mergelist = mergelist_tools.gen_mergelist_from_objects(subobj_pos_dict.keys(), subobj_pos_dict)
+            zf.writestr("mergelist.txt", mergelist)
+
 
     def delete_all_overlaycubes(self, nb_processes=4, verbose=False):
         """  Deletes all overlaycubes
