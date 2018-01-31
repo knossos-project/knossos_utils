@@ -424,6 +424,12 @@ class KnossosDataset(object):
         self._cache_mutex.release()
         return values
 
+    def initialize_from_conf(self, path_to_conf):
+        if path_to_conf.endswith("ariadne.conf") or path_to_conf.endswith("pyknossos.conf"):
+            self.initialize_from_pyknossos_path(path_to_conf)
+        else:
+            self.initialize_from_knossos_path(path_to_conf)
+
     def parse_pyknossos_conf(self, path_to_pyknossos_conf):
         """ Parse a pyknossos conf
 
