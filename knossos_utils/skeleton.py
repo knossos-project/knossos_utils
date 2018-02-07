@@ -1103,7 +1103,7 @@ class SkeletonNode:
         # Using extra data dictionaries is a bad idea and somewhat redundant,
         # see definition of __copy__ below.
         # Uninitialize mandatory
-        self.data = {}
+        self.data = {"inMag": 1, "inVp": 0, "radius": 1.5, "time": 0}
         self.ID = None
         # Uninitialized optional members
         self.pure_comment = ""
@@ -1147,7 +1147,6 @@ class SkeletonNode:
     def from_coordinate(coordinate):
         new = SkeletonNode()
         new.setCoordinate(coordinate)
-
         return new
 
     def from_scratch(self, annotation, x, y, z, inVp=1, inMag=1, time=0, ID=None, radius=1.0):
@@ -1270,14 +1269,10 @@ class SkeletonNode:
         self.y = coord[1]
         self.z = coord[2]
 
-        if not self.annotation:
-            raise Exception("No associated annotation for scaling")
-        if not self.annotation.scaling:
-            raise Exception("No scaling parameter set")
-
-        self.x_scaled = self.x * self.annotation.scaling[0]
-        self.y_scaled = self.y * self.annotation.scaling[1]
-        self.z_scaled = self.z * self.annotation.scaling[2]
+        if self.annotation and self.annotation.scaling:
+            self.x_scaled = self.x * self.annotation.scaling[0]
+            self.y_scaled = self.y * self.annotation.scaling[1]
+            self.z_scaled = self.z * self.annotation.scaling[2]
 
     def getCoordinate_scaled(self):
         return [self.x_scaled, self.y_scaled, self.z_scaled]
@@ -1286,7 +1281,9 @@ class SkeletonNode:
         # If no corresponding annotation and no ID is set in this
         # instances attributes, then the ID is not defined.
         #
-        if self.ID == None:
+        if self.ID is None:
+            if self.annotation is None:
+                return None
             self.ID = self.annotation.high_id
             self.annotation.high_id += 1
 
