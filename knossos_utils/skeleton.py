@@ -61,6 +61,7 @@ class Skeleton:
         self.edit_position = None
         self.experiment_name = None
         self.version = '4.1.2'
+        self.dataset_path = None
         return
 
     def set_edit_position(self, edit_position):
@@ -551,6 +552,11 @@ class Skeleton:
         if self.experiment_name is not None:
             build_attributes(expname, [["name", self.experiment_name]])
             parameters.appendChild(expname)
+
+        if self.dataset_path is not None:
+            dataset = doc.createElement("dataset")
+            build_attributes(dataset, [["path", self.dataset_path]])
+            parameters.appendChild(dataset)
 
         if self.scaling is not None:
             scale = doc.createElement("scale")
@@ -1145,6 +1151,7 @@ class SkeletonNode:
         self.removeMetaDataKey(node_metadata_key_root)
         return
 
+    @staticmethod
     def from_coordinate(coordinate):
         new = SkeletonNode()
         new.setCoordinate(coordinate)
