@@ -493,7 +493,8 @@ class Skeleton:
         """
         high_ids = [0]
         for cur_anno in self.annotations:
-            high_ids.append(cur_anno.high_id)
+            # The nodeBaseID still needs to be added to the node IDs to obtain skeleton-wide unique IDs.
+            high_ids.append(cur_anno.nodeBaseID + cur_anno.high_id)
         return max(high_ids)
 
     def toNml(self, filename, save_empty=True):
@@ -713,7 +714,7 @@ class SkeletonAnnotation:
         self.node_ID_to_node = {}
         self.edges = {}
         self.reverse_edges = {}
-        self.nodeBaseID = 1
+        self.nodeBaseID = 1 # this is not the smallest ID found in the annotation but an offset that needs to be added to every node ID to obtain skeleton-wide unique IDs.
         self.scaling = None
         self.filename = None
         # Optional
