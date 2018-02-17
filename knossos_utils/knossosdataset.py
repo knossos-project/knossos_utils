@@ -2159,7 +2159,7 @@ class KnossosDataset(object):
                                   nb_threads=nb_threads,
                                   mags=trg_mags)
 
-    def add_mergelist_to_kzip(self, kzip_path):
+    def add_mergelist_to_kzip(self, kzip_path, background_id=0):
         subobj_pos_dict = {}
         with zipfile.ZipFile(kzip_path, "r") as zf:
             for cube_filename in [cube_name for cube_name in zf.namelist() if cube_name.endswith(".seg.sz")]:
@@ -2169,7 +2169,7 @@ class KnossosDataset(object):
                 subobj_ids, indices = np.unique(cube, return_index=True)
                 unravelled_indices = np.unravel_index(indices, [128, 128, 128])
                 for i in range(0, len(subobj_ids)):
-                    if subobj_ids[i] in subobj_pos_dict: continue
+                    if subobj_ids[i] == background_id or subobj_ids[i] in subobj_pos_dict: continue
                     subobj_coords = [unravelled_indices[2][i], unravelled_indices[1][i], unravelled_indices[0][i]]
                     subobj_pos_dict[subobj_ids[i]] = subobj_coords + cube_coords
 
