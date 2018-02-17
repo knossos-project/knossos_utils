@@ -21,6 +21,7 @@ from xml.dom import minidom
 import xml.etree.cElementTree as cElementTree
 import math
 import copy
+from collections import deque
 import tempfile
 import unicodedata
 import hashlib
@@ -1419,6 +1420,21 @@ class SkeletonNode:
 
     def is_branch_point(self):
         return self.degree() > 2
+
+    def is_connected_to(self, node):
+        queue = deque()
+        queue.append(self)
+        visited = {self}
+        while len(queue) > 0:
+            next_node = queue.popleft()
+            if next_node == node:
+                return True
+            for neighbor in next_node.getNeighbors():
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+        return False
+
 
     def addParent(self, parent):
         parent.addChild(self)
