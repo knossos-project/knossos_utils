@@ -682,6 +682,28 @@ class Skeleton:
 
 class SkeletonAnnotation:
 
+    def sparsen(self, min_node_dist=5):
+        """
+        Remove nodes with degree 2 that have euclidic distance in voxels smaller than min_node_dist to their neighbors.
+        :param min_node_dist: Minimum euclidic distance in voxels between non-branchpoint nodes after sparsen
+        """
+        changed = True
+        while changed: # sparsen until nothing changes anymore
+            changed = False
+            for node in self.nodes.copy():
+                parents = list(node.getParents())
+                children = list(node.getChildren())
+                neighbors = parents + children
+                if len(neighbors) != 2:
+                    continue
+                neigbor1 = parents[0] if len(parents) == 1 else neighbors[0] # maintain edge direction if available
+                neigbor2 = children[0] if len(children) == 1 else neighbors[1]
+                if euclidian_distance(node.getCoordinate(), neigbor1.getCoordinate()) < min_node_dist \
+                    or euclidian_distance(node.getCoordinate(), neigbor2.getCoordinate()) < min_node_dist:
+                    changed = True
+                    self.removeNode(node)
+                    self.addEdge(neigbor1, neigbor2)
+
     def interpolate_nodes(self, max_node_dist_scaled=50):
         """
         Add interpolated nodes along edges so that no node distance exceeds max_node_dist_scaled.
