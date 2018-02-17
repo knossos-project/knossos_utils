@@ -2003,14 +2003,14 @@ def nx_graph_to_annotation(G, scaling=None):
     a.scaling = scaling
     new_node_mapping = dict()
 
-    for cur_n in G.nodes_iter():
+    for cur_n in G.nodes():
         x, y, z = cur_n.getCoordinate()
         cur_n_copy = SkeletonNode()
         cur_n_copy.from_scratch(a, x, y, z)
         new_node_mapping[cur_n] = cur_n_copy
         a.addNode(cur_n_copy)
 
-    for n_1, n_2 in G.edges_iter():
+    for n_1, n_2 in G.edges():
         a.addEdge(new_node_mapping[n_1], new_node_mapping[n_2])
 
     return a
