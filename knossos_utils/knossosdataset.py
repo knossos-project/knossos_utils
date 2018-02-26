@@ -615,8 +615,7 @@ class KnossosDataset(object):
                     self._knossos_path = \
                         os.path.dirname(os.path.dirname(path)) + "/"
                 else:
-                    raise Exception("Corrupt folder structure - knossos.conf"
-                                    "is not inside a mag folder")
+                    self._knossos_path = os.path.dirname(path) + "/"
         else:
             match = re.search(r'(?<=mag)[\d]+$', path)
             if match:
