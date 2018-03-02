@@ -76,8 +76,9 @@ def _export_cset_as_kd_thread(args):
     as_raw = args[6]
     unified_labels = args[7]
     nb_threads = args[8]
+    orig_dtype = args[9]
 
-    cset = load_dataset(cset_path)
+    cset = load_dataset(cset_path, update_paths=True)
 
     kd = knossosdataset.KnossosDataset()
     kd.initialize_from_knossos_path(kd_path)
@@ -86,24 +87,32 @@ def _export_cset_as_kd_thread(args):
         if coords[dim] + size[dim] > cset.box_size[dim]:
             size[dim] = cset.box_size[dim] - coords[dim]
 
-    data_dict = cset.from_chunky_to_matrix(size, coords, name, hdf5names)
-
+    data_dict = cset.from_chunky_to_matrix(size, coords, name, hdf5names, dtype=orig_dtype)
     data_list = []
     if unified_labels:
         for nb_hdf5_name in range(len(hdf5names)):
-            data_list.append(np.array(data_dict[hdf5names[nb_hdf5_name]] > 0,
+            curr_d = data_dict[hdf5names[nb_hdf5_name]]
+            if (curr_d.dtype.kind not in ("u", "i")) and (0 < np.max(curr_d) <= 1.0):
+                print("Auto-converted .h5 data from float to uint8.", np.max(curr_d), np.min(curr_d), coords, size)
+                curr_d = (curr_d * 255).astype(np.uint8)
+            data_list.append(np.array(curr_d > 0,
                                       dtype=np.uint8) * (nb_hdf5_name + 1))
             data_dict[hdf5names[nb_hdf5_name]] = []
         data_list = np.max(data_list, axis=0)
     else:
-        data_list.append(np.array(data_dict[hdf5names[0]]))
+        curr_d = data_dict[hdf5names[0]]
+        if (curr_d.dtype.kind not in ("u", "i")) and (0 < np.max(curr_d) <= 1.0):
+            print("Auto-converted .h5 data from float to uint8.", np.max(curr_d), np.min(curr_d), coords, size)
+            curr_d = (curr_d * 255).astype(np.uint8)
+        data_list.append(curr_d)
         data_dict[hdf5names[0]] = []
         for nb_hdf5_name in range(1, len(hdf5names)):
-            data_list[0] = np.maximum(data_list[0],
-                                      np.array(
-                                          data_dict[hdf5names[nb_hdf5_name]]))
+            curr_d = data_dict[nb_hdf5_name]
+            if (curr_d.dtype.kind not in ("u", "i")) and (0 < np.max(curr_d) <= 1.0):
+                print("Auto-converted .h5 data from float to uint8.", np.max(curr_d), np.min(curr_d), coords, size)
+                curr_d = (curr_d * 255).astype(np.uint8)
+            data_list[0] = np.maximum(data_list[0], curr_d)
             data_dict[hdf5names[nb_hdf5_name]] = []
-
     if as_raw:
         datatype = np.uint8
     else:
@@ -199,7 +208,7 @@ def load_dataset(path_head_folder, update_paths=False):
         this_cd = pkl.load(f)
 
     if update_paths:
-        print("Updating paths...")
+        # print("Updating paths...")
         this_cd.path_head_folder = path_head_folder + '/'
         for key in this_cd.chunk_dict.keys():
             this_cd.chunk_dict[key].path_head_folder = path_head_folder + '/'
@@ -208,7 +217,7 @@ def load_dataset(path_head_folder, update_paths=False):
             else:
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-1]
             this_cd.chunk_dict[key].folder = path_head_folder + '/' + rel_path + '/'
-        print("... finished.")
+        # print("... finished.")
         # save_dataset(this_cd)
 
     return this_cd
@@ -762,7 +771,7 @@ class ChunkDataset(object):
                           coordinate=None, size=None,
                           stride=[4 * 128, 4 * 128, 4 * 128],
                           as_raw=False,
-                          unified_labels=False):
+                          unified_labels=False, orig_dtype=np.uint8):
         if coordinate is None or size is None:
             coordinate = np.zeros(3, dtype=np.int)
             size = np.copy(kd.boundary)
@@ -777,10 +786,9 @@ class ChunkDataset(object):
                     coords = np.array([coordx, coordy, coordz])
                     multi_params.append([coords, stride, self.path_head_folder,
                                          kd.knossos_path, name, hdf5names, as_raw,
-                                         unified_labels, nb_threads[1]])
+                                         unified_labels, nb_threads[1], orig_dtype])
 
         np.random.shuffle(multi_params)
-
         if nb_threads[0] > 1:
             pool = Pool(processes=nb_threads[0])
             pool.map(_export_cset_as_kd_thread, multi_params)

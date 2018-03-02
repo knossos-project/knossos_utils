@@ -46,13 +46,13 @@ import h5py
 from io import BytesIO
 from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
-from skimage.measure import block_reduce
 try:
     from knossos_utils import mergelist_tools
 except ImportError as e:
     print('mergelist_tools not available, using slow python fallback. '
           'Try to build the cython version of it.\n' + str(e))
     from knossos_utils import mergelist_tools_fallback as mergelist_tools
+from .img_proc import create_composite_img
 import numpy as np
 import re
 import scipy.misc
@@ -425,7 +425,6 @@ class KnossosDataset(object):
 
         self._cache_mutex.release()
         return values
-
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
@@ -2217,12 +2216,99 @@ class KnossosDataset(object):
             for params in multi_params:
                 _find_and_delete_cubes_process(params)
 
+    def export_partially_to_composite_stack(self, bounding_box, out_path, xy_zoom=1., cvals=None,
+                                            out_format='tif', mag=1, verbose=False, nb_threads=1,
+                                            kd_raw=None, kd_overlay=None):
+        """
+        Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
+        Make sure to have enough RAM available. Supports raw data and
+        overlay export (only raw file).
+        Please be aware that overlay tif export can be problematic, regarding
+        the datatype. Usage of the raw format is advised.
+        :param bounding_box: tuple
+            (offset, size)
+        :param xy_zoom: float
+        :param out_format: string
+        :param out_path: string
+        :param mag: int
+        :param cvals: dict
+            Mapping of IDs to rgba values or None (random colors)
+        :param verbose: bool
 
-def downsample_kd(kd, orig_mag, target_mags,
-                  stride=[4 * 128, 4 * 128, 2 * 128],
+        """
+        assert not (kd_raw is not None and kd_overlay is not None), "Only add one additional knossos dataset"
+        if kd_raw is None:
+            kd_raw = self
+        if kd_overlay is None:
+            kd_overlay = self
+        assert np.all(kd_raw._cube_shape == kd_overlay._cube_shape), "Cube shapes of KDs have to be equal."
+        assert np.all(kd_raw.boundary == kd_overlay.boundary), "Boundary of KDs have to be equal."
+        mode = "composite"
+        starting_offset = bounding_box[0]
+        size = bounding_box[1]
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
+
+        z_coord_cnt = 0
+
+        stop = False
+
+        scaled_cube_layer_size = (size[0]//mag,
+                                  size[1]//mag,
+                                  self._cube_shape[2])
+
+        end_z = 1 + int(np.ceil((starting_offset[2] + size[2]) // self._cube_shape[2]))
+        for curr_z_cube in range(starting_offset[2] // self.cube_shape[2], end_z):
+            if stop:
+                break
+            offset = np.array([starting_offset[0], starting_offset[1], curr_z_cube * self._cube_shape[2]])
+            raw = kd_raw.from_raw_cubes_to_matrix(size=scaled_cube_layer_size, nb_threads=nb_threads,
+                                                  offset=offset, mag=mag, verbose=verbose)
+            if np.sum(raw) == 0:
+                raise ValueError
+            overlay = kd_overlay.from_overlaycubes_to_matrix(size=scaled_cube_layer_size, offset=offset,
+                                                             mag=mag, verbose=verbose, nb_threads=nb_threads)
+            print(repr(np.unique(overlay)))
+            unique_ids = np.unique(overlay)
+            if len(unique_ids) == 1:
+                raise ValueError
+            for curr_z_coord in range(0, self._cube_shape[2]):
+                file_path = "{0}/{1}_{2:06d}.{3}".format(out_path, mode, z_coord_cnt, out_format)
+                # the swap is necessary to have the same visual
+                # appearence in knossos and the resulting image stack
+                # => needs further investigation?
+                try:
+                    swapped_raw = np.swapaxes(raw[:, :, curr_z_coord], 0, 1)
+                    swapped_ol = np.swapaxes(overlay[:, :, curr_z_coord], 0, 1)
+                except IndexError:
+                    stop = True
+                    break
+                if xy_zoom != 1.:
+                    swapped_ol = scipy.ndimage.zoom(swapped_ol, xy_zoom, order=0)
+                    swapped_raw = scipy.ndimage.zoom(swapped_raw, xy_zoom, order=1)
+                comp = create_composite_img(swapped_ol, swapped_raw, cvals=cvals)
+                with open(file_path, 'w') as fp:
+                    comp.save(fp)
+                _print("Writing layer {0} of {1} in total.".format(
+                    z_coord_cnt+1, self.boundary[2]//mag))
+                z_coord_cnt += 1
+
+
+def downsample_kd(kd, orig_mag, target_mags, stride=(4 * 128, 4 * 128, 2 * 128),
                   do_raw=False, fast_downsampling=False):
+    """Downsample existing KnossosDataset
+
+    :param kd: KnossosDataset
+    :param orig_mag: int
+    :param target_mags: tuple
+    :param stride: tuple
+    :param do_raw: bool
+    :param fast_downsampling: bool
+        Whether to use striding (True) or scipy.zoom (False). If False and do_raw then interpolation order is set
+        to 3. If False and not do_raw then order is set to 0.
+    """
+    # TODO: Copy knossos.conf for higher mags
     nb_threads = 1  # doesn't work multithreaded (multiple access to same files may happen, currently no locking)
-    assert orig_mag not in target_mags
     data_range = [[0, 0, 0], kd.boundary]
     multi_params = []
     for x in range(data_range[0][0],
@@ -2245,8 +2331,26 @@ def downsample_kd(kd, orig_mag, target_mags,
         for params in multi_params:
             _downsample_kd_thread(params)
 
+    all_mag_folders = our_glob(kd.knossos_path + "*mag*")
+    for mag_folder in all_mag_folders:
+        this_mag = re.findall("[\d]+", mag_folder)[-1]
+        if int(this_mag) == orig_mag:
+            continue
+        with open(mag_folder + "/knossos.conf", "w") as f:
+            f.write('experiment name "%s_mag%s";\n' % (kd.experiment_name,
+                                                       this_mag))
+            f.write('boundary x %d;\n' % kd.boundary[0])
+            f.write('boundary y %d;\n' % kd.boundary[1])
+            f.write('boundary z %d;\n' % kd.boundary[2])
+            f.write('scale x %.2f;\n' % kd.scale[0])
+            f.write('scale y %.2f;\n' % kd.scale[1])
+            f.write('scale z %.2f;\n' % kd.scale[2])
+            f.write('magnification %s;' % this_mag)
+
 
 def _downsample_kd_thread(args):
+    """Helper function for 'downsample_kd'
+    """
     kd_p, orig_mag, target_mags, size, offset, as_raw, fast_downsampling = args
     kd = KnossosDataset()
     kd.initialize_from_knossos_path(kd_p)
