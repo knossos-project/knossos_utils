@@ -289,6 +289,7 @@ class KnossosDataset(object):
         self._number_of_cubes = np.zeros(3)
         self._cube_shape = np.full(3, 128, dtype=np.int)
         self._cube_type = KnossosDataset.CubeType.RAW
+        self._raw_ext = 'raw'
         self._initialized = False
 
     @property
@@ -478,6 +479,8 @@ class KnossosDataset(object):
                 self._boundary[0] = float(tokens[1])
                 self._boundary[1] = float(tokens[2])
                 self._boundary[2] = float(tokens[3])
+            elif key == "_BaseExt":
+                self._raw_ext = tokens[1].replace('.', '')
             else:
                 print("Skipping parameter " + key)
         self._cube_shape = [128, 128, 128]  # hardcoded cube shape, others are not supported
@@ -1085,7 +1088,7 @@ class KnossosDataset(object):
                            self.name_mag_folder + \
                            "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
                            self.experiment_name + \
-                           "_mag%d_x%04d_y%04d_z%04d.raw" % (mag, c[0], c[1], c[2])
+                           "_mag%d_x%04d_y%04d_z%04d.%s" % (mag, c[0], c[1], c[2], self._raw_ext)
 
                     if self.in_http_mode:
                         tries = 0
@@ -2062,8 +2065,8 @@ class KnossosDataset(object):
                             if as_raw:
                                 path += self.experiment_name \
                                         + "_mag"+str(mag)+\
-                                        "_x%04d_y%04d_z%04d.raw" \
-                                        % (current[0], current[1], current[2])
+                                        "_x%04d_y%04d_z%04d.%s" \
+                                        % (current[0], current[1], current[2], self._raw_ext)
                             else:
                                 path += self.experiment_name \
                                         + "_mag"+str(mag) + \
@@ -2225,7 +2228,7 @@ class KnossosDataset(object):
                         glob_input = self._knossos_path + \
                                      self._name_mag_folder + \
                                      str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
-                                     self._experiment_name + "*.raw"
+                                     self._experiment_name + "*." + self._raw_ext
                     else:
                         glob_input = self._knossos_path + \
                                      self._name_mag_folder + \
