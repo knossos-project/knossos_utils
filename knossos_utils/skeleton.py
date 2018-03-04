@@ -127,10 +127,8 @@ class Skeleton:
         Add SkeletonAnnotation annotation to the skeleton. Node IDs in
         annotation may not be preserved.
         """
-
         high_id = self.get_high_node_id()
         annotation.nodeBaseID = high_id + 1
-
         self.annotations.add(annotation)
 
     def toSWC(self, path=''):
@@ -569,13 +567,24 @@ class Skeleton:
 
         comments_elem = doc.createElement("comments")
         annotations_elem.appendChild(comments_elem)
-        annotation_ID = 0
+        id_iterator = 0
+        used_anno_ids = []
+        for annotation in self.getAnnotations():
+            if annotation.annotation_ID is None:
+                continue
+            assert not (annotation.annotation_ID in used_anno_ids), "Multiply ID assignment in skeleton annotations." +\
+                str(used_anno_ids)
+            used_anno_ids.append(annotation.annotation_ID)
         for annotation in self.getAnnotations():
             if not save_empty:
                 if annotation.isEmpty():
                     continue
-            annotation_ID += 1
-            annotation.toNml(doc, annotations_elem, comments_elem, annotation_ID)
+            if annotation.annotation_ID is None:
+                while id_iterator in used_anno_ids:
+                    id_iterator += 1
+                annotation.annotation_ID = id_iterator
+                used_anno_ids.append(id_iterator)
+            annotation.toNml(doc, annotations_elem, comments_elem, annotation.annotation_ID)
 
         branchNodes_elem = doc.createElement("branchpoints")
         annotations_elem.appendChild(branchNodes_elem)

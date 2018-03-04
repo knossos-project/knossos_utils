@@ -30,29 +30,26 @@ def create_composite_img(labels, background, cvals=None):
 
     np.random.seed(0)
 
-    label_prob_dict = {}
-
     unique_labels = np.unique(labels)
     for unique_label in unique_labels:
         if unique_label == 0:
             continue
-        label_prob_dict[unique_label] = (labels == unique_label).astype(np.int)
 
         if not unique_label in cvals:
             cvals[unique_label] = [np.random.rand() for _ in range(3)] + [1]
 
-    if len(label_prob_dict) == 0:
+    if len(unique_labels) == 0:
         print("No labels detected! No overlay image created")
         if len(background.shape) == 3:
             assert background.shape[2] == 1, "Only 2D images allowed."
             background = background[..., 0]
         comp = Image.fromarray(background, 'L')
     else:
-       comp = create_prob_overlay_img(label_prob_dict, background, cvals=cvals)
+       comp = create_overlay_img(labels, background, cvals=cvals)
     return comp
 
 
-def create_prob_overlay_img(label_prob_dict, background, cvals=None):
+def create_overlay_img(labels, background, cvals=None):
     """
 
     :param label_prob_dict:
@@ -60,58 +57,31 @@ def create_prob_overlay_img(label_prob_dict, background, cvals=None):
     :param cvals:
     :return:
     """
-    assert isinstance(label_prob_dict, dict)
     if cvals is not None:
         assert isinstance(cvals, dict)
+    else:
+        cvals = {}
+        np.random.seed(0)
+    labels = labels.squeeze()
+    sh = labels.shape
+    target_img = np.zeros([sh[0], sh[1], 4], dtype=np.uint8)
 
-    np.random.seed(0)
-
-    label_prob_dict_keys = label_prob_dict.keys()
-    sh = label_prob_dict[label_prob_dict_keys[0]].shape[:2]
-    imgs = []
-
-    for key in label_prob_dict_keys:
-        label_prob = np.array(label_prob_dict[key])
-
-        label_prob = label_prob.squeeze()
-
+    for key in np.unique(labels):
         if key in cvals:
             cval = cvals[key]
         else:
             cval = [np.random.rand() for _ in range(3)] + [1]
+        target_img[labels == key] = np.array(np.array(cval) * 255, dtype=np.uint8)
 
-        this_img = np.zeros([sh[0], sh[1], 4], dtype=np.float32)
-        this_img[label_prob > 0] = np.array(cval) * 255
-        this_img[:, :, 3] = label_prob * 100
-        imgs.append(this_img)
-
-    if background is None:
-        background = np.ones(imgs[0].shape)
-        background[:, :, 3] = np.ones(sh)
-    elif len(np.shape(background)) == 2:
-        t_background = np.zeros(imgs[0].shape)
-        for ii in range(3):
-            t_background[:, :, ii] = background
-
-        t_background[:, :, 3] = np.ones(background.squeeze().shape) * 255
-        background = t_background
-    elif len(np.shape(background)) == 3:
-        background = np.array(background)[:, :, 0]
-        background = np.array([background, background, background,
-                               np.ones_like(background) * 255])
-
-    if np.max(background) <= 1:
-        background *= 255.
+    if background is not None:
+        if len(np.shape(background)) == 2:
+            background = background[..., None]
+        background = np.concatenate([background, background, background, np.ones_like(background) * 255], axis=2)
+        target_img = alpha_composite(target_img, background)
     else:
-        background = np.array(background, dtype=np.float)
+        target_img = Image.fromarray(target_img, 'RGBA')
 
-    comp = imgs[0]
-    for img in imgs[1:]:
-        comp = alpha_composite(comp, img)
-
-    comp = alpha_composite(comp, background)
-
-    return comp
+    return target_img
 
 
 def alpha_composite(src, dst):

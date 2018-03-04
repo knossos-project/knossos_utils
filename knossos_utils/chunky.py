@@ -93,7 +93,6 @@ def _export_cset_as_kd_thread(args):
         for nb_hdf5_name in range(len(hdf5names)):
             curr_d = data_dict[hdf5names[nb_hdf5_name]]
             if (curr_d.dtype.kind not in ("u", "i")) and (0 < np.max(curr_d) <= 1.0):
-                print("Auto-converted .h5 data from float to uint8.", np.max(curr_d), np.min(curr_d), coords, size)
                 curr_d = (curr_d * 255).astype(np.uint8)
             data_list.append(np.array(curr_d > 0,
                                       dtype=np.uint8) * (nb_hdf5_name + 1))
@@ -102,14 +101,12 @@ def _export_cset_as_kd_thread(args):
     else:
         curr_d = data_dict[hdf5names[0]]
         if (curr_d.dtype.kind not in ("u", "i")) and (0 < np.max(curr_d) <= 1.0):
-            print("Auto-converted .h5 data from float to uint8.", np.max(curr_d), np.min(curr_d), coords, size)
             curr_d = (curr_d * 255).astype(np.uint8)
         data_list.append(curr_d)
         data_dict[hdf5names[0]] = []
         for nb_hdf5_name in range(1, len(hdf5names)):
             curr_d = data_dict[nb_hdf5_name]
             if (curr_d.dtype.kind not in ("u", "i")) and (0 < np.max(curr_d) <= 1.0):
-                print("Auto-converted .h5 data from float to uint8.", np.max(curr_d), np.min(curr_d), coords, size)
                 curr_d = (curr_d * 255).astype(np.uint8)
             data_list[0] = np.maximum(data_list[0], curr_d)
             data_dict[hdf5names[nb_hdf5_name]] = []

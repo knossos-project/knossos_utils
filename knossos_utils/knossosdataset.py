@@ -804,7 +804,11 @@ class KnossosDataset(object):
                 else:
                     err = None
                 if apply_func is not None:
-                    raw = apply_func(raw)
+                    try:
+                        raw = apply_func(raw)
+                    except Exception as e:
+                        print("Exception ('%s') occured during applicaiton of function %s at block %s.\n" %
+                              (e, repr(apply_func), repr(args)))
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=raw, datatype=np.uint8,
                                             as_raw=True, nb_threads=1,
@@ -824,7 +828,11 @@ class KnossosDataset(object):
                 else:
                     err = None
                 if apply_func is not None:
-                    overlay = apply_func(overlay)
+                    try:
+                        overlay = apply_func(overlay)
+                    except Exception as e:
+                        print("Exception ('%s') occured during applicaiton of function %s at block %s.\n" %
+                              (e, repr(apply_func), repr(args)))
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=overlay, datatype=np.uint64,
                                             nb_threads=1, verbose=verbose)
@@ -957,7 +965,7 @@ class KnossosDataset(object):
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
                              nb_threads=40, verbose=True, show_progress=True,
-                             http_max_tries=2000, http_verbose=False):
+                             http_max_tries=2000, http_verbose=False, stored_datatype=None):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -993,6 +1001,8 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+        if stored_datatype is None:
+            stored_datatype = datatype
 
         def _read_cube(c):
             pos = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
@@ -1030,7 +1040,8 @@ class KnossosDataset(object):
                                                        timeout=60)
                                 request.raise_for_status()
                                 values = np.fromstring(request.content,
-                                                       dtype=datatype)
+                                                       dtype=stored_datatype)
+                                values = values.astype(datatype)
                                 if values.sum() == 0:
                                     pass
                                     # if http_verbose:
@@ -1071,8 +1082,9 @@ class KnossosDataset(object):
                     else:
                         try:
                             flat_shape = int(np.prod(self.cube_shape))
-                            values = np.fromfile(path, dtype=np.uint8,
+                            values = np.fromfile(path, dtype=stored_datatype,
                                                  count=flat_shape)
+                            values = values.astype(datatype)
                             valid_values = True
                         except:
                             if verbose:
@@ -1100,7 +1112,8 @@ class KnossosDataset(object):
                                     values = np.fromstring(
                                         self.module_wide["snappy"].decompress(
                                             zf.read(os.path.basename(path))),
-                                        dtype=datatype)
+                                        dtype=stored_datatype)
+                                    values = values.astype(datatype)
                                 # check if requested values match shape
                                 try:
                                     values.reshape(self.cube_shape)
@@ -1136,14 +1149,17 @@ class KnossosDataset(object):
                                 return e
                             break
                     else:
-                        try:
+                        # try:
+                        if os.path.isfile(path + ".zip"):
                             with zipfile.ZipFile(path + ".zip", "r") as zf:
                                 values = np.fromstring(
                                     self.module_wide["snappy"].decompress(
                                         zf.read(os.path.basename(path))),
-                                    dtype=datatype)
+                                    dtype=stored_datatype)
+                                values = values.astype(datatype)
                                 valid_values = True
-                        except:
+                        # except:
+                        else:
                             if verbose:
                                 _print("Cube does not exist, cube with zeros "
                                        "only assigned")
@@ -1234,14 +1250,13 @@ class KnossosDataset(object):
         if zyx_mode:
             uncut_matrix_size = uncut_matrix_size[::-1]
 
-        output = np.zeros(uncut_matrix_size, dtype=datatype)
-
         offset_start = offset % self.cube_shape
         offset_end = (self.cube_shape - (offset + size)
                       % self.cube_shape) % self.cube_shape
 
         cnt = 0
         nb_cubes_to_process = int(np.prod(end - start))
+        output = np.zeros(uncut_matrix_size, dtype=datatype)
 
         cube_coordinates = []
 
@@ -1332,7 +1347,6 @@ class KnossosDataset(object):
 
         if pickle_path:
             save_to_pickle(output, pickle_path)
-
         if http_verbose and self.in_http_mode:
             return output, errors
         else:
@@ -1344,7 +1358,7 @@ class KnossosDataset(object):
                                  pickle_path=None, invert_data=False,
                                  zyx_mode=False, nb_threads=40,
                                  verbose=False, http_verbose=False,
-                                 http_max_tries=2000, show_progress=True):
+                                 http_max_tries=2000, show_progress=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset raw cubes
 
         :param size: 3 sequence of ints
@@ -1401,7 +1415,7 @@ class KnossosDataset(object):
                                     pickle_path=None, invert_data=False,
                                     zyx_mode=False, nb_threads=40,
                                     verbose=False, http_verbose=False,
-                                    show_progress=True):
+                                    show_progress=True, stored_datatype=None):
         """ Extracts a 3D matrix from the KNOSSOS-dataset overlay cubes
 
         :param size: 3 sequence of ints
@@ -1449,7 +1463,8 @@ class KnossosDataset(object):
                                          nb_threads=nb_threads,
                                          verbose=verbose,
                                          http_verbose=http_verbose,
-                                         show_progress=show_progress)
+                                         show_progress=show_progress,
+                                         stored_datatype=stored_datatype)
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64, verbose=False):
@@ -1783,7 +1798,7 @@ class KnossosDataset(object):
     def from_matrix_to_cubes(self, offset, mags=1, data=None, data_mag=1,
                              data_path=None, hdf5_names=None,
                              datatype=np.uint64, fast_downsampling=True,
-                             force_unique_labels=False, verbose=True,
+                             force_unique_labels=False, verbose=False,
                              overwrite=True, kzip_path=None,
                              overwrite_kzip=False, annotation_str=None,
                              as_raw=False, nb_threads=20):
