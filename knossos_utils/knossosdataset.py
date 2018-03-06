@@ -292,6 +292,7 @@ class KnossosDataset(object):
         self._number_of_cubes = np.zeros(3)
         self._cube_shape = np.full(3, 128, dtype=np.int)
         self._initialized = False
+        self.raw_dtype = None
 
     @property
     def mag(self):
@@ -1353,7 +1354,7 @@ class KnossosDataset(object):
             return output
 
     def from_raw_cubes_to_matrix(self, size, offset, mag=1,
-                                 datatype=np.uint8, mirror_oob=False,
+                                 datatype=None, mirror_oob=False,
                                  hdf5_path=None, hdf5_name="raw",
                                  pickle_path=None, invert_data=False,
                                  zyx_mode=False, nb_threads=40,
@@ -1390,6 +1391,13 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+        if datatype is None:
+            assert self.raw_dtype is not None, "No raw data type specified."
+            datatype = self.raw_dtype
+        else:
+            if self.raw_dtype != datatype:
+                _print("Specified datatype differs from config datatype.")
+
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 

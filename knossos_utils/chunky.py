@@ -835,12 +835,16 @@ class Chunk(object):
         self.folder = None
         self.box_size = None
         self.feature_file = ''
+        self._dataset = None
 
     @property
     def dataset(self):
-        assert os.path.exists(self._dataset_path)
-        kd = knossosdataset.KnossosDataset()
-        kd.initialize_from_knossos_path(self._dataset_path)
+        if self._dataset is None:
+            assert os.path.exists(self._dataset_path)
+            kd = knossosdataset.KnossosDataset()
+            kd.initialize_from_knossos_path(self._dataset_path)
+        else:
+            kd = self._dataset
         return kd
 
     def raw_data(self, overlap=None, show_progress=False, invert_raw=False):
