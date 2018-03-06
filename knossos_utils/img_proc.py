@@ -3,18 +3,6 @@ from PIL import Image
 import numpy as np
 
 
-def multi_dilation(overlay, n_dilations):
-    if n_dilations == 0:
-        return
-    unique_ixs = np.unique(overlay)
-    for ix in unique_ixs:
-        if ix == 0:
-            continue
-        binary_mask = (overlay == ix).astype(np.int)
-        binary_mask = binary_dilation(binary_mask, iterations=n_dilations)
-        overlay[binary_mask == 1] = ix
-
-
 def create_composite_img(labels, background, cvals=None):
     """
 
@@ -71,7 +59,8 @@ def create_overlay_img(labels, background, cvals=None):
             cval = cvals[key]
         else:
             cval = [np.random.rand() for _ in range(3)] + [1]
-        target_img[labels == key] = np.array(np.array(cval) * 255, dtype=np.uint8)
+        max_alpha = 255 if background is None else 122
+        target_img[labels == key] = np.array(np.array(cval) * max_alpha, dtype=np.uint8)
 
     if background is not None:
         if len(np.shape(background)) == 2:
@@ -113,3 +102,15 @@ def alpha_composite(src, dst):
     out = out.astype('uint8')
     out = Image.fromarray(out, 'RGBA')
     return out
+
+def multi_dilation(overlay, n_dilations):
+    if n_dilations == 0:
+        return overlay
+    unique_ixs = np.unique(overlay)
+    for ix in unique_ixs:
+        if ix == 0:
+            continue
+        binary_mask = (overlay == ix).astype(np.int)
+        binary_mask = binary_dilation(binary_mask, iterations=n_dilations)
+        overlay[binary_mask == 1] = ix
+    return overlay

@@ -52,7 +52,7 @@ except ImportError as e:
     print('mergelist_tools not available, using slow python fallback. '
           'Try to build the cython version of it.\n' + str(e))
     from knossos_utils import mergelist_tools_fallback as mergelist_tools
-from .img_proc import create_composite_img
+from .img_proc import create_composite_img, multi_dilation
 import numpy as np
 import re
 import scipy.misc
@@ -1728,7 +1728,7 @@ class KnossosDataset(object):
         """
         if not bounding_box:
             self.export_partially_to_image_stack(mode=mode, out_dtype=out_dtype, out_path=out_path,
-            xy_zoom=xy_zoom, out_format=out_format, mag=mag)
+            xy_zoom=xy_zoom, out_format=out_format, mag=mag, bounding_box=[np.zeros((3,)), np.array(self.boundary) // mag])
         starting_offset = bounding_box[0]
         size = bounding_box[1]
         if not os.path.exists(out_path):
@@ -2233,7 +2233,7 @@ class KnossosDataset(object):
 
     def export_partially_to_composite_stack(self, bounding_box, out_path, xy_zoom=1., cvals=None,
                                             out_format='tif', mag=1, verbose=False, nb_threads=1,
-                                            kd_raw=None, kd_overlay=None):
+                                            kd_raw=None, kd_overlay=None, nb_dilations=0):
         """
         Simple exporter, NOT RAM friendly. Always loads entire cube layers ATM.
         Make sure to have enough RAM available. Supports raw data and
@@ -2283,7 +2283,6 @@ class KnossosDataset(object):
                 raise ValueError
             overlay = kd_overlay.from_overlaycubes_to_matrix(size=scaled_cube_layer_size, offset=offset,
                                                              mag=mag, verbose=verbose, nb_threads=nb_threads)
-            print(repr(np.unique(overlay)))
             unique_ids = np.unique(overlay)
             if len(unique_ids) == 1:
                 raise ValueError
@@ -2301,6 +2300,7 @@ class KnossosDataset(object):
                 if xy_zoom != 1.:
                     swapped_ol = scipy.ndimage.zoom(swapped_ol, xy_zoom, order=0)
                     swapped_raw = scipy.ndimage.zoom(swapped_raw, xy_zoom, order=1)
+                swapped_ol = multi_dilation(swapped_ol, nb_dilations)
                 comp = create_composite_img(swapped_ol, swapped_raw, cvals=cvals)
                 with open(file_path, 'w') as fp:
                     comp.save(fp)

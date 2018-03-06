@@ -82,7 +82,7 @@ class Skeleton:
         """
         cnt_a = 1
         cnt_all_nodes = 1
-        for a in self.annotations:
+        for a in self.getAnnotations():
             a.annotation_ID = cnt_a # value currently unused - a nice sign of
             # the clusterfuck
             a.nodeBaseID = cnt_all_nodes
@@ -100,7 +100,7 @@ class Skeleton:
         self.skeleton_idletime = 0
 
     def getAnnotations(self):
-        return self.annotations
+        return sorted(self.annotations)
 
     def getNodes(self):
         all_nodes_lst = []
@@ -299,7 +299,7 @@ class Skeleton:
                     base_id=base_id)
             if comment:
                 annotation.setComment(comment)
-            self.annotations.add(annotation)
+            self.add_annotation(annotation)
             for node in annotation.getNodes():
                 node_ID_to_node[node.getUniqueID()] = node
 
@@ -412,7 +412,7 @@ class Skeleton:
 
             if comment:
                 annotation.setComment(comment)
-            self.annotations.add(annotation)
+            self.add_annotation(annotation)
             for node in annotation.getNodes():
                 node_ID_to_node[node.getUniqueID()] = node
 
@@ -453,7 +453,7 @@ class Skeleton:
         Return highest node ID in any annotation in the skeleton.
         """
         high_ids = [0]
-        for cur_anno in self.annotations:
+        for cur_anno in self.getAnnotations():
             high_ids.append(cur_anno.nodeBaseID + cur_anno.high_id) # this
             # could be buggy : in my understanding, nodeBaseID should not be
             # added to the high_id; jk 20.01.15 - not changing it to not
