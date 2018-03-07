@@ -61,6 +61,7 @@ import time
 from threading import Lock
 import traceback
 import zipfile
+from skimage import measure
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -291,6 +292,7 @@ class KnossosDataset(object):
         self._cube_shape = np.full(3, 128, dtype=np.int)
         self._cube_type = KnossosDataset.CubeType.RAW
         self._raw_ext = 'raw'
+        self.raw_dtype = None
         self._initialized = False
 
     @property
@@ -555,6 +557,8 @@ class KnossosDataset(object):
         self._number_of_cubes = \
             np.array(np.ceil(self.boundary.astype(np.float) /
                              self.cube_shape), dtype=np.int)
+        bit16_flag = "16bit" in "".join(lines)
+        self.raw_dtype = np.uint16 if bit16_flag else np.uint8
 
     def initialize_from_knossos_path(self, path, fixed_mag=None, http_max_tries=10,
                                      use_abs_path=False, verbose=False, cache_size=0):
@@ -671,7 +675,8 @@ class KnossosDataset(object):
 
     def initialize_without_conf(self, path, boundary, scale, experiment_name,
                                 mags=None, make_mag_folders=True,
-                                create_knossos_conf=True, verbose=False, cache_size=0):
+                                create_knossos_conf=True, verbose=False, cache_size=0,
+                                raw_dtype=np.uint8):
         """ Initializes the dataset without a knossos.conf
 
             This function creates mag folders and knossos.conf's if requested.
@@ -693,10 +698,12 @@ class KnossosDataset(object):
             True: creates not-existing knoosos.conf files
         :param verbose:
             True: prints several information
+        :param raw_dtype:
+            datatype of raw data
         :return:
             nothing
         """
-
+        self.raw_dtype = raw_dtype
         self._knossos_path = path
         all_mag_folders = our_glob(path+"*mag*")
 
@@ -752,6 +759,8 @@ class KnossosDataset(object):
                     f.write('scale y %.2f;\n' % scale[1])
                     f.write('scale z %.2f;\n' % scale[2])
                     f.write('magnification %s;' % this_mag)
+                    if self.raw_dtype == np.uint16:
+                        f.write('16bit;\n')
         if verbose:
             _print("Initialization finished successfully")
 
@@ -762,7 +771,8 @@ class KnossosDataset(object):
     def initialize_from_matrix(self, path, scale, experiment_name,
                                offset=None, boundary=None, fast_downsampling=True,
                                data=None, data_path=None, hdf5_names=None,
-                               mags=None, verbose=False, cache_size=0):
+                               mags=None, verbose=False, cache_size=0,
+                               raw_dtype=np.uint8):
         """ Initializes the dataset with matrix
             Only for use with "small" matrices (~10^3 edgelength)
 
@@ -794,6 +804,8 @@ class KnossosDataset(object):
             available magnifications of the knossos dataset
         :param verbose:
             True: prints several information
+        :param raw_dtype:
+            datatype of raw data
         :return:
             nothing
         """
@@ -821,11 +833,11 @@ class KnossosDataset(object):
         self._initialize_cache(cache_size)
 
         self.initialize_without_conf(path, boundary, scale, experiment_name,
-                                     mags=mags, make_mag_folders=True,
+                                     mags=mags, make_mag_folders=True, raw_dtype=raw_dtype,
                                      create_knossos_conf=True, verbose=verbose)
 
         self.from_matrix_to_cubes(offset, mags=mags, data=data,
-                                  datatype=np.uint8,
+                                  datatype=self.raw_dtype,
                                   fast_downsampling=fast_downsampling,
                                   as_raw=True, verbose=verbose)
 
@@ -879,7 +891,7 @@ class KnossosDataset(object):
                         print("Exception ('%s') occured during applicaiton of function %s at block %s.\n" %
                               (e, repr(apply_func), repr(args)))
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
-                                            data=raw, datatype=np.uint8,
+                                            data=raw, datatype=self.raw_dtype,
                                             as_raw=True, nb_threads=1,
                                             verbose=verbose)
 
@@ -924,7 +936,7 @@ class KnossosDataset(object):
         new_kd.initialize_without_conf(path=path, boundary=self.boundary,
                                        scale=self.scale,
                                        experiment_name=self.experiment_name,
-                                       mags=self.mag)
+                                       mags=self.mag, raw_dtype=self.raw_dtype)
 
         multi_params = []
         if do_raw:
@@ -1014,7 +1026,7 @@ class KnossosDataset(object):
             array of voxel values corresponding to vx_list
         """
 
-        return self.from_cubes_to_list(vx_list, raw=True, datatype=np.uint8)
+        return self.from_cubes_to_list(vx_list, raw=True, datatype=self.raw_dtype)
 
     def from_overlaycubes_to_list(self, vx_list, datatype=np.uint32):
         """ Read voxel values vectorized
@@ -1030,7 +1042,7 @@ class KnossosDataset(object):
 
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
-    def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
+    def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=None,
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
@@ -1071,6 +1083,7 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+        assert datatype is not None, "Datatype has to be specified."
         if stored_datatype is None:
             stored_datatype = datatype
 
@@ -1735,7 +1748,7 @@ class KnossosDataset(object):
 
     def export_to_image_stack(self,
                               mode='raw',
-                              out_dtype=np.uint8,
+                              out_dtype=None,
                               out_path='',
                               xy_zoom=1.,
                               out_format='tif',
@@ -2001,6 +2014,7 @@ class KnossosDataset(object):
                                 os.stat(folder_path+"block").st_mtime > 5:
                             os.rmdir(folder_path+"block")
                             os.makedirs(folder_path+"block")
+                            _print("Maximum blocking time exceeded. Ignoring semaphore.")
                             break
                         time.sleep(1)
 
@@ -2106,6 +2120,7 @@ class KnossosDataset(object):
                     max_label_so_far = np.max(data[ii])
 
             data = np.max(np.array(data), axis=0)
+
         # do not interpolate overlay cubes when downsampling
         if not fast_downsampling:
             order = 3 if as_raw else 0
@@ -2116,11 +2131,13 @@ class KnossosDataset(object):
                 if fast_downsampling:
                     data_inter = np.array(data[::mag_ratio, ::mag_ratio, ::mag_ratio],
                                           dtype=datatype)
-
                 else:
-                    data_inter = \
-                        scipy.ndimage.zoom(data, 1.0/mag_ratio, order=order).\
-                            astype(datatype, copy=False)
+                    if not as_raw:
+                        data_inter = measure.block_reduce(data, (mag_ratio, ) * 3, np.max)
+                    else:
+                        data_inter = \
+                            scipy.ndimage.zoom(data, inv_mag_ratio, order=order). \
+                                astype(datatype, copy=False)
             elif mag_ratio < 1:
                 inv_mag_ratio = int(1./mag_ratio)
                 if fast_downsampling:
@@ -2142,7 +2159,11 @@ class KnossosDataset(object):
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
-
+            if data.max() > 0 and data_inter.max() == 0:
+                _print("\n--------------------------\n"
+                       "Lossy interpolation!!"
+                       "\n--------------------------\n")
+                raise()
             offset_mag = np.array(offset, dtype=np.int) // mag_ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
@@ -2391,8 +2412,8 @@ class KnossosDataset(object):
         assert np.all(kd_raw._cube_shape == kd_overlay._cube_shape), "Cube shapes of KDs have to be equal."
         assert np.all(kd_raw.boundary == kd_overlay.boundary), "Boundary of KDs have to be equal."
         mode = "composite"
-        starting_offset = bounding_box[0]
-        size = bounding_box[1]
+        starting_offset = np.array(bounding_box[0], dtype=np.int)
+        size = np.array(bounding_box[1], dtype=np.int)
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
@@ -2508,10 +2529,10 @@ def _downsample_kd_thread(args):
         data = kd.from_overlaycubes_to_matrix(size, offset, mag=orig_mag, nb_threads=8,
                                               show_progress=False)
     if as_raw:
-        datatype = np.uint8
+        datatype = kd.raw_dtype
     else:
         datatype = np.uint64
     kd.from_matrix_to_cubes(offset, data_mag=orig_mag, mags=target_mags,
-                            data=data, as_raw=as_raw, nb_threads=8,
-                            overwrite=True, datatype=datatype, verbose=False,
+                            data=data, as_raw=as_raw, nb_threads=1,
+                            overwrite=True, datatype=datatype, verbose=True,
                             fast_downsampling=fast_downsampling)
