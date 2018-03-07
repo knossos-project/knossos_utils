@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ################################################################################
 #  This file provides a class representation of a KNOSSOS-dataset for reading
 #  and writing raw and overlay data.
@@ -18,10 +17,6 @@
 #
 ################################################################################
 
-import sys
-if sys.version_info[0] >= 3:
-    raise ImportError('{} currently only supports Python 2.7.'.format(__file__))
-
 import copy
 from math import sqrt
 import numpy as np
@@ -37,11 +32,8 @@ import xml.etree.ElementTree as et
 
 import networkx as nx
 
-from skeleton import SkeletonAnnotation, Skeleton, SkeletonNode, \
+from .skeleton import SkeletonAnnotation, Skeleton, SkeletonNode, \
                      integer_checksum, euclidian_distance
-
-
-
 
 
 class InvalidFileFormatException(Exception):
@@ -595,24 +587,25 @@ def annotation_from_nodes(nodes, annotation=None, preserve_scaling=True,
     new_anno : SkeletonAnnotation instance
     """
 
-    new_anno = SkeletonAnnotation()
+    new_annotation = SkeletonAnnotation()
+    if annotation is not None and preserve_scaling is True:
+        new_annotation.scaling = annotation.scaling
 
     for cur_n in nodes:
-        new_anno.addNode(cur_n)
+        new_node = SkeletonNode()
+        coords = cur_n.getCoordinate()
+        new_node.from_scratch(new_annotation, coords[0], coords[1], coords[2], ID=cur_n.ID)
+        new_id = new_annotation.addNode(new_node)
 
     if annotation is not None and connect is True:
-        for cur_n in nodes:
-            try:
-                new_anno.edges[cur_n] = annotation.edges[cur_n].copy()
-                new_anno.reverse_edges[cur_n] = \
-                    annotation.reverse_edges[cur_n].copy()
-            except KeyError:
-                pass
-
-    if annotation is not None and preserve_scaling is True:
-        new_anno.scaling = annotation.scaling
-
-    return new_anno
+        for src_node, trg_nodes in annotation.getEdges().items():
+            for trg_node in trg_nodes:
+                new_src = new_annotation.getNodeByID(src_node.ID)
+                new_trg = new_annotation.getNodeByID(trg_node.ID)
+                if new_src is not None and new_trg is not None:
+                    new_annotation.addEdge(new_src, new_trg)
+                # else this segment does not belong to the component
+    return new_annotation
 
 
 def split_by_connected_component(annotation):
@@ -1021,7 +1014,7 @@ def get_end_nodes(annotation):
         Annotation in which to search for end nodes
     """
 
-    return set([k for k, v in annotation.graph.degree().iteritems() if v == 1])
+    return set([k for k, v in annotation.graph.degree().items() if v == 1])
 
 
 def prune_short_end_branches(anno, length, debug_labels=False):
@@ -1201,7 +1194,7 @@ def avg_annotation_inter_node_distance(anno, outlier_filter=2000.):
     Calculates the average inter node distance for an annotation. Candidate
     for inclusion into the skeleton annotation object.
 
-    :param anno: annotation object
+    :param anno: SkeletonAnnotation object
     :param outlier_filter: float, ignore distances higher than value
     :return: float
     """
@@ -1224,13 +1217,9 @@ def avg_annotation_inter_node_distance(anno, outlier_filter=2000.):
         return
 
 
-def annoToKDtree(annotations):
-    """
-    Uses scipy kd-trees. Scaling must be set.
-    Only nodes are added to the tree, no edges currently. Creates
-    one kd-tree for every annotation.
-
-    """
+def annotations_to_KDtree_list(annotations):
+    """Returns a list of kd-trees: one per annotation.
+    Only nodes are added to the tree, no edges currently."""
 
     if not isinstance(annotations, (set, list)):
         annotations = [annotations]
@@ -1240,14 +1229,9 @@ def annoToKDtree(annotations):
     return trees
 
 
-def annosToKDtree(annotations):
-    """
-
-    Uses scipy kd-trees. Scaling must be set.
-    Only nodes are added to the tree, no edges currently. Inserts many
-    annotations into a single kd-tree.
-
-    """
+def annotations_to_KDtree(annotations):
+    """Inserts many annotations into a single kd-tree.
+    Only nodes are added to the tree, no edges currently."""
     nodes = []
     for anno in annotations:
         nodes.extend([node for node in anno.getNodes()])
@@ -1287,7 +1271,7 @@ def loadj0126ConsensusNMLsInDir(directory):
                    if file.lower().endswith('.nml')]
 
     for nmlfile in allNMLfiles:
-        print 'loading ' + nmlfile
+        print('loading ' + nmlfile)
         annos = loadj0126NML(os.path.join(directory, nmlfile))
 
         # test the number of annotations, must be 1
@@ -1303,8 +1287,8 @@ def loadj0126ConsensusNMLsInDir(directory):
                         raise Exception('File ' + nmlfile +
                                         ' contains more than'
                                         ' one annotation with nodes.')
-                        print 'File ' + nmlfile +\
-                              ' contains more than one annotation with nodes.'
+                        print('File ' + nmlfile +
+                              ' contains more than one annotation with nodes.')
             anno = thisanno
         else:
             anno = annos[0]
@@ -1313,18 +1297,18 @@ def loadj0126ConsensusNMLsInDir(directory):
         nxG = annoToNXGraph(anno)
         anno.pathLen = nxG[0].size(weight='weight') / 1000 # to microns
         anno.numBranchNodes = len(list({k for k, v
-                                        in nxG[0].degree().iteritems()
+                                        in nxG[0].degree().items()
                                         if v > 2}))
         anno.branchDensity = anno.numBranchNodes / anno.pathLen
 
         # only a single connected component allowed
         currNxg = annoToNXGraph(anno)[0]
         if nx.number_connected_components(currNxg) > 1:
-            print 'File ' + nmlfile + ' contains more than' \
-                                      ' one connected component.'
+            print('File ' + nmlfile + ' contains more than'
+                  ' one connected component.')
             for nodesInC in nx.connected_components(currNxg):
-                print 'This connected component contains ' +\
-                      str(len(nodesInC)) + '  nodes.'
+                print('This connected component contains ' +
+                      str(len(nodesInC)) + '  nodes.')
 
             raise Exception('File ' + nmlfile +
                             ' contains more than one connected component.')
@@ -1354,7 +1338,7 @@ def loadj0126NMLbyRegex(regex):
         # perform re matching and copy file to targetDir if sucessful
         mObj = regObj.search(nml)
         if mObj:
-            print 'Found nml: ', nml
+            print('Found nml: ', nml)
             annos = loadj0126NML(nml)
             matches[annos[0].seedID] = annos
 
@@ -1387,6 +1371,76 @@ def loadj0126NML(path_to_file, merge_all_annos=False):
                         dataset_dims = [1, 108810, 1, 106250, 1, 115220],
                         remove_empty_annotations=True)
     return annos
+
+
+def write_skeleton(path, new_annos, update=True):
+    """
+    Writes annotations to nml file.
+
+    Parameters
+    ----------
+    path : str
+    new_annos : SkeletonAnnotation, list, dict
+    update : bool
+    """
+    if isinstance(new_annos, SkeletonAnnotation):
+        new_annos = [new_annos]
+
+    if isinstance(new_annos, list):
+        new_anno_dict = {}
+        for anno in new_annos:
+            if len(anno.comment) == 0:
+                raise Exception("insufficient annotation comment!")
+
+            new_anno_dict[anno.comment] = anno
+        new_annos = new_anno_dict
+
+    assert isinstance(new_annos, dict)
+    if len(new_annos.keys()) == 0:
+        return
+
+    if os.path.exists(path) and update:
+        annos = load_skeleton(path)
+        annos.update(new_annos)
+    else:
+        annos = new_annos
+
+    knossos_skeleton = Skeleton()
+    for anno_key in annos.keys():
+        if len(annos[anno_key].comment) == 0:
+            annos[anno_key].comment = anno_key
+
+        knossos_skeleton.add_annotation(annos[anno_key])
+
+    knossos_skeleton.to_kzip(path)
+
+
+def load_skeleton(path):
+    """
+    Load nml of mapped skeleton and ordered trees.
+
+    Parameters
+    ----------
+    path : str
+        Path to kzip
+
+    Returns
+    -------
+    dict
+        Dict of trees
+    """
+    anno_dict = {}
+    try:
+        annotations = loadj0126NML(path)
+    # TODO: specific exception handling
+    except Exception as e:
+        print(e)
+        annotations = []
+
+    for anno in annotations:
+        anno_dict[anno.comment] = anno
+
+    return anno_dict
 
 
 def load_jk_NML(pathToFile,
@@ -1565,14 +1619,14 @@ def annotation_matcher(annotations,
 
     print('Starting with kd-tree construction')
     # Insert all annotations into a single kd-tree for fast spatial lookups
-    kdtree = annosToKDtree(annotations)
+    kdtree = annotations_to_KDtree(annotations)
     print('Done with kd-tree construction, starting with matching')
     # Query x random nodes of each annotation against the kd-tree
     # (query_ball_point search).
     annoMatchGroup = dict()
     already_processed_same = dict()
     for anno in annotations:
-        if already_processed_same.has_key(anno):
+        if anno in already_processed_same.keys():
             print('Already processed, skipping ' + anno.filename)
             continue
         try:
@@ -1622,13 +1676,13 @@ def annotation_matcher(annotations,
             for match in matchSet:
                 #if same_annos.has_key(match):
                 #    print 'same match'
-                if not same_annos.has_key(match):
+                if match not in same_annos.keys():
                 #if anno != match:
                     if anno_node_len < samplesize:
                         this_samplesize = anno_node_len
                     else:
                         this_samplesize = samplesize
-                    if annoMatchGroup[anno].has_key(match):
+                    if match in annoMatchGroup[anno].keys():
                         annoMatchGroup[anno][match] += (1.0 / this_samplesize)
                     else:
                         annoMatchGroup[anno][match] = (1.0 / this_samplesize)
@@ -1662,8 +1716,8 @@ def annotation_matcher(annotations,
 
 
             if annoMatchGroup[anno][match] > thres:
-                if annoMatchGroup.has_key(match):
-                    if annoMatchGroup[match].has_key(anno):
+                if match in annoMatchGroup.keys():
+                    if anno in annoMatchGroup[match].keys():
                         #if annoMatchGroup[match][anno] > thres:
                             # reciprocal match found that satisfies threshold
                         matchGraph.add_edge(match, anno)
@@ -1746,7 +1800,7 @@ def prune_stub_branches(annotations,
         nx_g = annotation_to_nx_graph(new_anno)
 
         # find all tip nodes in an anno, ie degree 1 nodes
-        end_nodes = list({k for k, v in nx_g.degree().iteritems() if v == 1})
+        end_nodes = list({k for k, v in nx_g.degree().items() if v == 1})
 
         # DFS to first branch node
         for end_node in end_nodes:
@@ -1786,9 +1840,9 @@ def estimateDisagreementRate(annotations, spotlightRadius):
 
     #for g in nxGs:
         # get a set of all branch nodes deg > 2 for all annotations
-    #    bNodes.append({k for k, v in g.degree().iteritems() if v > 2})
+    #    bNodes.append({k for k, v in g.degree().items() if v > 2})
         # get a set of all end nodes for each annotation, i.e. deg == 1
-    #    eNodes.append({k for k, v in g.degree().iteritems() if v == 1})
+    #    eNodes.append({k for k, v in g.degree().items() if v == 1})
 
     #for bNodes1, eNodes1, nxG, kdT in itertools.izip(bNodes, eNodes, nxGs, kdTs):
     #    for bNode1, bNode2 in itertools.combinations(bNodes1, bNodes2):
@@ -1825,7 +1879,7 @@ def genSeedNodes(annotations, reqRedundancy, spotlightRadius):
     newAnnos = []
     for anno in annotations:
         anno.nxG = annoToNXGraph(anno)[0]
-        anno.kdT = annoToKDtree(anno)[0]
+        anno.kdT = annotations_to_KDtree_list(anno)[0]
         newAnnos.append(anno)
 
     annotations = set(newAnnos)
@@ -1834,7 +1888,7 @@ def genSeedNodes(annotations, reqRedundancy, spotlightRadius):
 
     for anno in annotations:
         # get a set of all end nodes for each annotation, i.e. deg == 1
-        anno.eNodes = list({k for k, v in anno.nxG.degree().iteritems() if v == 1})
+        anno.eNodes = list({k for k, v in anno.nxG.degree().items() if v == 1})
         anno.lonelyENodes = dict()
         # remove non-lonely eNodes of current anno: the tracing is complete if lonelyENodes remains empty
         for eNode in anno.eNodes:
@@ -1842,7 +1896,7 @@ def genSeedNodes(annotations, reqRedundancy, spotlightRadius):
             for otherAnno in annotations.difference(set([anno])):
                 if otherAnno.kdT.query_ball_point(eNode.getCoordinate_scaled(), spotlightRadius):
                     anno.lonelyENodes[eNode] += 1
-            if anno.lonelyENodes.has_key(eNode):
+            if eNode in anno.lonelyENodes.keys():
                 if anno.lonelyENodes[eNode] > reqRedundancy:
                     del(anno.lonelyENodes[eNode])
                     break
@@ -1949,14 +2003,14 @@ def nx_graph_to_annotation(G, scaling=None):
     a.scaling = scaling
     new_node_mapping = dict()
 
-    for cur_n in G.nodes_iter():
+    for cur_n in G.nodes():
         x, y, z = cur_n.getCoordinate()
         cur_n_copy = SkeletonNode()
         cur_n_copy.from_scratch(a, x, y, z)
         new_node_mapping[cur_n] = cur_n_copy
         a.addNode(cur_n_copy)
 
-    for n_1, n_2 in G.edges_iter():
+    for n_1, n_2 in G.edges():
         a.addEdge(new_node_mapping[n_1], new_node_mapping[n_2])
 
     return a
@@ -2004,8 +2058,7 @@ def annoToNXGraph(annotations, merge_annotations_to_single_graph=False):
                     nxG.add_edge(node, child,
                                  weight=node.distance_scaled(child))
                 except:
-                    print 'Phantom child node, annotation' \
-                          'object inconsistent'
+                    print('Phantom child node, annotation object inconsistent')
         graphs = nxG
 
         # ugly code duplication here, don't look at it! ;)
@@ -2021,8 +2074,7 @@ def annoToNXGraph(annotations, merge_annotations_to_single_graph=False):
                         nxG.add_edge(node, child,
                                      weight=node.distance_scaled(child))
                     except:
-                        print 'Phantom child node, annotation' \
-                              'object inconsistent'
+                        print('Phantom child node, annotation object inconsistent')
             graphs.append(nxG)
 
     return (graphs)
@@ -2130,7 +2182,7 @@ def setAnnotationStats(annos):
     for anno in annos:
         nxG = annoToNXGraph(anno)
         anno.pathLen = nxG[0].size(weight='weight') / 1000
-        anno.numBranchNodes = len(list({k for k, v in nxG[0].degree().iteritems() if v > 2}))
+        anno.numBranchNodes = len(list({k for k, v in nxG[0].degree().items() if v > 2}))
         anno.branchDensity = anno.numBranchNodes / anno.pathLen
         # avgBranchLen
         #anno.avgBranchLen =
@@ -2160,7 +2212,7 @@ def annosToNMLFile(annos, filename):
         currBaseID += (ids[-1] + 1)
         anno.setNodeBaseID(currBaseID)
         skel.annotations.add(anno)
-        print currBaseID
+        print(currBaseID)
 
     skel.toNml(filename)
     return
@@ -2194,8 +2246,8 @@ class EnhancedAnnotation():
         #
         #self.kd_tree_spatial = annoToKDtree(annotation,
         #        interpolate=interpolate)[0]
-        self.kd_tree_spatial = annoToKDtree(annotation)[0]
-        self.kd_tree_nodes = annoToKDtree(annotation)[0]
+        self.kd_tree_spatial = annotations_to_KDtree_list(annotation)[0]
+        self.kd_tree_nodes = annotations_to_KDtree_list(annotation)[0]
         self.graph = annoToNXGraph(annotation)[0]
         self.annotation = annotation
 
@@ -2546,7 +2598,7 @@ def get_subsegment_by_distance(annotation, start_node, end_node,
 def get_movement_area(filename):
     """
     Returns the movement area from a kzip or xml / nml
-    
+
     :param filename : str
         path to file
     :return: dict

@@ -1,7 +1,4 @@
-# coding=utf-8
 ################################################################################
-#  This file provides a class representation of a KNOSSOS-dataset for reading
-#  and writing raw and overlay data.
 #
 #  (C) Copyright 2015
 #  Max-Planck-Gesellschaft zur Foerderung der Wissenschaften e.V.
@@ -21,15 +18,11 @@
 #
 ################################################################################
 
-from __future__ import absolute_import, division, print_function
-# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
-from functools import reduce
 
-try:
-    import cPickle as pkl
-except ImportError:
-    import pickle as pkl
+"""This file provides a class representation of a KNOSSOS-dataset for
+reading and writing raw and overlay data."""
+
+import pickle as pkl
 import glob
 import h5py
 from multiprocessing.pool import ThreadPool
@@ -40,18 +33,12 @@ import sys
 import time
 
 import scipy.misc
-try:
-    import fadvise
 
-    fadvise_available = True
-except:
-    fadvise_available = False
-
-from knossos_utils import knossosdataset
+from . import knossosdataset
 
 
 def wrapper(func, args, kwargs):
-    """ wrapper function, calls a function with a variable number
+    """wrapper function, calls a function with a variable number
     of args and kwargs
 
     Parameters:
@@ -65,7 +52,7 @@ def wrapper(func, args, kwargs):
 
 
 def _export_cset_as_kd_thread(args):
-    """ Helper function
+    """Helper function
     """
     coords = args[0]
     size = np.copy(args[1])
@@ -481,7 +468,7 @@ class ChunkDataset(object):
                         else:
                             neighbours.append(-1)
                         pos.append([x-1, y-1, z-1])
-                              
+
         pos = np.array(pos)
         neighbours = np.array(neighbours)
         return neighbours, pos
@@ -1110,7 +1097,7 @@ class ChunkDistributor(object):
 
     def next(self, exclude_running=True):
         if self.lock is not None:
-            self.lock.release()   
+            self.lock.release()
 
         for _ in range(2 * len(self.chunklist)):
             if not os.path.exists(self._path_lock(self.next_id, status=3)):
@@ -1120,13 +1107,13 @@ class ChunkDistributor(object):
                     continue
                 elif running:
                     os.remove(self._path_lock(self.next_id, status=1))
-                
+
                 self.lock = FSLock(self._path_lock(self.next_id, status=1))
                 if self.lock.acquire():
                     return self.cset.chunk_dict[self.next_id]
 
             self._increase_id()
-           
+
         print("No chunks left")
         self.get_status()
         return None

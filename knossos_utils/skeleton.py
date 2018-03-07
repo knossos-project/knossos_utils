@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ################################################################################
 #  This file provides a class representation of a KNOSSOS-dataset for reading
 #  and writing raw and overlay data.
@@ -6,7 +5,7 @@
 #  (C) Copyright 2015
 #  Max-Planck-Gesellschaft zur Foerderung der Wissenschaften e.V.
 #
-#  chunky.py is free software: you can redistribute it and/or modify
+#  skeleton.py is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License version 2 of
 #  the License as published by the Free Software Foundation.
 #
@@ -18,14 +17,11 @@
 #
 ################################################################################
 
-import sys
-if sys.version_info[0] >= 3:
-    raise ImportError('{} currently only supports Python 2.7.'.format(__file__))
-
 from xml.dom import minidom
 import xml.etree.cElementTree as cElementTree
-from math import pow, sqrt
+import math
 import copy
+from collections import deque
 import tempfile
 import unicodedata
 import hashlib
@@ -38,9 +34,9 @@ import zipfile
 from multiprocessing import Pool
 
 def euclidian_distance(c1, c2):
-    return sqrt(pow((c2[0] - c1[0]), 2) +
-     pow((c2[1] - c1[1]), 2) +
-     pow((c2[2] - c1[2]), 2))
+    return math.sqrt(math.pow((c2[0] - c1[0]), 2) +
+                     math.pow((c2[1] - c1[1]), 2) +
+                     math.pow((c2[2] - c1[2]), 2))
 
 class Skeleton:
     """
@@ -66,6 +62,7 @@ class Skeleton:
         self.edit_position = None
         self.experiment_name = None
         self.version = '4.1.2'
+        self.dataset_path = None
         return
 
     def set_edit_position(self, edit_position):
@@ -192,7 +189,7 @@ class Skeleton:
         :return:
         """
 
-    def fromNml(self, filename, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False):
+    def fromNml(self, filename, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         if filename.endswith('k.zip'):
             zipper = zipfile.ZipFile(filename)
 
@@ -200,21 +197,21 @@ class Skeleton:
                 raise Exception("k.zip file does not contain annotation.xml")
 
             xml_string = zipper.read('annotation.xml')
-	    doc = minidom.parseString(xml_string)
-	else:
-	    doc = minidom.parse(filename)
+            doc = minidom.parseString(xml_string)
+        else:
+            doc = minidom.parse(filename)
 
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=meta_info_only)
+        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=meta_info_only, read_time=read_time)
 
         return self
 
-    def fromNmlString(self, nmlString, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False):
+    def fromNmlString(self, nmlString, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         doc = minidom.parseString(nmlString)
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=False)
+        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=False, read_time=read_time)
 
         return self
 
-    def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False):
+    def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         try:
             [self.experiment_name] = parse_attributes(
                 doc.getElementsByTagName(
@@ -224,39 +221,40 @@ class Skeleton:
             self.experiment_name = None
 
         try_time_slice_version = False
-        # Read skeleton time and idle time
-        try:
-            [self.skeleton_time, skeleton_time_checksum] = parse_attributes(
-                    doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                    [["ms", int], ["checksum", str]])
-            [self.skeleton_idletime, idletime_checksum] = parse_attributes(
-                    doc.getElementsByTagName("parameters")[0].getElementsByTagName("idleTime")[0],
-                    [["ms", int], ["checksum", str]])
-
-        except IndexError:
-            self.skeleton_time = None
-            self.skeleton_idletime = None
-            try_time_slice_version = True
-
-        if try_time_slice_version:
-            # Time slicing version
-            self.skeleton_time, skeleton_time_checksum = parse_attributes(
-                    doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                    [["min", int], ["checksum", str]])
-            if self.skeleton_time is None:
-                self.skeleton_time, skeleton_time_checksum = parse_attributes(
+        if read_time:
+            # Read skeleton time and idle time
+            try:
+                [self.skeleton_time, skeleton_time_checksum] = parse_attributes(
                         doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
                         [["ms", int], ["checksum", str]])
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                    raise Exception("Checksum mismatch")
-            else:
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                    raise Exception("Checksum mismatch")
-                self.skeleton_time = self.skeleton_time * 60 * 1000
-                skeleton_time_checksum = integer_checksum(self.skeleton_time)
+                [self.skeleton_idletime, idletime_checksum] = parse_attributes(
+                        doc.getElementsByTagName("parameters")[0].getElementsByTagName("idleTime")[0],
+                        [["ms", int], ["checksum", str]])
 
-            self.skeleton_idletime = 0
-            idletime_checksum = integer_checksum(0)
+            except IndexError:
+                self.skeleton_time = None
+                self.skeleton_idletime = None
+                try_time_slice_version = True
+
+            if try_time_slice_version:
+                # Time slicing version
+                self.skeleton_time, skeleton_time_checksum = parse_attributes(
+                        doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
+                        [["min", int], ["checksum", str]])
+                if self.skeleton_time is None:
+                    self.skeleton_time, skeleton_time_checksum = parse_attributes(
+                            doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
+                            [["ms", int], ["checksum", str]])
+                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                        raise Exception("Checksum mismatch")
+                else:
+                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                        raise Exception("Checksum mismatch")
+                    self.skeleton_time = self.skeleton_time * 60 * 1000
+                    skeleton_time_checksum = integer_checksum(self.skeleton_time)
+
+                self.skeleton_idletime = 0
+                idletime_checksum = integer_checksum(0)
 
         if use_file_scaling == True:
             self.scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
@@ -275,14 +273,15 @@ class Skeleton:
         except IndexError:
             self.created_version = '0'
 
-        if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
-            # Has SHA256 checksums
-            if self.skeleton_time is not None and self.skeleton_idletime is not None:
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time) or \
-                   idletime_checksum != integer_checksum(self.skeleton_idletime):
-                       raise Exception('Checksum mismatch!')
-            else:
-                raise Exception('No time records exist!')
+        if read_time:
+            if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
+                # Has SHA256 checksums
+                if self.skeleton_time is not None and self.skeleton_idletime is not None:
+                    if skeleton_time_checksum != integer_checksum(self.skeleton_time) or \
+                       idletime_checksum != integer_checksum(self.skeleton_idletime):
+                           raise Exception('Checksum mismatch!')
+                else:
+                    raise Exception('No time records exist!')
 
         if meta_info_only:
             return self
@@ -307,7 +306,7 @@ class Skeleton:
         comment_elems = doc.getElementsByTagName("comment")
         for comment_elem in comment_elems:
             [nodeID, comment] = parse_attributes(comment_elem, [["node",
-                int], ["content", unicode]])
+                int], ["content", str]])
             node_ID_to_node[nodeID + base_id].setComment(comment)
 
         # Read branch points
@@ -420,7 +419,7 @@ class Skeleton:
         try:
             comment_elems = root.find("comments").findall("comment")
         except:
-            print "'NoneType' object has no attribute 'findall'"
+            print("'NoneType' object has no attribute 'findall'")
             comment_elems = []
 
 
@@ -433,7 +432,7 @@ class Skeleton:
                       '' + str(nodeID))
             except UnicodeEncodeError:
                 # this means that a comment contains a non-ascii letter
-                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", unicode]])
+                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
                 ascii_comment = unicodedata.normalize('NFKD', comment).encode('ascii','ignore')
                 node_ID_to_node[nodeID + base_id].setComment(ascii_comment)
         # Read branch points
@@ -448,16 +447,54 @@ class Skeleton:
 
         return self
 
+    def from_skeletopyze_skel(self, pyze_skel, coord_offset=[0, 0, 0]):
+        try:
+            import skeletopyze
+        except ImportError:
+            print("ImportError: Please install the missing dependency skeletopyze for this function: https://github.com/funkey/skeletopyze")
+        def pyzenode2knode(pyze_skel, annotation, node_id, offset):
+            k_node = SkeletonNode()
+            k_node.annotation = annotation
+            k_node.ID = node_id
+            pos = pyze_skel.locations(node_id)
+            # knossos origin is at 1, 1, 1
+            k_node.x, k_node.y, k_node.z = np.array([pos.x(), pos.y(), pos.z()]) + offset + 1
+            k_node.setDataElem("inVp", 0)
+            k_node.setDataElem("radius", pyze_skel.diameters(node_id) / 2)
+            k_node.setDataElem("inMag", 1)
+            k_node.setDataElem("time", 0)
+            return k_node
+
+        annotation = SkeletonAnnotation()
+        annotation.resetObject()
+        annotation.nodeBaseID = self.get_high_node_id() + 1
+
+        k_nodes = {}
+        for node in pyze_skel.nodes():
+            k_node = pyzenode2knode(pyze_skel, annotation, node + annotation.nodeBaseID, coord_offset)
+            k_nodes[node] = k_node
+            annotation.clearNodeEdges(k_node)
+
+        annotation.nodes = set(k_nodes.values())
+        annotation.high_id = annotation.nodeBaseID + len(annotation.nodes)
+        annotation.root = k_nodes[0]
+        annotation.node_ID_to_node = k_nodes
+
+        for edge in pyze_skel.edges():
+            annotation.addEdge(k_nodes[edge.u], k_nodes[edge.v])
+
+        self.annotations.add(annotation)
+        return self
+
+
     def get_high_node_id(self):
         """
         Return highest node ID in any annotation in the skeleton.
         """
         high_ids = [0]
         for cur_anno in self.getAnnotations():
-            high_ids.append(cur_anno.nodeBaseID + cur_anno.high_id) # this
-            # could be buggy : in my understanding, nodeBaseID should not be
-            # added to the high_id; jk 20.01.15 - not changing it to not
-            # break stuff
+            # The nodeBaseID still needs to be added to the node IDs to obtain skeleton-wide unique IDs.
+            high_ids.append(cur_anno.nodeBaseID + cur_anno.high_id)
         return max(high_ids)
 
     def toNml(self, filename, save_empty=True):
@@ -465,9 +502,9 @@ class Skeleton:
             f = open(filename, "w")
             f.write(self.to_xml_string(save_empty))
             f.close()
-        except Exception, e:
-            print "Couldn't open file for writing."
-            print e
+        except Exception as e:
+            print("Couldn't open file for writing.")
+            print(e)
         return
 
     def to_kzip(self, filename, save_empty=True, force_overwrite=False):
@@ -487,14 +524,14 @@ class Skeleton:
                     remove_from_zip(filename, 'annotation.xml')
                     with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
                         zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception, e:
-                print "Couldn't open file for reading and overwriting.", e
+            except Exception as e:
+                print("Couldn't open file for reading and overwriting.", e)
         else:
             try:
                 with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
                     zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception, e:
-                print "Couldn't open file for writing.", e
+            except Exception as e:
+                print("Couldn't open file for writing.", e)
         return
 
     def to_xml_string(self, save_empty=True):
@@ -514,6 +551,11 @@ class Skeleton:
         if self.experiment_name is not None:
             build_attributes(expname, [["name", self.experiment_name]])
             parameters.appendChild(expname)
+
+        if self.dataset_path is not None:
+            dataset = doc.createElement("dataset")
+            build_attributes(dataset, [["path", self.dataset_path]])
+            parameters.appendChild(dataset)
 
         if self.scaling is not None:
             scale = doc.createElement("scale")
@@ -536,7 +578,7 @@ class Skeleton:
         #  node is sufficient
         property_names = []
         for n in self.getNodes():
-            for key, val in n.data.iteritems():
+            for key, val in n.data.items():
                 if key not in property_names+orig_keys:
                     property_names.append(key)
                     prop_entry = doc.createElement("property")
@@ -612,17 +654,16 @@ class Skeleton:
             return self.skeleton_idletime
 
     def get_version(self):
-        # Check whether the version strings are in the format
-        # x.y.z
+        # Check whether the version string consists of a number or dot separated numbers.
         try:
-            int(self.created_version.translate(None, '.'))
+            int(self.created_version.replace('.', ""))
         except ValueError:
             created_version = [0,]
         else:
             created_version = [int(x) for x in self.created_version.split('.')]
 
         try:
-            int(self.last_saved_version.translate(None, '.'))
+            int(self.last_saved_version.replace('.', ""))
         except ValueError:
             last_saved_version = [0,]
         else:
@@ -643,46 +684,66 @@ class Skeleton:
         return {'created': created_version, 'saved': last_saved_version}
     #
     def set_scaling(self, scaling):
-        if isinstance(scaling, str):
-            scaling = None
         self.scaling = scaling
-    #
-    pass
+        for annotation in self.annotations:
+            annotation.scaling = scaling
 
 
 class SkeletonAnnotation:
+
+    def sparsen(self, min_node_dist=5):
+        """
+        Remove nodes with degree 2 that have euclidic distance in voxels smaller than min_node_dist to their neighbors.
+        :param min_node_dist: Minimum euclidic distance in voxels between non-branchpoint nodes after sparsen
+        """
+        changed = True
+        while changed: # sparsen until nothing changes anymore
+            changed = False
+            for node in self.nodes.copy():
+                parents = list(node.getParents())
+                children = list(node.getChildren())
+                neighbors = parents + children
+                if len(neighbors) != 2:
+                    continue
+                neigbor1 = parents[0] if len(parents) == 1 else neighbors[0] # maintain edge direction if available
+                neigbor2 = children[0] if len(children) == 1 else neighbors[1]
+                if euclidian_distance(node.getCoordinate(), neigbor1.getCoordinate()) < min_node_dist \
+                    or euclidian_distance(node.getCoordinate(), neigbor2.getCoordinate()) < min_node_dist:
+                    changed = True
+                    self.removeNode(node)
+                    self.addEdge(neigbor1, neigbor2)
+
     def interpolate_nodes(self, max_node_dist_scaled=50):
-        # test scaling available
-        # get all edges with length > max_node_distance_scaled
-        if not self.scaling:
+        """
+        Add interpolated nodes along edges so that no node distance exceeds max_node_dist_scaled.
+        :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
+        """
+        if self.scaling is None:
             raise Exception('Cannot interpolate without scaling.')
+        edges_copy = self.edges.copy()
+        for src_node in edges_copy:
+            for trg_node in edges_copy[src_node]:
+                distance = src_node.distance_scaled(trg_node)
+                if distance < max_node_dist_scaled:
+                    continue
 
-        interpolated_edges = 1
-        while interpolated_edges:
-            interpolated_edges = 0
-            for src_node in self.edges.keys():
-                for trg_node in self.edges[src_node]:
-                    if src_node.distance_scaled(trg_node) > max_node_dist_scaled:
-                        interpolated_edges += 1
-                        # remove this edge
-                        self.removeEdge(src_node, trg_node)
+                self.removeEdge(src_node, trg_node)
+                # number of nodes to be added along this edge
+                num_interpolation_nodes = math.floor(distance / max_node_dist_scaled)
 
-                        # get new node coordinate in between the old nodes
-                        a = src_node.getCoordinate()
-                        b = trg_node.getCoordinate()
-                        c = [int(round((a[0]+b[0])/2., 0)),
-                             int(round((a[1]+b[1])/2., 0)),
-                             int(round((a[2]+b[2])/2., 0))]
-
-                        # add node from scratch in between
-                        new_node = SkeletonNode()
-                        new_node.from_scratch(self, c[0], c[1], c[2])
-                        self.addNode(new_node)
-                        # add edges to new node, and from new node
-                        self.addEdge(src_node, new_node)
-                        self.addEdge(new_node, trg_node)
-
-        return
+                src_coords = np.array(src_node.getCoordinate())
+                trg_coords = np.array(trg_node.getCoordinate())
+                direction_vec = trg_coords - src_coords
+                direction_vec = direction_vec / np.linalg.norm(direction_vec) # normalize
+                last_node = src_node
+                for i in range(1, num_interpolation_nodes + 2):
+                    c = src_coords + np.round(direction_vec * i)
+                    new_node = SkeletonNode()
+                    new_node.from_scratch(self, c[0], c[1], c[2])
+                    self.addNode(new_node)
+                    self.addEdge(last_node, new_node)
+                    last_node = new_node
+                self.addEdge(last_node, trg_node)
 
     def resetObject(self):
         # Mandatory
@@ -691,7 +752,7 @@ class SkeletonAnnotation:
         self.node_ID_to_node = {}
         self.edges = {}
         self.reverse_edges = {}
-        self.nodeBaseID = 1
+        self.nodeBaseID = 1 # this is not the smallest ID found in the annotation but an offset that needs to be added to every node ID to obtain skeleton-wide unique IDs.
         self.scaling = None
         self.filename = None
         # Optional
@@ -770,9 +831,9 @@ class SkeletonAnnotation:
             try:
                 source_node = self.node_ID_to_node[source_ID]
                 target_node = self.node_ID_to_node[target_ID]
-                source_node.addChild(target_node)
+                self.addEdge(source_node, target_node)
             except KeyError:
-                print 'Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID)
+                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
 
         self.scaling = skeleton.scaling
 
@@ -822,7 +883,7 @@ class SkeletonAnnotation:
                 target_node = self.node_ID_to_node[target_ID]
                 source_node.addChild(target_node)
             except KeyError:
-                print 'Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID)
+                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
 
         # Read patches
         patch_elems = []
@@ -840,7 +901,7 @@ class SkeletonAnnotation:
     def toNml(self, doc, annotations_elem, comments_elem, annotation_ID):
         annotation_elem = doc.createElement("thing")
         build_attributes(annotation_elem, [["id", annotation_ID]])
-        for k, v in self.data.iteritems():
+        for k, v in self.data.items():
             build_attributes(annotation_elem, [[k, v]])
         if self.getComment():
             annotation_elem.setAttribute("comment", self.getComment())
@@ -870,7 +931,7 @@ class SkeletonAnnotation:
         return self.nodes
 
     def iter_edges(self):
-        for cur_from_node, to_nodes in self.getEdges().iteritems():
+        for cur_from_node, to_nodes in self.getEdges().items():
             for cur_to_node in to_nodes:
                 yield (cur_from_node, cur_to_node)
 
@@ -917,7 +978,7 @@ class SkeletonAnnotation:
 
     def addNode(self, node):
         this_id = node.getID()
-        if this_id == None or self.node_ID_to_node.has_key(this_id):
+        if this_id is None or this_id in self.node_ID_to_node.keys():
             this_id = self.high_id + 1
             node.setID(this_id)
         if this_id > self.high_id:
@@ -926,7 +987,7 @@ class SkeletonAnnotation:
         node.annotation = self
         self.node_ID_to_node[this_id] = node
         self.clearNodeEdges(node)
-        return id
+        return this_id
 
     def removeNode(self, node):
         if not node.annotation:
@@ -960,10 +1021,13 @@ class SkeletonAnnotation:
         self.reverse_edges[target_node].add(node)
         return
 
-    def removeEdge(self, node, target_node):
-        self.edges[node].remove(target_node)
-        self.reverse_edges[target_node].remove(node)
-        return
+    def removeEdge(self, node1, node2):
+        if node2 in self.edges[node1]:
+            self.edges[node1].remove(node2)
+            self.reverse_edges[node2].remove(node1)
+        else:
+            self.edges[node2].remove(node1)
+            self.reverse_edges[node1].remove(node2)
 
     def getNodeEdges(self, node):
         return self.edges[node]
@@ -987,12 +1051,15 @@ class SkeletonAnnotation:
     def getRoot(self):
         return self.root
 
+    def get_branch_points(self):
+        return [node for node in self.nodes if node.is_branch_point()]
+
     def setRootInternal(self, root):
         self.root = root
         return
 
     def setRoot(self, root):
-        if self.getRoot() <> None:
+        if self.getRoot() is not None:
             raise RuntimeError("Root already exists!")
         root.setRoot()
         return
@@ -1008,7 +1075,7 @@ class SkeletonAnnotation:
         return
 
     def resetRoot(self, new_root):
-        if self.getRoot() <> None:
+        if self.getRoot() is not None:
             self.unRoot()
         self.setRoot(new_root)
         return
@@ -1021,7 +1088,7 @@ class SkeletonAnnotation:
         return
 
     def getNodeByID(self, nodeID):
-        return self.node_ID_to_node[nodeID]
+        return self.node_ID_to_node[nodeID] if nodeID in self.node_ID_to_node else None
 
     def getNodeByUniqueID(self, uniqueNodeID):
         return self.getNodeByID(uniqueNodeID - self.getNodeBaseID())
@@ -1075,7 +1142,7 @@ class SkeletonNode:
         # Using extra data dictionaries is a bad idea and somewhat redundant,
         # see definition of __copy__ below.
         # Uninitialize mandatory
-        self.data = {}
+        self.data = {"inMag": 1, "inVp": 0, "radius": 1.5, "time": 0}
         self.ID = None
         # Uninitialized optional members
         self.pure_comment = ""
@@ -1116,10 +1183,10 @@ class SkeletonNode:
         self.removeMetaDataKey(node_metadata_key_root)
         return
 
+    @staticmethod
     def from_coordinate(coordinate):
         new = SkeletonNode()
         new.setCoordinate(coordinate)
-
         return new
 
     def from_scratch(self, annotation, x, y, z, inVp=1, inMag=1, time=0, ID=None, radius=1.0):
@@ -1189,7 +1256,7 @@ class SkeletonNode:
         self.setDataElem("inMag", inMag)
         self.setDataElem("time", time)
 
-        for key, val in additional_attr.iteritems():
+        for key, val in additional_attr.items():
             self.setDataElem(key, val)
         return self
 
@@ -1200,7 +1267,7 @@ class SkeletonNode:
             ("inVp", self.data['inVp']), ("radius", self.data["radius"]),
             ("time", self.data["time"]), ("x", int(self.x)),
             ("y", int(self.y)), ("z", int(self.z))])
-        for key, val in self.data.iteritems():
+        for key, val in self.data.items():
             if key in ["inVp", "node", "id", "inMag", "radius", "time", "x",
                        "y", "z", "edge", "comment", "content", "target"]:
                 continue
@@ -1242,14 +1309,10 @@ class SkeletonNode:
         self.y = coord[1]
         self.z = coord[2]
 
-        if not self.annotation:
-            raise Exception("No associated annotation for scaling")
-        if not self.annotation.scaling:
-            raise Exception("No scaling parameter set")
-
-        self.x_scaled = self.x * self.annotation.scaling[0]
-        self.y_scaled = self.y * self.annotation.scaling[1]
-        self.z_scaled = self.z * self.annotation.scaling[2]
+        if self.annotation and self.annotation.scaling:
+            self.x_scaled = self.x * self.annotation.scaling[0]
+            self.y_scaled = self.y * self.annotation.scaling[1]
+            self.z_scaled = self.z * self.annotation.scaling[2]
 
     def getCoordinate_scaled(self):
         return [self.x_scaled, self.y_scaled, self.z_scaled]
@@ -1258,7 +1321,9 @@ class SkeletonNode:
         # If no corresponding annotation and no ID is set in this
         # instances attributes, then the ID is not defined.
         #
-        if self.ID == None:
+        if self.ID is None:
+            if self.annotation is None:
+                return None
             self.ID = self.annotation.high_id
             self.annotation.high_id += 1
 
@@ -1384,6 +1449,24 @@ class SkeletonNode:
     def getParents(self):
         return self.annotation.getNodeReverseEdges(self)
 
+    def is_branch_point(self):
+        return self.degree() > 2
+
+    def is_connected_to(self, node):
+        queue = deque()
+        queue.append(self)
+        visited = {self}
+        while len(queue) > 0:
+            next_node = queue.popleft()
+            if next_node == node:
+                return True
+            for neighbor in next_node.getNeighbors():
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+        return False
+
+
     def addParent(self, parent):
         parent.addChild(self)
 
@@ -1393,12 +1476,12 @@ class SkeletonNode:
 
     def getSingleParent(self):
         parents = self.getParents()
-        if len(parents) <> 1:
+        if len(parents) is not 1:
             raise RuntimeError("Not a Single Parent!")
         return list(parents)[0]
 
     def setSingleParent(self, parent):
-        if self.getSingleParent() <> None:
+        if self.getSingleParent() is not None:
             raise RuntimeError("Parent Already Set!")
         self.addParent(parent)
         return
@@ -1419,10 +1502,9 @@ class SkeletonNode:
         c_1 = self.getCoordinate_scaled()
         c_2 = to_node.getCoordinate_scaled()
 
-        dst = sqrt(pow(c_1[0] - c_2[0], 2) +
-                pow(c_1[1] - c_2[1], 2) +
-                pow(c_1[2] - c_2[2], 2))
-
+        dst = math.sqrt(math.pow(c_1[0] - c_2[0], 2) +
+                        math.pow(c_1[1] - c_2[1], 2) +
+                        math.pow(c_1[2] - c_2[2], 2))
         return dst
 
     def degree(self):
@@ -1570,7 +1652,7 @@ class SkeletonLoop:
                     while False in \
                             (2 > abs(currentcoord[dim]-self.last.getCoordinates()[dim]) \
                             for dim in range(3)):
-                        print "Warning: Loop with hole detected"
+                        print("Warning: Loop with hole detected")
                         self.fillHole(currentcoord, self.last.getCoordinates())
 
                 self.add(point)
@@ -1820,8 +1902,11 @@ def parse_attributes(xml_elem, parse_input):
     attributes = xml_elem.attributes
     for x in parse_input:
         try:
-            parse_output.append(x[1](attributes[x[0]].value))
-        except KeyError:
+            if x[1] == int:
+                parse_output.append(int(float(attributes[x[0]].value)))  # ensure float strings can be parsed too
+            else:
+                parse_output.append(x[1](attributes[x[0]].value))
+        except (KeyError, ValueError):
             parse_output.append(None)
     return parse_output
 

@@ -1,7 +1,4 @@
-#!/usr/bin/env python2
-from __future__ import absolute_import, division, print_function
-# builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from functools import reduce
+#!/usr/bin/env python
 
 import os
 import sys
@@ -42,10 +39,9 @@ install_requires = [
     "scipy>=0.16",
     "networkx>=1.11",
     "requests>=2.12",
+    "matplotlib",
+    "Pillow"
 ]
-
-if sys.version_info[0] < 3:
-    install_requires.append("future>=0.15")
 
 
 def read(fname):
@@ -69,6 +65,7 @@ setup(
     install_requires=install_requires,
     extras_require={
         "snappy": ["python-snappy>=0.5"],
+        # "skeletopyze": only needed for importing skeletopyze skeletons. See https://github.com/funkey/skeletopyze
     },
     classifiers=[
         'Development Status :: 4 - Beta',

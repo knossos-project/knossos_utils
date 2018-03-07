@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ################################################################################
 #  This file provides a functions and classes for working with synapse annotations.
 #  and writing raw and overlay data.
@@ -28,15 +27,15 @@ import re as re
 import numpy as np
 import networkx as nx
 import itertools as itools
-from skeleton import Skeleton, SkeletonAnnotation
-from skeleton_utils import split_by_connected_component,\
+from .skeleton import Skeleton, SkeletonAnnotation
+from .skeleton_utils import split_by_connected_component,\
     annotation_from_nodes, get_reachable_nodes, merge_annotations,\
     get_nodes_with_comment, get_largest_annotation
-from skeleton_utils import EnhancedAnnotation, KDtree
-from skeleton_utils import average_coordinate, Coordinate
-from skeleton_utils import gen_random_pass
+from .skeleton_utils import EnhancedAnnotation, KDtree
+from .skeleton_utils import average_coordinate, Coordinate
+from .skeleton_utils import gen_random_pass
 from random import randint
-import skeleton_utils as au
+import knossos_utils.skeleton_utils as au
 import matplotlib.pyplot as mplot
 import math
 import copy
@@ -326,7 +325,7 @@ class Synapse(object):
         if npPostC.sum() and npPreC.sum():
             return True
         else:
-            print 'Warning: Pre - or post coord not properly set!'
+            print('Warning: Pre - or post coord not properly set!')
             return False
 
     def euclDistToOtherSyn(self, otherSyn):
@@ -604,7 +603,7 @@ def load_consolidated_synapses(synapses):
     for cur_synapse in synapses:
         synapses_by_collection.setdefault(cur_synapse.collection_id,
             []).append(cur_synapse)
-    for cur_collection_id, cur_synapses in synapses_by_collection.iteritems():
+    for cur_collection_id, cur_synapses in synapses_by_collection.items():
         consensus_synapses_all.add(ConsolidatedSynapse(cur_synapses,
             collection_id=cur_collection_id))
     for cur_consolidated_synapse in consensus_synapses_all:
@@ -796,7 +795,7 @@ def synapses_from_f0097(skeleton, synapse_direction='to', source_anno='dummy',
 
     # Find the active zones for which we can assign a number,
     # because their matching synapse has a number
-    for cur_s, cur_id in compartments_numbered['synapse'].iteritems():
+    for cur_s, cur_id in compartments_numbered['synapse'].items():
         # compartments_numbered stores both the IDs as keys and the
         # actual node objects, we are only interested in the actual node
         # objects here
@@ -861,7 +860,7 @@ def synapses_from_f0097(skeleton, synapse_direction='to', source_anno='dummy',
             annotation=compartments_unassigned['other'][0].annotation)
         unassigned_other = EnhancedAnnotation(unassigned_other)
 
-        for cur_az, cur_s in non_numbered_matches['active_zone'].iteritems():
+        for cur_az, cur_s in non_numbered_matches['active_zone'].items():
             az_avg_coordinate = average_coordinate(
                 [x.getCoordinate_scaled() for x in cur_az.getNodes()])
             az_avg_coordinate_dataset = [int(y) for y in average_coordinate(
@@ -905,14 +904,14 @@ def synapses_from_f0097(skeleton, synapse_direction='to', source_anno='dummy',
     synapses_out = set()
 
     for cur_other, (cur_az, cur_syn_node) in \
-            non_numbered_matches['other'].iteritems():
+            non_numbered_matches['other'].items():
         new_synapse = Synapse(az_nodes=[x for x in cur_az.getNodes()],
             pre_node=cur_other,
             post_node=cur_syn_node,
             source_anno=source_anno)
         synapses_out.add(new_synapse)
 
-    for cur_other, cur_syn_id in compartments_numbered['other'].iteritems():
+    for cur_other, cur_syn_id in compartments_numbered['other'].items():
         if not isinstance(cur_syn_id, str):
             continue
         cur_az = compartments_numbered['active_zone'][cur_syn_id]
@@ -952,7 +951,7 @@ def consensus_synapses_to_skeleton(consensus_synapses):
     s = Skeleton()
     cur_id = 1
 
-    for redundancy, consensus_syns in consensus_synapses.iteritems():
+    for redundancy, consensus_syns in consensus_synapses.items():
         for cur_consensus_syn in consensus_syns:
             if redundancy == 1:
                 identifier_node_comment = '(todo) collection %d' % (cur_id,)
@@ -1055,7 +1054,7 @@ def synapse_to_annotation(synapse,
     if len(az_comment_node) > 1:
         #print [x.getComment() for x in az_comment_node]
         if len(set([x.getComment() for x in az_comment_node])) > 1:
-            print [x.getComment() for x in az_comment_node]
+            print([x.getComment() for x in az_comment_node])
             #raise Exception('Something bad happened.')
     if len(az_comment_node) == 0:
         az_comment_node = list(new_anno.getNodes())[0]
@@ -1186,7 +1185,7 @@ def j0126_axon_syn_analysis(path_to_dir):
     #    for s
 
     for nmlfile in allNMLfiles:
-        print 'loading ' + nmlfile
+        print('loading ' + nmlfile)
         annos = au.loadj0126NML(os.path.join(path_to_dir, nmlfile))
 
     return
@@ -1310,7 +1309,7 @@ def synapses_from_jk_anno(annotation,
     comment_nodes_kd = au.KDtree(all_comment_nodes)
 
     # create a synapse object for each key
-    for synID, synNodes in synapses.iteritems():
+    for synID, synNodes in synapses.items():
         if len(synNodes) > 4:
             print("Unplausible number of synapse nodes for: {0}".format(synID))
             if enable_heuristic == False: continue
@@ -2099,8 +2098,8 @@ def synDiscrepancyHighlighter(listOfPathsToNMLs,
             #print 'len ' + str(len(currAnnotators[redAnnoUsername]))
             if len(currAnnotators[redAnnoUsername]) > 1:
                 if verbose:
-                    print 'Found a synapse with two partner synapses from ' \
-                          'the same other annotator.'
+                    print('Found a synapse with two partner synapses from ' \
+                          'the same other annotator.')
 
         if len(synsWithPartners[syn]) < reqRedundancy - 1:
             try:
@@ -2178,8 +2177,8 @@ def synDiscrepancyAnalysis(listOfPathsToNMLs,
         [synswithp, rednotmet] = synDiscrepancyHighlighter(listOfPathsToNMLs,
             spotlightRadius=currRadius)
 
-        print 'radius: ' + str(currRadius) + ' syns without spatial match: ' + \
-              str(len({x for v in rednotmet.itervalues() for x in v}))
+        print('radius: ' + str(currRadius) + ' syns without spatial match: ' + \
+              str(len({x for v in rednotmet.itervalues() for x in v})))
 
         numLonelyByRadius.append(
             len({x for v in rednotmet.itervalues() for x in v}))
@@ -2202,7 +2201,7 @@ def synDiscrepancyAnalysis(listOfPathsToNMLs,
         thispairwise = []
         for syn2 in allsyns:
             thispairwise.append(syn.euclDistToOtherSyn(syn2))
-        print 'this dist: ' + str(sorted(thispairwise)[1])
+        print('this dist: ' + str(sorted(thispairwise)[1]))
         pairwisedistancesClosest.append(sorted(thispairwise)[1])
 
     mplot.figure()
