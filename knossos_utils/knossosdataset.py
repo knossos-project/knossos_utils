@@ -46,7 +46,7 @@ except ImportError:
     print('mergelist_tools not available, using slow python fallback. '
           'Try to build the cython version of it.')
     from . import mergelist_tools_fallback as mergelist_tools
-from .img_proc import create_composite_img, multi_dilation
+from .img_proc import create_composite_img, multi_dilation, create_label_overlay_img
 import numpy as np
 import os
 import pickle
@@ -62,6 +62,10 @@ from threading import Lock
 import traceback
 import zipfile
 from skimage import measure
+try:
+    FileNotFoundError
+except NameError:
+    FileNotFoundError = IOError
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -1814,7 +1818,6 @@ class KnossosDataset(object):
                         swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=0)
                     elif mode == 'raw':
                         swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=1)
-
                 if out_format != 'raw':
                     img = Image.fromarray(swapped)
                     with open(file_path, 'w') as fp:
@@ -2454,9 +2457,10 @@ class KnossosDataset(object):
                     swapped_ol = scipy.ndimage.zoom(swapped_ol, xy_zoom, order=0)
                     swapped_raw = scipy.ndimage.zoom(swapped_raw, xy_zoom, order=1)
                 swapped_ol = multi_dilation(swapped_ol, nb_dilations)
-                comp = create_composite_img(swapped_ol, swapped_raw, cvals=cvals)
-                with open(file_path, 'w') as fp:
-                    comp.save(fp)
+                comp = create_label_overlay_img(swapped_ol, save_path=file_path, background=swapped_raw, cvals=cvals,
+                                                save_raw_img=False)
+                # with open(file_path, 'w') as fp:
+                #     comp.save(fp)
                 _print("Writing layer {0} of {1} in total.".format(
                     z_coord_cnt+1, self.boundary[2]//mag))
                 z_coord_cnt += 1

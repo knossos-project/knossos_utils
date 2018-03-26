@@ -2,6 +2,98 @@ from scipy.ndimage.morphology import binary_dilation
 from PIL import Image
 import numpy as np
 import itertools
+import scipy
+
+
+def create_label_overlay_img(labels, save_path, background=None, cvals=None,
+                             save_raw_img=True):
+    if cvals is None:
+        cvals = {}
+    else:
+        assert isinstance(cvals, dict)
+
+    np.random.seed(0)
+
+    label_prob_dict = {}
+
+    unique_labels = np.unique(labels)
+    for unique_label in unique_labels:
+        if unique_label == 0:
+            continue
+        label_prob_dict[unique_label] = (labels == unique_label).astype(np.int)
+
+        if not unique_label in cvals:
+            cvals[unique_label] = [np.random.rand() for _ in range(3)] + [1]
+
+    if len(label_prob_dict) == 0:
+        print("No labels detected! No overlay image created")
+    else:
+        create_prob_overlay_img(label_prob_dict, save_path,
+                                background=background, cvals=cvals,
+                                save_raw_img=save_raw_img)
+
+
+def create_prob_overlay_img(label_prob_dict, save_path, background=None,
+                            cvals=None, save_raw_img=True):
+    assert isinstance(label_prob_dict, dict)
+    if cvals is not None:
+        assert isinstance(cvals, dict)
+
+    np.random.seed(0)
+
+    label_prob_dict_keys = label_prob_dict.keys()
+    sh = label_prob_dict[label_prob_dict_keys[0]].shape[:2]
+    imgs = []
+
+    for key in label_prob_dict_keys:
+        label_prob = np.array(label_prob_dict[key])
+
+        label_prob = label_prob.squeeze()
+
+        if key in cvals:
+            cval = cvals[key]
+        else:
+            cval = [np.random.rand() for _ in range(3)] + [1]
+
+        this_img = np.zeros([sh[0], sh[1], 4], dtype=np.float32)
+        this_img[label_prob > 0] = np.array(cval) * 255
+        this_img[:, :, 3] = label_prob * 100
+        imgs.append(this_img)
+    if background is None:
+        background = np.ones(imgs[0].shape)
+        background[:, :, 3] = np.ones(sh)
+    elif len(np.shape(background)) == 2:
+        t_background = np.zeros(imgs[0].shape)
+        for ii in range(3):
+            t_background[:, :, ii] = background
+
+        t_background[:, :, 3] = np.ones(background.squeeze().shape) * 255
+        background = t_background
+    elif len(np.shape(background)) == 3:
+        background = np.array(background)[:, :, 0]
+        background = np.array([background, background, background,
+                               np.ones_like(background) * 255])
+
+    if np.max(background) <= 1:
+        background *= 255.
+    else:
+        background = np.array(background, dtype=np.float)
+
+    comp = imgs[0]
+    # cnt = 0
+    for img in imgs[1:]:
+        # cnt += 1
+        comp = alpha_composite(comp, img)
+        # scipy.misc.imsave(save_path + "%d.tif" % cnt, comp)
+
+    comp = alpha_composite(comp, background)
+
+    if save_path is not None:
+        scipy.misc.imsave(save_path, comp)
+
+    if save_raw_img and background is not None:
+        raw_save_path = "".join(save_path.split(".")[:-1]) + "_raw." + save_path.split(".")[-1]
+        scipy.misc.imsave(raw_save_path, background)
 
 
 def create_composite_img(labels, background, cvals=None):
@@ -18,7 +110,7 @@ def create_composite_img(labels, background, cvals=None):
         assert isinstance(cvals, dict)
 
     np.random.seed(0)
-    max_alpha = 1 if background is None else 0.5
+    max_alpha = 100./255
     unique_labels = np.unique(labels)
     for unique_label in unique_labels:
         if unique_label == 0:
@@ -82,9 +174,8 @@ def alpha_composite(src, dst):
     '''
     # http://stackoverflow.com/a/3375291/190597
     # http://stackoverflow.com/a/9166671/190597
-    # dtype float32 might be neccessary here..
-    src = np.asarray(src, dtype=np.float32)
-    dst = np.asarray(dst, dtype=np.float32)
+    src = np.asarray(src)
+    dst = np.asarray(dst)
     out = np.empty(src.shape, dtype = 'float')
     alpha = np.index_exp[:, :, 3:]
     rgb = np.index_exp[:, :, :3]
