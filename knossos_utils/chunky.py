@@ -187,7 +187,7 @@ def save_dataset(chunk_dataset):
         pkl.dump(chunk_dataset, output, pkl.HIGHEST_PROTOCOL)
 
 
-def load_dataset(path_head_folder, update_paths=False):
+def load_dataset(path_head_folder, update_paths=True):
     with open(path_head_folder + "/chunk_dataset.pkl", 'rb') as f:
         this_cd = pkl.load(f)
 
