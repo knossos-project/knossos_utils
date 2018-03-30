@@ -696,6 +696,16 @@ class Skeleton:
 
 class SkeletonAnnotation:
 
+    def merge(self, other_annotation):
+        """
+        :param other_annotation: SkeletonAnnotation, annotation from which nodes and edges should be added to this tree.
+        """
+        for node in other_annotation.nodes:
+            self.addNode(node)
+        for source, targets in other_annotation.edges.items():
+            for target in targets:
+                self.addEdge(source, target)
+
     def sparsen(self, min_node_dist=5):
         """
         Remove nodes with degree 2 that have euclidic distance in voxels smaller than min_node_dist to their neighbors.
