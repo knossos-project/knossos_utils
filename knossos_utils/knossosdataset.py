@@ -59,6 +59,7 @@ import sys
 import time
 from threading import Lock
 import traceback
+from xml.etree import ElementTree as ET
 import zipfile
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
@@ -1522,6 +1523,28 @@ class KnossosDataset(object):
                                          verbose=verbose,
                                          http_verbose=http_verbose,
                                          show_progress=show_progress)
+
+    @staticmethod
+    def get_movement_area(kzip_path):
+        with zipfile.ZipFile(kzip_path, "r") as zf:
+            xml_str = zf.read('annotation.xml').decode()
+        annotation_xml = ET.fromstring(xml_str)
+        area_elem = annotation_xml.find("parameters").find("MovementArea")
+        area_min = (int(area_elem.get("min.x")),
+                  int(area_elem.get("min.y")),
+                  int(area_elem.get("min.z")))
+        area_max = (int(area_elem.get("max.x")),
+                int(area_elem.get("max.y")),
+                int(area_elem.get("max.z")))
+        return (area_min, area_max)
+
+    def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True):
+        area_min, area_max = self.get_movement_area(path)
+        print(area_min, area_max)
+        size = (area_max[0] - area_min[0], area_max[1] - area_min[1], area_max[2] - area_min[2])
+        print(size)
+        return self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag,
+                                        apply_mergelist=apply_mergelist, alt_exp_name_kzip_path_mode=True)
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
