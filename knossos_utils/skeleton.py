@@ -84,11 +84,14 @@ class Skeleton:
             # the clusterfuck
             a.nodeBaseID = cnt_all_nodes
             cnt_n = 1
+            new_node_ID_to_node = {}
             for n in a.getNodes():
                 n.ID = cnt_n
+                new_node_ID_to_node[n.ID] = n
                 cnt_n += 1
                 cnt_all_nodes += 1
             a.high_id = cnt_n
+            a.node_ID_to_node = new_node_ID_to_node
 
     def reset_all_times(self):
         for cur_n in self.getNodes():
