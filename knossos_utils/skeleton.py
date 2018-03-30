@@ -768,6 +768,7 @@ class SkeletonAnnotation:
         self.high_id = 0
         self.volumes = set()
         self.data = {}
+        self.visible =True
         return
 
     def __init__(self):
@@ -818,7 +819,10 @@ class SkeletonAnnotation:
         self.resetObject()
 
         self.setNodeBaseID(base_id)
-
+        if "visible" in annotation_elem.attributes:
+            self.visible = parse_attributes(annotation_elem, [["visible", str],])[0]
+        else:
+            self.visible = True
         [comment] = parse_attributes(annotation_elem, [['comment', str],])
         if comment:
             self.setComment(comment)
@@ -910,7 +914,7 @@ class SkeletonAnnotation:
             build_attributes(annotation_elem, [[k, v]])
         if self.getComment():
             annotation_elem.setAttribute("comment", self.getComment())
-
+        annotation_elem.setAttribute("visible", "1" if self.visible else "0")
         nodes_elem = doc.createElement("nodes")
         edges_elem = doc.createElement("edges")
         for node in self.getNodes():
