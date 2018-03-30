@@ -109,6 +109,13 @@ class Skeleton:
         all_nodes = set(all_nodes_lst)
         return all_nodes
 
+    def getNodeByID(self, node_id):
+        for annotation in self.annotations:
+            found_node = annotation.getNodeByID(node_id)
+            if found_node is not None:
+                return found_node
+        return None
+
     def getVolumes(self):
         all_volumes = set()
         for cur_annotation in self.getAnnotations():
