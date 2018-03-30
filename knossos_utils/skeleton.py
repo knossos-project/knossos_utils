@@ -137,7 +137,11 @@ class Skeleton:
 
         high_id = self.get_high_node_id()
         annotation.nodeBaseID = high_id + 1
-
+        if annotation.annotation_ID is None:
+            max_annotation_id = 0
+            for existing_annotation in self.annotations:
+                max_annotation_id = max(max_annotation_id, existing_annotation.annotation_ID)
+            annotation.annotation_ID = max_annotation_id + 1
         self.annotations.add(annotation)
 
     def toSWC(self, path=''):
