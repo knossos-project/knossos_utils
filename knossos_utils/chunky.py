@@ -1010,7 +1010,7 @@ class Chunk(object):
                 f.create_dataset(str(setname), data=data)
         f.close()
 
-    def load_chunk(self, name, setname=None, verbose=True):
+    def load_chunk(self, name, setname=None, verbose=False):
 
         """ returns data from set in HDF5_file
 

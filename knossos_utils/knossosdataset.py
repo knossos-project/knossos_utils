@@ -2161,7 +2161,7 @@ class KnossosDataset(object):
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
-            if data.max() > 0 and data_inter.max() == 0:
+            if data.max() > 0 and data_inter.max() == 0 and not fast_downsampling:
                 _print("\n--------------------------\n" +
                        "Lossy interpolation while converting as_raw=%d with "
                        "order=%d and mag_ration=%0.2e. Fast downsampling=%d"
