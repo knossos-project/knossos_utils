@@ -2124,9 +2124,8 @@ class KnossosDataset(object):
 
             data = np.max(np.array(data), axis=0)
 
-        # do not interpolate overlay cubes when downsampling
-        if not fast_downsampling:
-            order = 3 if as_raw else 0
+        # do not interpolate overlay cubes during downsampling
+        order = 3 if as_raw else 0
         for mag in mags:
             mag_ratio = float(mag) / data_mag
             if mag_ratio > 1:
@@ -2139,7 +2138,7 @@ class KnossosDataset(object):
                         data_inter = measure.block_reduce(data, (mag_ratio, ) * 3, np.max)
                     else:
                         data_inter = \
-                            scipy.ndimage.zoom(data, inv_mag_ratio, order=order). \
+                            scipy.ndimage.zoom(data, 1.0/mag_ratio, order=order). \
                                 astype(datatype, copy=False)
             elif mag_ratio < 1:
                 inv_mag_ratio = int(1./mag_ratio)
@@ -2156,17 +2155,18 @@ class KnossosDataset(object):
                     data_inter = data_inter.astype(dtype=datatype, copy=False)
                 else:
                     data_inter = \
-                        scipy.ndimage.zoom(data, inv_mag_ratio, order=order).\
+                        scipy.ndimage.zoom(data, 1./mag_ratio, order=order).\
                             astype(datatype, copy=False)
             else:
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
             if data.max() > 0 and data_inter.max() == 0:
-                _print("\n--------------------------\n"
-                       "Lossy interpolation!!"
+                _print("\n--------------------------\n" +
+                       "Lossy interpolation while converting as_raw=%d with "
+                       "order=%d and mag_ration=%0.2e. Fast downsampling=%d"
+                       % (as_raw, order, mag_ratio, fast_downsampling) +
                        "\n--------------------------\n")
-                raise()
             offset_mag = np.array(offset, dtype=np.int) // mag_ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
 

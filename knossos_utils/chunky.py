@@ -64,6 +64,7 @@ def _export_cset_as_kd_thread(args):
     unified_labels = args[7]
     nb_threads = args[8]
     orig_dtype = args[9]
+    fast_downsampling = args[10]
 
     cset = load_dataset(cset_path, update_paths=True)
 
@@ -107,13 +108,15 @@ def _export_cset_as_kd_thread(args):
                             as_raw=as_raw,
                             nb_threads=nb_threads,
                             overwrite=True,
-                            datatype=datatype)
+                            datatype=datatype,
+                            fast_downsampling=fast_downsampling)
     data = []
 
 
 def _export_cset_as_kd_control_thread(args):
     """ Helper function
     """
+    # TODO: Investigate existence
     coords = args[0]
     size = np.copy(args[1])
     cset_path = args[2]
@@ -182,6 +185,7 @@ def _switch_array_entries(this_array, entries):
 
 
 def save_dataset(chunk_dataset):
+    # TODO: store only meta data in dictionary or str and not entire object
     with open(chunk_dataset.path_head_folder + "/chunk_dataset.pkl", 'wb') \
             as output:
         pkl.dump(chunk_dataset, output, pkl.HIGHEST_PROTOCOL)
@@ -754,7 +758,7 @@ class ChunkDataset(object):
     def export_cset_to_kd(self, kd, name, hdf5names, nb_threads,
                           coordinate=None, size=None,
                           stride=[4 * 128, 4 * 128, 4 * 128],
-                          as_raw=False,
+                          as_raw=False, fast_downsampling=False,
                           unified_labels=False, orig_dtype=np.uint8):
         if coordinate is None or size is None:
             coordinate = np.zeros(3, dtype=np.int)
@@ -770,7 +774,7 @@ class ChunkDataset(object):
                     coords = np.array([coordx, coordy, coordz])
                     multi_params.append([coords, stride, self.path_head_folder,
                                          kd.knossos_path, name, hdf5names, as_raw,
-                                         unified_labels, nb_threads[1], orig_dtype])
+                                         unified_labels, nb_threads[1], orig_dtype, fast_downsampling])
 
         np.random.shuffle(multi_params)
         if nb_threads[0] > 1:
