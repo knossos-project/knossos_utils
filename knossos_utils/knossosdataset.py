@@ -1758,6 +1758,8 @@ class KnossosDataset(object):
             layer = layer.astype(out_dtype)
 
             for curr_z_coord in range(0, self._cube_shape[2]):
+                if (z_coord_cnt >= self.boundary[2]):
+                    break;
 
                 file_path = "{0}{1}_{2:06d}.{3}".format(out_path,
                                                          mode,
