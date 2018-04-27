@@ -1513,7 +1513,7 @@ class KnossosDataset(object):
                                     pickle_path=None, invert_data=False,
                                     zyx_mode=False, nb_threads=40,
                                     verbose=False, http_verbose=False,
-                                    show_progress=True, stored_datatype=None):
+                                    show_progress=False, stored_datatype=None):
         """ Extracts a 3D matrix from the KNOSSOS-dataset overlay cubes
 
         :param size: 3 sequence of ints
