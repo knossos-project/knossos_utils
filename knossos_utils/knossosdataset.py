@@ -1783,7 +1783,7 @@ class KnossosDataset(object):
 
                 if out_format != 'raw':
                     img = Image.fromarray(swapped)
-                    with open(file_path, 'w') as fp:
+                    with open(file_path, 'wb') as fp:
                         img.save(fp)
                 else:
                     swapped.tofile(file_path)
