@@ -1741,8 +1741,7 @@ class KnossosDataset(object):
                                   self.boundary[1]//mag,
                                   self._cube_shape[2])
 
-        for curr_z_cube in range(0, 1 + int(np.ceil(
-                self._number_of_cubes[2]) / float(mag))):
+        for curr_z_cube in range(0, int(np.ceil(self._number_of_cubes[2]) / float(mag))):
             if stop:
                 break
             if mode == 'raw':
