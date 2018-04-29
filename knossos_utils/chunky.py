@@ -110,7 +110,6 @@ def _export_cset_as_kd_thread(args):
                             overwrite=True,
                             datatype=datatype,
                             fast_downsampling=fast_downsampling)
-    data = []
 
 
 def _export_cset_as_kd_control_thread(args):

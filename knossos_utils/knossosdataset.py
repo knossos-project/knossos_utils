@@ -2167,6 +2167,7 @@ class KnossosDataset(object):
                        "order=%d and mag_ration=%0.2e. Fast downsampling=%d"
                        % (as_raw, order, mag_ratio, fast_downsampling) +
                        "\n--------------------------\n")
+                raise ValueError("oh-oh")
             offset_mag = np.array(offset, dtype=np.int) // mag_ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
@@ -2479,7 +2480,6 @@ def downsample_kd(kd, orig_mag, target_mags, stride=(4 * 128, 4 * 128, 2 * 128),
         Whether to use striding (True) or scipy.zoom (False). If False and do_raw then interpolation order is set
         to 3. If False and not do_raw then order is set to 0.
     """
-    # TODO: Copy knossos.conf for higher mags
     nb_threads = 1  # doesn't work multithreaded (multiple access to same files may happen, currently no locking)
     data_range = [[0, 0, 0], kd.boundary]
     multi_params = []
@@ -2527,10 +2527,10 @@ def _downsample_kd_thread(args):
     kd = KnossosDataset()
     kd.initialize_from_knossos_path(kd_p)
     if as_raw:
-        data = kd.from_raw_cubes_to_matrix(size, offset, mag=orig_mag, nb_threads=8,
+        data = kd.from_raw_cubes_to_matrix(size, offset, mag=orig_mag, nb_threads=1,
                                            show_progress=False)
     else:
-        data = kd.from_overlaycubes_to_matrix(size, offset, mag=orig_mag, nb_threads=8,
+        data = kd.from_overlaycubes_to_matrix(size, offset, mag=orig_mag, nb_threads=1,
                                               show_progress=False)
     if as_raw:
         datatype = kd.raw_dtype
@@ -2538,5 +2538,5 @@ def _downsample_kd_thread(args):
         datatype = np.uint64
     kd.from_matrix_to_cubes(offset, data_mag=orig_mag, mags=target_mags,
                             data=data, as_raw=as_raw, nb_threads=1,
-                            overwrite=True, datatype=datatype, verbose=True,
+                            overwrite=True, datatype=datatype, verbose=False,
                             fast_downsampling=fast_downsampling)
