@@ -1761,10 +1761,7 @@ class KnossosDataset(object):
                 if (z_coord_cnt >= self.boundary[2]):
                     break;
 
-                file_path = "{0}{1}_{2:06d}.{3}".format(out_path,
-                                                         mode,
-                                                         z_coord_cnt,
-                                                         out_format)
+                file_path = os.path.join(out_path, "{0}_{1:06d}.{2}".format(mode, z_coord_cnt, out_format))
 
                 # the swap is necessary to have the same visual
                 # appearence in knossos and the resulting image stack
