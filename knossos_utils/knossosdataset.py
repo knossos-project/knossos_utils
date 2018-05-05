@@ -892,7 +892,7 @@ class KnossosDataset(object):
                     try:
                         raw = apply_func(raw)
                     except Exception as e:
-                        print("Exception ('%s') occured during applicaiton of function %s at block %s.\n" %
+                        print("Exception ('%s') occured during application of function %s at block %s.\n" %
                               (e, repr(apply_func), repr(args)))
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=raw, datatype=self.raw_dtype,
@@ -913,11 +913,15 @@ class KnossosDataset(object):
                 else:
                     err = None
                 if apply_func is not None:
-                    try:
-                        overlay = apply_func(overlay)
-                    except Exception as e:
-                        print("Exception ('%s') occured during applicaiton of function %s at block %s.\n" %
-                              (e, repr(apply_func), repr(args)))
+                    # try:
+                        overlay, missing_ids = apply_func(overlay)
+                        for ix, c in missing_ids:
+                            print(offset + c, ix)
+
+                    # except Exception as e:
+                    #     print("Exception ('%s') occured during applicaiton of function %s at block %s.\n" %
+                    #           (e, repr(apply_func), repr(args)))
+                    #     print("Offset/size:", offset, size)
                 new_kd.from_matrix_to_cubes(offset=offset, mags=mag,
                                             data=overlay, datatype=np.uint64,
                                             nb_threads=1, verbose=verbose)
@@ -2139,7 +2143,7 @@ class KnossosDataset(object):
                     else:
                         data_inter = \
                             scipy.ndimage.zoom(data, 1.0/mag_ratio, order=order). \
-                                astype(datatype, copy=False)
+                                astype(datatype, copy=True)
             elif mag_ratio < 1:
                 inv_mag_ratio = int(1./mag_ratio)
                 if fast_downsampling:
@@ -2156,7 +2160,7 @@ class KnossosDataset(object):
                 else:
                     data_inter = \
                         scipy.ndimage.zoom(data, 1./mag_ratio, order=order).\
-                            astype(datatype, copy=False)
+                            astype(datatype, copy=True)
             else:
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
@@ -2164,10 +2168,9 @@ class KnossosDataset(object):
             if data.max() > 0 and data_inter.max() == 0 and not fast_downsampling:
                 _print("\n--------------------------\n" +
                        "Lossy interpolation while converting as_raw=%d with "
-                       "order=%d and mag_ration=%0.2e. Fast downsampling=%d"
-                       % (as_raw, order, mag_ratio, fast_downsampling) +
+                       "order=%d and mag_ration=%0.2e. Fast downsampling=%d. Offset: %s"
+                       % (as_raw, order, mag_ratio, fast_downsampling, str(offset)) +
                        "\n--------------------------\n")
-                raise ValueError("oh-oh")
             offset_mag = np.array(offset, dtype=np.int) // mag_ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
@@ -2437,12 +2440,12 @@ class KnossosDataset(object):
             raw = kd_raw.from_raw_cubes_to_matrix(size=scaled_cube_layer_size, nb_threads=nb_threads,
                                                   offset=offset, mag=mag, verbose=verbose)
             if np.sum(raw) == 0:
-                raise ValueError
+                print("WARNING: Raw data slice is empty. Offset:", offset)
             overlay = kd_overlay.from_overlaycubes_to_matrix(size=scaled_cube_layer_size, offset=offset,
                                                              mag=mag, verbose=verbose, nb_threads=nb_threads)
             unique_ids = np.unique(overlay)
             if len(unique_ids) == 1:
-                raise ValueError
+                print("WARNING: Overlay slice has only one label. Offset:", offset)
             for curr_z_coord in range(0, self._cube_shape[2]):
                 file_path = "{0}/{1}_{2:06d}.{3}".format(out_path, mode, z_coord_cnt, out_format)
                 # the swap is necessary to have the same visual
@@ -2480,8 +2483,10 @@ def downsample_kd(kd, orig_mag, target_mags, stride=(4 * 128, 4 * 128, 2 * 128),
         Whether to use striding (True) or scipy.zoom (False). If False and do_raw then interpolation order is set
         to 3. If False and not do_raw then order is set to 0.
     """
+    print("Started downsampling of %s (dtype: %s; do_raw: %s)" % (kd.experiment_name, str(kd.raw_dtype) if do_raw
+                                                                  else str(np.uint64), str(do_raw)))
     nb_threads = 1  # doesn't work multithreaded (multiple access to same files may happen, currently no locking)
-    data_range = [[0, 0, 0], kd.boundary]
+    data_range = [[0, 0, 0], kd.boundary // orig_mag]
     multi_params = []
     for x in range(data_range[0][0],
                    data_range[1][0], stride[0]):
@@ -2527,10 +2532,10 @@ def _downsample_kd_thread(args):
     kd = KnossosDataset()
     kd.initialize_from_knossos_path(kd_p)
     if as_raw:
-        data = kd.from_raw_cubes_to_matrix(size, offset, mag=orig_mag, nb_threads=1,
-                                           show_progress=False)
+        data = kd.from_raw_cubes_to_matrix(size, offset, mag=orig_mag, nb_threads=12,
+                                           show_progress=False, verbose=True)
     else:
-        data = kd.from_overlaycubes_to_matrix(size, offset, mag=orig_mag, nb_threads=1,
+        data = kd.from_overlaycubes_to_matrix(size, offset, mag=orig_mag, nb_threads=12,
                                               show_progress=False)
     if as_raw:
         datatype = kd.raw_dtype
