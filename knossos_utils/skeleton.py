@@ -111,6 +111,9 @@ class Skeleton:
         all_nodes = set(all_nodes_lst)
         return all_nodes
 
+    def getBranchpoints(self):
+        return [node for node in self.getNodes() if node.is_branch_point()]
+
     def getNodeByID(self, node_id):
         for annotation in self.annotations:
             found_node = annotation.getNodeByID(node_id)
