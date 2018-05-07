@@ -764,7 +764,7 @@ class SkeletonAnnotation:
         :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
         """
         if self.scaling is None:
-            raise Exception('Cannot interpolate without scaling.')
+            print('No scaling present. Assuming scaling of 1.')
         edges_copy = self.edges.copy()
         for src_node in edges_copy:
             for trg_node in edges_copy[src_node]:
@@ -783,6 +783,7 @@ class SkeletonAnnotation:
                 last_node = src_node
                 for i in range(1, num_interpolation_nodes + 2):
                     c = src_coords + np.round(direction_vec * i)
+                    if np.all(c >= trg_coords): continue
                     new_node = SkeletonNode()
                     new_node.from_scratch(self, c[0], c[1], c[2])
                     self.addNode(new_node)
@@ -1244,13 +1245,13 @@ class SkeletonNode:
 
         self.ID = ID
 
-        self.x = x
-        self.y = y
-        self.z = z
-
-        self.x_scaled = self.x * self.annotation.scaling[0]
-        self.y_scaled = self.y * self.annotation.scaling[1]
-        self.z_scaled = self.z * self.annotation.scaling[2]
+        self.x = self.x_scaled = x
+        self.y = self.y_scaled = y
+        self.z = self.z_scaled = z
+        if self.annotation.scaling:
+            self.x_scaled *= self.annotation.scaling[0]
+            self.y_scaled *= self.annotation.scaling[1]
+            self.z_scaled *= self.annotation.scaling[2]
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)
