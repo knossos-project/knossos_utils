@@ -63,6 +63,8 @@ class Skeleton:
         self.experiment_name = None
         self.version = '4.1.2'
         self.dataset_path = None
+        self.movement_area_min = None
+        self.movement_area_max = None
         return
 
     def set_edit_position(self, edit_position):
@@ -143,6 +145,10 @@ class Skeleton:
                 max_annotation_id = max(max_annotation_id, existing_annotation.annotation_ID)
             annotation.annotation_ID = max_annotation_id + 1
         self.annotations.add(annotation)
+
+    def add_movement_area(self, area_min, area_max):
+        self.movement_area_min = np.array(area_min, dtype=np.int)
+        self.movement_area_max = np.array(area_max, dtype=np.int)
 
     def toSWC(self, path=''):
         """
@@ -235,6 +241,14 @@ class Skeleton:
                     "experiment")[0], [["name", str]])
         except IndexError:
             self.experiment_name = None
+
+        try: # movement area
+            movement_area = doc.getElementsByTagName("parameters")[0].getElementsByTagName("MovementArea")[0]
+            self.movement_area_min = parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]])
+            self.movement_area_max = parse_attributes(movement_area, [["max.x", int], ["max.y", int], ["max.z", int]])
+        except IndexError:
+            self.movement_area_max = None
+            self.movement_area_min = None
 
         try_time_slice_version = False
         if read_time:
@@ -586,6 +600,22 @@ class Skeleton:
                  ["y", self.edit_position[1]],
                  ["z", self.edit_position[2]], ])
             parameters.appendChild(edit_position)
+
+        min_properties = []
+        max_properties = []
+        if self.movement_area_min is not None:
+            min_properties = [["min.x", self.movement_area_min[0]],
+                              ["min.y", self.movement_area_min[1]],
+                              ["min.z", self.movement_area_min[2]]]
+        if self.movement_area_max is not None:
+            max_properties = [["max.x", self.movement_area_max[0]],
+                              ["max.y", self.movement_area_max[1]],
+                              ["max.z", self.movement_area_max[2]]]
+        if len(min_properties) > 0 or len(max_properties) > 0:
+            movement_area = doc.createElement("MovementArea")
+            build_attributes(movement_area,
+                             [attribute for attribute in min_properties] + [attribute for attribute in max_properties])
+            parameters.appendChild(movement_area)
 
         # find property keys
         orig_keys = ["inVp", "node", "id", "inMag", "radius", "time",
