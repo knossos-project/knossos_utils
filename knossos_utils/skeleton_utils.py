@@ -17,6 +17,7 @@
 #
 ################################################################################
 
+from collections import Iterable
 import copy
 from math import sqrt
 import numpy as np
@@ -2043,7 +2044,7 @@ def annoToNXGraph(annotations, merge_annotations_to_single_graph=False):
 
     """
     graphs = []
-    if not type(annotations) == list:
+    if not isinstance(annotations, Iterable): # single element passed
         annotations = [annotations]
 
     if merge_annotations_to_single_graph:
