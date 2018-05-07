@@ -858,7 +858,7 @@ class SkeletonAnnotation:
 
     def fromNml(self, annotation_elem, skeleton, base_id=0):
         self.resetObject()
-
+        self.annotation_ID = parse_attributes(annotation_elem, [["id", int],])[0]
         self.setNodeBaseID(base_id)
         if "visible" in annotation_elem.attributes:
             self.visible = parse_attributes(annotation_elem, [["visible", str],])[0]
