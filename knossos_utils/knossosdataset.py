@@ -1804,7 +1804,10 @@ class KnossosDataset(object):
                 if out_format != 'raw':
                     img = Image.fromarray(swapped)
                     with open(file_path, 'wb') as fp:
-                        img.save(fp)
+                        if out_format == 'tif' or out_format == 'tiff':
+                            img.save(fp, compression='tiff_lzw')
+                        else:
+                            img.save(fp)
                 else:
                     swapped.tofile(file_path)
 
