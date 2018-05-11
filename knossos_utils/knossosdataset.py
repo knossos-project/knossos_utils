@@ -655,10 +655,11 @@ class KnossosDataset(object):
                 mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
 
             if not os.path.isfile(path):
-                self.parse_knossos_conf(self.knossos_path +
-                                        self.name_mag_folder +
-                                        "%d/knossos.conf" % self.mag[0],
-                                        verbose=verbose)
+                conf_path = self.knossos_path + self.name_mag_folder + "{}/knossos.conf".format(self.mag[0]) # legacy path
+                for name in os.listdir(self.knossos_path):
+                    if name == "knossos.conf" or name.endswith(".k.conf"):
+                        conf_path = os.path.join(self.knossos_path, name)
+                self.parse_knossos_conf(conf_path, verbose=verbose)
 
         if use_abs_path:
             self._knossos_path = os.path.abspath(self.knossos_path)
