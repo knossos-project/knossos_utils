@@ -1545,14 +1545,13 @@ class KnossosDataset(object):
         size = (area_max[0] - area_min[0], area_max[1] - area_min[1], area_max[2] - area_min[2])
         print(size)
         return self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag,
-                                        apply_mergelist=apply_mergelist, alt_exp_name_kzip_path_mode=True)
+                                        apply_mergelist=apply_mergelist)
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
                             verbose=False,
                             show_progress=True,
                             apply_mergelist=True,
-                            alt_exp_name_kzip_path_mode=False,
                             binarize_overlay=False,
                             return_empty_cube_if_nonexistent=True):
         """ Extracts a 3D matrix from a kzip file
@@ -1613,43 +1612,38 @@ class KnossosDataset(object):
                     if show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout('\rProgress: %.2f%%' % progress)
-                    this_path = self._experiment_name +\
-                                '_mag1_mag%dx%dy%dz%d.seg.sz' % \
-                                (mag, current[0], current[1], current[2])
-
-                    if alt_exp_name_kzip_path_mode:
-                        this_path = self._experiment_name +\
-                                    '_mag%dx%dy%dz%d.seg.sz' % \
-                                    (mag, current[0], current[1], current[2])
-                    if verbose:
-                        print(this_path)
-
-                    if self._experiment_name == \
-                                "20130410.membrane.striatum.10x10x30nm":
-                        this_path = self._experiment_name +\
-                                    '_mag1x%dy%dz%d.segmentation.snappy' % \
-                                    (current[0], current[1], current[2])
-
+                    this_path = "{}_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
+                                                                  current[0], current[1], current[2])
                     try:
                         values = np.fromstring(
                             module_wide["snappy"].decompress(
                                 archive.read(this_path)), dtype=np.uint64)
-                        if binarize_overlay:
-                            values[values > 1] = 1
-                        if datatype != values.dtype:
-                            # this conversion can go wrong and
-                            # it is the responsibility of the user to make
-                            # sure it makes sense
-                            values = values.astype(datatype)
                     except KeyError:
-                        if return_empty_cube_if_nonexistent:
-                            if verbose:
-                                _print("Cube does not exist, cube with {} only"\
-                                       " assigned".format(empty_cube_label))
-                            values = np.full(self.cube_shape, empty_cube_label,
-                                             dtype=datatype)
-                        else:
-                            return None
+                        try: # legacy path
+                            this_path = "{}_mag1_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
+                                                                               current[0], current[1], current[2])
+                            values = np.fromstring(
+                                module_wide["snappy"].decompress(
+                                    archive.read(this_path)), dtype=np.uint64)
+                        except KeyError:
+                            if return_empty_cube_if_nonexistent:
+                                if verbose:
+                                    _print("Cube does not exist, cube with {} only" \
+                                           " assigned".format(empty_cube_label))
+                                values = np.full(self.cube_shape, empty_cube_label,
+                                                 dtype=datatype)
+                            else:
+                                return None
+                    if verbose:
+                        print(this_path)
+                    if binarize_overlay:
+                        values[values > 1] = 1
+                    if datatype != values.dtype:
+                        # this conversion can go wrong and
+                        # it is the responsibility of the user to make
+                        # sure it makes sense
+                        values = values.astype(datatype)
+
 
                     pos = (current-start)*self.cube_shape
 
