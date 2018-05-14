@@ -49,6 +49,7 @@ except ImportError:
 from .img_proc import create_composite_img, multi_dilation, create_label_overlay_img
 import numpy as np
 import os
+import tqdm
 import pickle
 from PIL import Image
 import re
@@ -1873,6 +1874,7 @@ class KnossosDataset(object):
                                   self._cube_shape[2])
 
         end_z = 1 + int(np.ceil((starting_offset[2] + size[2]) // self._cube_shape[2]))
+        pbar = tqdm.tqdm(total=(end_z * self._cube_shape[2]-starting_offset[2])//mag)
         for curr_z_cube in range(starting_offset[2] // self.cube_shape[2], end_z):
             if stop:
                 break
@@ -1917,12 +1919,12 @@ class KnossosDataset(object):
                         img.save(fp)
                 else:
                     swapped.tofile(file_path)
-
-                _print("Writing layer {0} of {1} in total.".format(
-                    z_coord_cnt+1, self.boundary[2]//mag))
+                pbar.update(1)
+                # _print("Writing layer {0} of {1} in total.".format(
+                #     z_coord_cnt+1, self.boundary[2]//mag))
 
                 z_coord_cnt += 1
-
+        pbar.close()
         return
 
     def from_matrix_to_cubes(self, offset, mags=1, data=None, data_mag=1,
@@ -2428,11 +2430,9 @@ class KnossosDataset(object):
 
         stop = False
 
-        scaled_cube_layer_size = (size[0]//mag,
-                                  size[1]//mag,
-                                  self._cube_shape[2])
-
+        scaled_cube_layer_size = (size[0]//mag, size[1]//mag, self._cube_shape[2])
         end_z = 1 + int(np.ceil((starting_offset[2] + size[2]) // self._cube_shape[2]))
+        pbar = tqdm.tqdm(total=(end_z*self._cube_shape[2]-starting_offset[2])//mag)
         for curr_z_cube in range(starting_offset[2] // self.cube_shape[2], end_z):
             if stop:
                 break
@@ -2463,11 +2463,13 @@ class KnossosDataset(object):
                 swapped_ol = multi_dilation(swapped_ol, nb_dilations)
                 comp = create_label_overlay_img(swapped_ol, save_path=file_path, background=swapped_raw, cvals=cvals,
                                                 save_raw_img=False)
-                # with open(file_path, 'w') as fp:
-                #     comp.save(fp)
-                _print("Writing layer {0} of {1} in total.".format(
-                    z_coord_cnt+1, self.boundary[2]//mag))
+                with open(file_path, 'w') as fp:
+                    comp.save(fp)
+                # _print("Writing layer {0} of {1} in total.".format(
+                #     z_coord_cnt+1, self.boundary[2]//mag))
                 z_coord_cnt += 1
+            pbar.update(1)
+        pbar.close()
 
 
 def downsample_kd(kd, orig_mag, target_mags, stride=(4 * 128, 4 * 128, 2 * 128),

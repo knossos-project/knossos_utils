@@ -7,6 +7,9 @@ import scipy
 
 def create_label_overlay_img(labels, save_path, background=None, cvals=None,
                              save_raw_img=True):
+    """
+    Needs recatoring. Super RAM and time intensive...
+    """
     if cvals is None:
         cvals = {}
     else:
@@ -20,12 +23,13 @@ def create_label_overlay_img(labels, save_path, background=None, cvals=None,
     for unique_label in unique_labels:
         if unique_label == 0:
             continue
-        label_prob_dict[unique_label] = (labels == unique_label).astype(np.int)
+        label_prob_dict[unique_label] = (labels == unique_label).astype(np.int8)
 
         if not unique_label in cvals:
             cvals[unique_label] = [np.random.rand() for _ in range(3)] + [1]
 
     if len(label_prob_dict) == 0:
+        raise()
         print("No labels detected! No overlay image created")
     else:
         create_prob_overlay_img(label_prob_dict, save_path,
@@ -35,6 +39,9 @@ def create_label_overlay_img(labels, save_path, background=None, cvals=None,
 
 def create_prob_overlay_img(label_prob_dict, save_path, background=None,
                             cvals=None, save_raw_img=True):
+    """
+    Needs recatoring. Super RAM and time intensive... Combin with 'create_label_overlay_img'
+    """
     assert isinstance(label_prob_dict, dict)
     if cvals is not None:
         assert isinstance(cvals, dict)
@@ -43,8 +50,7 @@ def create_prob_overlay_img(label_prob_dict, save_path, background=None,
 
     label_prob_dict_keys = label_prob_dict.keys()
     sh = label_prob_dict[label_prob_dict_keys[0]].shape[:2]
-    imgs = []
-
+    comp = np.zeros([sh[0], sh[1], 4], dtype=np.float32)
     for key in label_prob_dict_keys:
         label_prob = np.array(label_prob_dict[key])
 
@@ -58,15 +64,14 @@ def create_prob_overlay_img(label_prob_dict, save_path, background=None,
         this_img = np.zeros([sh[0], sh[1], 4], dtype=np.float32)
         this_img[label_prob > 0] = np.array(cval) * 255
         this_img[:, :, 3] = label_prob * 100
-        imgs.append(this_img)
+        comp = alpha_composite(comp, this_img)
     if background is None:
-        background = np.ones(imgs[0].shape)
+        background = np.ones(comp.size)
         background[:, :, 3] = np.ones(sh)
     elif len(np.shape(background)) == 2:
-        t_background = np.zeros(imgs[0].shape)
+        t_background = np.zeros(np.asarray(comp).shape)
         for ii in range(3):
             t_background[:, :, ii] = background
-
         t_background[:, :, 3] = np.ones(background.squeeze().shape) * 255
         background = t_background
     elif len(np.shape(background)) == 3:
@@ -78,13 +83,6 @@ def create_prob_overlay_img(label_prob_dict, save_path, background=None,
         background *= 255.
     else:
         background = np.array(background, dtype=np.float)
-
-    comp = imgs[0]
-    # cnt = 0
-    for img in imgs[1:]:
-        # cnt += 1
-        comp = alpha_composite(comp, img)
-        # scipy.misc.imsave(save_path + "%d.tif" % cnt, comp)
 
     comp = alpha_composite(comp, background)
 
