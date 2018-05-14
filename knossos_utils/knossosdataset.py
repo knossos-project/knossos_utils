@@ -61,6 +61,7 @@ import sys
 import time
 from threading import Lock
 import traceback
+from xml.etree import ElementTree as ET
 import zipfile
 from skimage import measure
 try:
@@ -664,10 +665,11 @@ class KnossosDataset(object):
                 mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
 
             if not os.path.isfile(path):
-                self.parse_knossos_conf(self.knossos_path +
-                                        self.name_mag_folder +
-                                        "%d/knossos.conf" % self.mag[0],
-                                        verbose=verbose)
+                conf_path = self.knossos_path + self.name_mag_folder + "{}/knossos.conf".format(self.mag[0]) # legacy path
+                for name in os.listdir(self.knossos_path):
+                    if name == "knossos.conf" or name.endswith(".k.conf"):
+                        conf_path = os.path.join(self.knossos_path, name)
+                self.parse_knossos_conf(conf_path, verbose=verbose)
 
         if use_abs_path:
             self._knossos_path = os.path.abspath(self.knossos_path)
@@ -1569,12 +1571,33 @@ class KnossosDataset(object):
                                          show_progress=show_progress,
                                          stored_datatype=stored_datatype)
 
+    @staticmethod
+    def get_movement_area(kzip_path):
+        with zipfile.ZipFile(kzip_path, "r") as zf:
+            xml_str = zf.read('annotation.xml').decode()
+        annotation_xml = ET.fromstring(xml_str)
+        area_elem = annotation_xml.find("parameters").find("MovementArea")
+        area_min = (int(area_elem.get("min.x")),
+                  int(area_elem.get("min.y")),
+                  int(area_elem.get("min.z")))
+        area_max = (int(area_elem.get("max.x")),
+                int(area_elem.get("max.y")),
+                int(area_elem.get("max.z")))
+        return (area_min, area_max)
+
+    def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True):
+        area_min, area_max = self.get_movement_area(path)
+        print(area_min, area_max)
+        size = (area_max[0] - area_min[0], area_max[1] - area_min[1], area_max[2] - area_min[2])
+        print(size)
+        return self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag,
+                                        apply_mergelist=apply_mergelist)
+
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
                             verbose=False,
                             show_progress=True,
                             apply_mergelist=True,
-                            alt_exp_name_kzip_path_mode=False,
                             binarize_overlay=False,
                             return_empty_cube_if_nonexistent=True):
         """ Extracts a 3D matrix from a kzip file
@@ -1635,43 +1658,38 @@ class KnossosDataset(object):
                     if show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout('\rProgress: %.2f%%' % progress)
-                    this_path = self._experiment_name +\
-                                '_mag1_mag%dx%dy%dz%d.seg.sz' % \
-                                (mag, current[0], current[1], current[2])
-
-                    if alt_exp_name_kzip_path_mode:
-                        this_path = self._experiment_name +\
-                                    '_mag%dx%dy%dz%d.seg.sz' % \
-                                    (mag, current[0], current[1], current[2])
-                    if verbose:
-                        print(this_path)
-
-                    if self._experiment_name == \
-                                "20130410.membrane.striatum.10x10x30nm":
-                        this_path = self._experiment_name +\
-                                    '_mag1x%dy%dz%d.segmentation.snappy' % \
-                                    (current[0], current[1], current[2])
-
+                    this_path = "{}_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
+                                                                  current[0], current[1], current[2])
                     try:
                         values = np.fromstring(
                             module_wide["snappy"].decompress(
                                 archive.read(this_path)), dtype=np.uint64)
-                        if binarize_overlay:
-                            values[values > 1] = 1
-                        if datatype != values.dtype:
-                            # this conversion can go wrong and
-                            # it is the responsibility of the user to make
-                            # sure it makes sense
-                            values = values.astype(datatype)
                     except KeyError:
-                        if return_empty_cube_if_nonexistent:
-                            if verbose:
-                                _print("Cube does not exist, cube with {} only"\
-                                       " assigned".format(empty_cube_label))
-                            values = np.full(self.cube_shape, empty_cube_label,
-                                             dtype=datatype)
-                        else:
-                            return None
+                        try: # legacy path
+                            this_path = "{}_mag1_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
+                                                                               current[0], current[1], current[2])
+                            values = np.fromstring(
+                                module_wide["snappy"].decompress(
+                                    archive.read(this_path)), dtype=np.uint64)
+                        except KeyError:
+                            if return_empty_cube_if_nonexistent:
+                                if verbose:
+                                    _print("Cube does not exist, cube with {} only" \
+                                           " assigned".format(empty_cube_label))
+                                values = np.full(self.cube_shape, empty_cube_label,
+                                                 dtype=datatype)
+                            else:
+                                return None
+                    if verbose:
+                        print(this_path)
+                    if binarize_overlay:
+                        values[values > 1] = 1
+                    if datatype != values.dtype:
+                        # this conversion can go wrong and
+                        # it is the responsibility of the user to make
+                        # sure it makes sense
+                        values = values.astype(datatype)
+
 
                     pos = (current-start)*self.cube_shape
 
@@ -1787,8 +1805,7 @@ class KnossosDataset(object):
                                   self.boundary[1]//mag,
                                   self._cube_shape[2])
 
-        for curr_z_cube in range(0, 1 + int(np.ceil(
-                self._number_of_cubes[2]) / float(mag))):
+        for curr_z_cube in range(0, int(np.ceil(self._number_of_cubes[2]) / float(mag))):
             if stop:
                 break
             if mode == 'raw':
@@ -1803,11 +1820,10 @@ class KnossosDataset(object):
                     mag=mag, verbose=True)
 
             for curr_z_coord in range(0, self._cube_shape[2]):
+                if (z_coord_cnt >= self.boundary[2]):
+                    break;
 
-                file_path = "{0}{1}_{2:06d}.{3}".format(out_path,
-                                                         mode,
-                                                         z_coord_cnt,
-                                                         out_format)
+                file_path = os.path.join(out_path, "{0}_{1:06d}.{2}".format(mode, z_coord_cnt, out_format))
 
                 # the swap is necessary to have the same visual
                 # appearence in knossos and the resulting image stack
@@ -1825,8 +1841,11 @@ class KnossosDataset(object):
                         swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=1)
                 if out_format != 'raw':
                     img = Image.fromarray(swapped)
-                    with open(file_path, 'w') as fp:
-                        img.save(fp)
+                    with open(file_path, 'wb') as fp:
+                        if out_format == 'tif' or out_format == 'tiff':
+                            img.save(fp, compression='tiff_lzw')
+                        else:
+                            img.save(fp)
                 else:
                     swapped.tofile(file_path)
 

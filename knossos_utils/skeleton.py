@@ -65,6 +65,8 @@ class Skeleton:
         self.experiment_name = None
         self.version = '4.1.2'
         self.dataset_path = None
+        self.movement_area_min = None
+        self.movement_area_max = None
         return
 
     def set_edit_position(self, edit_position):
@@ -86,11 +88,14 @@ class Skeleton:
             # the clusterfuck
             a.nodeBaseID = cnt_all_nodes
             cnt_n = 1
+            new_node_ID_to_node = {}
             for n in a.getNodes():
                 n.ID = cnt_n
+                new_node_ID_to_node[n.ID] = n
                 cnt_n += 1
                 cnt_all_nodes += 1
             a.high_id = cnt_n
+            a.node_ID_to_node = new_node_ID_to_node
 
     def reset_all_times(self):
         for cur_n in self.getNodes():
@@ -107,6 +112,16 @@ class Skeleton:
             all_nodes_lst.extend(list(cur_annotation.getNodes()))
         all_nodes = set(all_nodes_lst)
         return all_nodes
+
+    def getBranchpoints(self):
+        return [node for node in self.getNodes() if node.is_branch_point()]
+
+    def getNodeByID(self, node_id):
+        for annotation in self.annotations:
+            found_node = annotation.getNodeByID(node_id)
+            if found_node is not None:
+                return found_node
+        return None
 
     def getVolumes(self):
         all_volumes = set()
@@ -128,7 +143,16 @@ class Skeleton:
         """
         high_id = self.get_high_node_id()
         annotation.nodeBaseID = high_id + 1
+        if annotation.annotation_ID is None:
+            max_annotation_id = 0
+            for existing_annotation in self.annotations:
+                max_annotation_id = max(max_annotation_id, existing_annotation.annotation_ID)
+            annotation.annotation_ID = max_annotation_id + 1
         self.annotations.add(annotation)
+
+    def add_movement_area(self, area_min, area_max):
+        self.movement_area_min = np.array(area_min, dtype=np.int)
+        self.movement_area_max = np.array(area_max, dtype=np.int)
 
     def toSWC(self, path=''):
         """
@@ -221,6 +245,14 @@ class Skeleton:
                     "experiment")[0], [["name", str]])
         except IndexError:
             self.experiment_name = None
+
+        try: # movement area
+            movement_area = doc.getElementsByTagName("parameters")[0].getElementsByTagName("MovementArea")[0]
+            self.movement_area_min = parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]])
+            self.movement_area_max = parse_attributes(movement_area, [["max.x", int], ["max.y", int], ["max.z", int]])
+        except IndexError:
+            self.movement_area_max = None
+            self.movement_area_min = None
 
         try_time_slice_version = False
         if read_time:
@@ -573,6 +605,22 @@ class Skeleton:
                  ["z", self.edit_position[2]], ])
             parameters.appendChild(edit_position)
 
+        min_properties = []
+        max_properties = []
+        if self.movement_area_min is not None:
+            min_properties = [["min.x", self.movement_area_min[0]],
+                              ["min.y", self.movement_area_min[1]],
+                              ["min.z", self.movement_area_min[2]]]
+        if self.movement_area_max is not None:
+            max_properties = [["max.x", self.movement_area_max[0]],
+                              ["max.y", self.movement_area_max[1]],
+                              ["max.z", self.movement_area_max[2]]]
+        if len(min_properties) > 0 or len(max_properties) > 0:
+            movement_area = doc.createElement("MovementArea")
+            build_attributes(movement_area,
+                             [attribute for attribute in min_properties] + [attribute for attribute in max_properties])
+            parameters.appendChild(movement_area)
+
         # find property keys
         orig_keys = ["inVp", "node", "id", "inMag", "radius", "time",
                      "x", "y", "z", "edge", "comment", "content", "target"]
@@ -693,6 +741,16 @@ class Skeleton:
 
 class SkeletonAnnotation:
 
+    def merge(self, other_annotation):
+        """
+        :param other_annotation: SkeletonAnnotation, annotation from which nodes and edges should be added to this tree.
+        """
+        for node in other_annotation.nodes:
+            self.addNode(node)
+        for source, targets in other_annotation.edges.items():
+            for target in targets:
+                self.addEdge(source, target)
+
     def sparsen(self, min_node_dist=5):
         """
         Remove nodes with degree 2 that have euclidic distance in voxels smaller than min_node_dist to their neighbors.
@@ -721,7 +779,7 @@ class SkeletonAnnotation:
         :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
         """
         if self.scaling is None:
-            raise Exception('Cannot interpolate without scaling.')
+            print('No scaling present. Assuming scaling of 1.')
         edges_copy = self.edges.copy()
         for src_node in edges_copy:
             for trg_node in edges_copy[src_node]:
@@ -740,6 +798,7 @@ class SkeletonAnnotation:
                 last_node = src_node
                 for i in range(1, num_interpolation_nodes + 2):
                     c = src_coords + np.round(direction_vec * i)
+                    if np.all(c >= trg_coords): continue
                     new_node = SkeletonNode()
                     new_node.from_scratch(self, c[0], c[1], c[2])
                     self.addNode(new_node)
@@ -765,6 +824,7 @@ class SkeletonAnnotation:
         self.high_id = 0
         self.volumes = set()
         self.data = {}
+        self.visible =True
         return
 
     def __init__(self):
@@ -813,9 +873,12 @@ class SkeletonAnnotation:
 
     def fromNml(self, annotation_elem, skeleton, base_id=0):
         self.resetObject()
-
+        self.annotation_ID = parse_attributes(annotation_elem, [["id", int],])[0]
         self.setNodeBaseID(base_id)
-
+        if "visible" in annotation_elem.attributes:
+            self.visible = parse_attributes(annotation_elem, [["visible", str],])[0]
+        else:
+            self.visible = True
         [comment] = parse_attributes(annotation_elem, [['comment', str],])
         if comment:
             self.setComment(comment)
@@ -907,7 +970,7 @@ class SkeletonAnnotation:
             build_attributes(annotation_elem, [[k, v]])
         if self.getComment():
             annotation_elem.setAttribute("comment", self.getComment())
-
+        annotation_elem.setAttribute("visible", "1" if self.visible else "0")
         nodes_elem = doc.createElement("nodes")
         edges_elem = doc.createElement("edges")
         for node in self.getNodes():
@@ -1197,13 +1260,13 @@ class SkeletonNode:
 
         self.ID = ID
 
-        self.x = x
-        self.y = y
-        self.z = z
-
-        self.x_scaled = self.x * self.annotation.scaling[0]
-        self.y_scaled = self.y * self.annotation.scaling[1]
-        self.z_scaled = self.z * self.annotation.scaling[2]
+        self.x = self.x_scaled = x
+        self.y = self.y_scaled = y
+        self.z = self.z_scaled = z
+        if self.annotation.scaling:
+            self.x_scaled *= self.annotation.scaling[0]
+            self.y_scaled *= self.annotation.scaling[1]
+            self.z_scaled *= self.annotation.scaling[2]
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)

@@ -17,6 +17,7 @@
 #
 ################################################################################
 
+from collections import Iterable
 import copy
 from math import sqrt
 import numpy as np
@@ -2005,7 +2006,8 @@ def nx_graph_to_annotation(G, scaling=None):
     for cur_n in G.nodes():
         x, y, z = cur_n.getCoordinate()
         cur_n_copy = SkeletonNode()
-        cur_n_copy.from_scratch(a, x, y, z)
+        cur_n_copy.from_scratch(a, x, y, z, ID=cur_n.ID)
+        cur_n_copy.data = cur_n.data
         new_node_mapping[cur_n] = cur_n_copy
         a.addNode(cur_n_copy)
 
@@ -2042,7 +2044,7 @@ def annoToNXGraph(annotations, merge_annotations_to_single_graph=False):
 
     """
     graphs = []
-    if not type(annotations) == list:
+    if not isinstance(annotations, Iterable): # single element passed
         annotations = [annotations]
 
     if merge_annotations_to_single_graph:
