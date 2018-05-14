@@ -1436,7 +1436,6 @@ def load_skeleton(path):
     except Exception as e:
         print(e)
         annotations = []
-
     for anno in annotations:
         anno_dict[anno.comment] = anno
 

@@ -81,7 +81,7 @@ class Skeleton:
         """
         cnt_a = 1
         cnt_all_nodes = 1
-        for a in self.getAnnotations():
+        for a in self.annotations:
             a.annotation_ID = cnt_a # value currently unused - a nice sign of
             # the clusterfuck
             a.nodeBaseID = cnt_all_nodes
@@ -300,7 +300,7 @@ class Skeleton:
                     base_id=base_id)
             if comment:
                 annotation.setComment(comment)
-            self.add_annotation(annotation)
+            self.annotations.add(annotation)
             for node in annotation.getNodes():
                 node_ID_to_node[node.getUniqueID()] = node
 
@@ -413,7 +413,7 @@ class Skeleton:
 
             if comment:
                 annotation.setComment(comment)
-            self.add_annotation(annotation)
+            self.annotations.add(annotation)
             for node in annotation.getNodes():
                 node_ID_to_node[node.getUniqueID()] = node
 
@@ -429,7 +429,7 @@ class Skeleton:
             try:
                 [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
                 node_ID_to_node[nodeID + base_id].setComment(comment)
-            except KeyError:
+            except KeyError as e:
                 print('Skipping comment, wrong node ID in comments sections: '
                       '' + str(nodeID))
             except UnicodeEncodeError:
@@ -494,7 +494,7 @@ class Skeleton:
         Return highest node ID in any annotation in the skeleton.
         """
         high_ids = [0]
-        for cur_anno in self.getAnnotations():
+        for cur_anno in self.annotations:
             # The nodeBaseID still needs to be added to the node IDs to obtain skeleton-wide unique IDs.
             high_ids.append(cur_anno.nodeBaseID + cur_anno.high_id)
         return max(high_ids)

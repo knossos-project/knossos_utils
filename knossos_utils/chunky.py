@@ -979,7 +979,6 @@ class Chunk(object):
             if set True, existing HDF5 file is overwritten
         """
         path = self.folder + name + '.h5'
-        print('writing to ', path)
         if not os.path.exists(self.path_head_folder):
             os.makedirs(self.path_head_folder)
 
