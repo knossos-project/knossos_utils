@@ -2480,8 +2480,8 @@ class KnossosDataset(object):
                     swapped_ol = scipy.ndimage.zoom(swapped_ol, xy_zoom, order=0)
                     swapped_raw = scipy.ndimage.zoom(swapped_raw, xy_zoom, order=1)
                 swapped_ol = multi_dilation(swapped_ol, nb_dilations)
-                comp = create_label_overlay_img(swapped_ol, save_path=file_path, background=swapped_raw, cvals=cvals,
-                                                save_raw_img=False)
+                comp = create_composite_img(swapped_ol, background=swapped_raw,
+                                            cvals=cvals)
                 with open(file_path, 'w') as fp:
                     comp.save(fp)
                 # _print("Writing layer {0} of {1} in total.".format(

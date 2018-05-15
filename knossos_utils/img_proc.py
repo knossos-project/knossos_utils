@@ -111,11 +111,11 @@ def create_composite_img(labels, background, cvals=None):
     max_alpha = 100./255
     unique_labels = np.unique(labels)
     for unique_label in unique_labels:
-        if unique_label == 0:
-            continue
         if not unique_label in cvals:
-            cvals[unique_label] = [np.random.rand() for _ in range(3)] + [max_alpha]
-
+            if unique_label == 0:
+                cvals[unique_label] = [0, 0, 0, max_alpha]
+            else:
+                cvals[unique_label] = [np.random.rand() for _ in range(3)] + [max_alpha]
     if len(unique_labels) == 0:
         print("No labels detected! No overlay image created")
         if len(background.shape) == 3:
@@ -129,7 +129,6 @@ def create_composite_img(labels, background, cvals=None):
 
 def create_overlay_img(labels, background, cvals=None):
     """
-
     :param label_prob_dict:
     :param background:
     :param cvals:
@@ -140,11 +139,13 @@ def create_overlay_img(labels, background, cvals=None):
     else:
         cvals = {}
         np.random.seed(0)
+    if 0 <= np.max(background) <= 1.0 and not background.dtype.kind in ('u', 'i'):
+        background = (background * 255).astype(np.uint8)
     labels = labels.squeeze()
     sh = labels.shape
     target_img = np.zeros([sh[0], sh[1], 4], dtype=np.uint8)
     # vectorized double for loop should perform better than single for-loop which contains fancy indexing
-    #  of the whole array
+    #  of the whole array for each label (if number of labels is high)
 
     for i, j in itertools.product(np.arange(labels.shape[0]),
                                   np.arange(labels.shape[1])):
