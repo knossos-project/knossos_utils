@@ -61,7 +61,6 @@ import sys
 import time
 from threading import Lock
 import traceback
-from xml.etree import ElementTree as ET
 import zipfile
 from skimage import measure
 try:
@@ -665,11 +664,10 @@ class KnossosDataset(object):
                 mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
 
             if not os.path.isfile(path):
-                conf_path = self.knossos_path + self.name_mag_folder + "{}/knossos.conf".format(self.mag[0]) # legacy path
-                for name in os.listdir(self.knossos_path):
-                    if name == "knossos.conf" or name.endswith(".k.conf"):
-                        conf_path = os.path.join(self.knossos_path, name)
-                self.parse_knossos_conf(conf_path, verbose=verbose)
+                self.parse_knossos_conf(self.knossos_path +
+                                        self.name_mag_folder +
+                                        "%d/knossos.conf" % self.mag[0],
+                                        verbose=verbose)
 
         if use_abs_path:
             self._knossos_path = os.path.abspath(self.knossos_path)
@@ -1598,6 +1596,7 @@ class KnossosDataset(object):
                             verbose=False,
                             show_progress=True,
                             apply_mergelist=True,
+                            alt_exp_name_kzip_path_mode=False,
                             binarize_overlay=False,
                             return_empty_cube_if_nonexistent=True):
         """ Extracts a 3D matrix from a kzip file
@@ -1658,38 +1657,43 @@ class KnossosDataset(object):
                     if show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout('\rProgress: %.2f%%' % progress)
-                    this_path = "{}_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
-                                                                  current[0], current[1], current[2])
+                    this_path = self._experiment_name +\
+                                '_mag1_mag%dx%dy%dz%d.seg.sz' % \
+                                (mag, current[0], current[1], current[2])
+
+                    if alt_exp_name_kzip_path_mode:
+                        this_path = self._experiment_name +\
+                                    '_mag%dx%dy%dz%d.seg.sz' % \
+                                    (mag, current[0], current[1], current[2])
+                    if verbose:
+                        print(this_path)
+
+                    if self._experiment_name == \
+                                "20130410.membrane.striatum.10x10x30nm":
+                        this_path = self._experiment_name +\
+                                    '_mag1x%dy%dz%d.segmentation.snappy' % \
+                                    (current[0], current[1], current[2])
+
                     try:
                         values = np.fromstring(
                             module_wide["snappy"].decompress(
                                 archive.read(this_path)), dtype=np.uint64)
+                        if binarize_overlay:
+                            values[values > 1] = 1
+                        if datatype != values.dtype:
+                            # this conversion can go wrong and
+                            # it is the responsibility of the user to make
+                            # sure it makes sense
+                            values = values.astype(datatype)
                     except KeyError:
-                        try: # legacy path
-                            this_path = "{}_mag1_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
-                                                                               current[0], current[1], current[2])
-                            values = np.fromstring(
-                                module_wide["snappy"].decompress(
-                                    archive.read(this_path)), dtype=np.uint64)
-                        except KeyError:
-                            if return_empty_cube_if_nonexistent:
-                                if verbose:
-                                    _print("Cube does not exist, cube with {} only" \
-                                           " assigned".format(empty_cube_label))
-                                values = np.full(self.cube_shape, empty_cube_label,
-                                                 dtype=datatype)
-                            else:
-                                return None
-                    if verbose:
-                        print(this_path)
-                    if binarize_overlay:
-                        values[values > 1] = 1
-                    if datatype != values.dtype:
-                        # this conversion can go wrong and
-                        # it is the responsibility of the user to make
-                        # sure it makes sense
-                        values = values.astype(datatype)
-
+                        if return_empty_cube_if_nonexistent:
+                            if verbose:
+                                _print("Cube does not exist, cube with {} only"\
+                                       " assigned".format(empty_cube_label))
+                            values = np.full(self.cube_shape, empty_cube_label,
+                                             dtype=datatype)
+                        else:
+                            return None
 
                     pos = (current-start)*self.cube_shape
 
@@ -1805,7 +1809,8 @@ class KnossosDataset(object):
                                   self.boundary[1]//mag,
                                   self._cube_shape[2])
 
-        for curr_z_cube in range(0, int(np.ceil(self._number_of_cubes[2]) / float(mag))):
+        for curr_z_cube in range(0, 1 + int(np.ceil(
+                self._number_of_cubes[2]) / float(mag))):
             if stop:
                 break
             if mode == 'raw':
@@ -1820,10 +1825,11 @@ class KnossosDataset(object):
                     mag=mag, verbose=True)
 
             for curr_z_coord in range(0, self._cube_shape[2]):
-                if (z_coord_cnt >= self.boundary[2]):
-                    break;
 
-                file_path = os.path.join(out_path, "{0}_{1:06d}.{2}".format(mode, z_coord_cnt, out_format))
+                file_path = "{0}{1}_{2:06d}.{3}".format(out_path,
+                                                         mode,
+                                                         z_coord_cnt,
+                                                         out_format)
 
                 # the swap is necessary to have the same visual
                 # appearence in knossos and the resulting image stack
@@ -1841,11 +1847,8 @@ class KnossosDataset(object):
                         swapped = scipy.ndimage.zoom(swapped, xy_zoom, order=1)
                 if out_format != 'raw':
                     img = Image.fromarray(swapped)
-                    with open(file_path, 'wb') as fp:
-                        if out_format == 'tif' or out_format == 'tiff':
-                            img.save(fp, compression='tiff_lzw')
-                        else:
-                            img.save(fp)
+                    with open(file_path, 'w') as fp:
+                        img.save(fp)
                 else:
                     swapped.tofile(file_path)
 
@@ -2480,14 +2483,15 @@ class KnossosDataset(object):
                     swapped_ol = scipy.ndimage.zoom(swapped_ol, xy_zoom, order=0)
                     swapped_raw = scipy.ndimage.zoom(swapped_raw, xy_zoom, order=1)
                 swapped_ol = multi_dilation(swapped_ol, nb_dilations)
-                comp = create_composite_img(swapped_ol, background=swapped_raw,
-                                            cvals=cvals)
+                # comp = create_label_overlay_img(swapped_ol, save_path=file_path, background=swapped_raw, cvals=cvals,
+                #                                 save_raw_img=False)
+                comp = create_composite_img(swapped_ol, swapped_raw, cvals)
                 with open(file_path, 'w') as fp:
                     comp.save(fp)
                 # _print("Writing layer {0} of {1} in total.".format(
                 #     z_coord_cnt+1, self.boundary[2]//mag))
                 z_coord_cnt += 1
-            pbar.update(1)
+                pbar.update(1)
         pbar.close()
 
 

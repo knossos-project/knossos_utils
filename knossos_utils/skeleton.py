@@ -1263,7 +1263,7 @@ class SkeletonNode:
         self.x = self.x_scaled = x
         self.y = self.y_scaled = y
         self.z = self.z_scaled = z
-        if self.annotation.scaling:
+        if self.annotation.scaling is not None:
             self.x_scaled *= self.annotation.scaling[0]
             self.y_scaled *= self.annotation.scaling[1]
             self.z_scaled *= self.annotation.scaling[2]
