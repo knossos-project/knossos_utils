@@ -34,7 +34,7 @@ extensions = [Extension(
 install_requires = [
     "cython>=0.23",
     "h5py>=2.5",
-    "imageio"
+    "imageio",
     "numpy>=1.10",
     "scipy>=0.16",
     "networkx>=1.11",
