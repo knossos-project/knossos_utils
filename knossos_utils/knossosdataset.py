@@ -2093,7 +2093,7 @@ class KnossosDataset(object):
                                         % (current[0], current[1], current[2])
                         else:
                             path = kzip_path+"/"+self._experiment_name + \
-                                   '_mag1_mag%dx%dy%dz%d.seg.sz' % \
+                                   '_mag%dx%dy%dz%d.seg.sz' % \
                                    (mag, current[0], current[1], current[2])
                         this_cube_info.append(path)
 
