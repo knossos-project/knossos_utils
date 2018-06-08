@@ -2541,13 +2541,13 @@ def downsample_kd(kd, orig_mag, target_mags, stride=(4 * 128, 4 * 128, 2 * 128),
         with open(mag_folder + "/knossos.conf", "w") as f:
             f.write('experiment name "%s_mag%s";\n' % (kd.experiment_name,
                                                        this_mag))
-            f.write('boundary x %d;\n' % kd.boundary[0])
-            f.write('boundary y %d;\n' % kd.boundary[1])
-            f.write('boundary z %d;\n' % kd.boundary[2])
-            f.write('scale x %.2f;\n' % kd.scale[0])
-            f.write('scale y %.2f;\n' % kd.scale[1])
-            f.write('scale z %.2f;\n' % kd.scale[2])
-            f.write('magnification %s;' % this_mag)
+            f.write('boundary x {};\n'.format(kd.boundary[0]))
+            f.write('boundary y {};\n'.format(kd.boundary[1]))
+            f.write('boundary z {};\n'.format(kd.boundary[2]))
+            f.write('scale x {:.2f};\n'.format(kd.scale[0]))
+            f.write('scale y {:.2f};\n'.format(kd.scale[1]))
+            f.write('scale z {:.2f};\n'.format(kd.scale[2]))
+            f.write('magnification {};'.format(this_mag))
 
 
 def _downsample_kd_thread(args):

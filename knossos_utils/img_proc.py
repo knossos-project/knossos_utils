@@ -94,7 +94,7 @@ def create_prob_overlay_img(label_prob_dict, save_path, background=None,
         scipy.misc.imsave(raw_save_path, background)
 
 
-def create_composite_img(labels, background, cvals=None):
+def create_composite_img(labels, background, max_alpha=1.0, cvals=None):
     """
 
     :param labels:
@@ -108,7 +108,6 @@ def create_composite_img(labels, background, cvals=None):
         assert isinstance(cvals, dict)
 
     np.random.seed(0)
-    max_alpha = 100./255
     unique_labels = np.unique(labels)
     for unique_label in unique_labels:
         if not unique_label in cvals:
