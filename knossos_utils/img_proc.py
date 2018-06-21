@@ -3,6 +3,7 @@ from PIL import Image
 import numpy as np
 import itertools
 import scipy
+from numba import jit
 
 
 def create_label_overlay_img(labels, save_path, background=None, cvals=None,
@@ -29,7 +30,6 @@ def create_label_overlay_img(labels, save_path, background=None, cvals=None,
             cvals[unique_label] = [np.random.rand() for _ in range(3)] + [1]
 
     if len(label_prob_dict) == 0:
-        raise()
         print("No labels detected! No overlay image created")
     else:
         create_prob_overlay_img(label_prob_dict, save_path,
@@ -94,7 +94,7 @@ def create_prob_overlay_img(label_prob_dict, save_path, background=None,
         scipy.misc.imsave(raw_save_path, background)
 
 
-def create_composite_img(labels, background, max_alpha=1.0, cvals=None):
+def create_composite_img(labels, background, max_alpha_raw=0.8, max_alpha_ol=1.0, cvals=None):
     """
 
     :param labels:
@@ -110,11 +110,11 @@ def create_composite_img(labels, background, max_alpha=1.0, cvals=None):
     np.random.seed(0)
     unique_labels = np.unique(labels)
     for unique_label in unique_labels:
-        if not unique_label in cvals:
-            if unique_label == 0:
-                cvals[unique_label] = [0, 0, 0, max_alpha]
-            else:
-                cvals[unique_label] = [np.random.rand() for _ in range(3)] + [max_alpha]
+        if unique_label == 0:
+            cvals[unique_label] = np.array([0, 0, 0, 0], dtype=np.uint8)
+        else:
+            cvals[unique_label] = np.array([np.random.rand() * 255 for _ in range(3)]
+                                           + [max_alpha_ol * 255], dtype=np.uint8)
     if len(unique_labels) == 0:
         print("No labels detected! No overlay image created")
         if len(background.shape) == 3:
@@ -122,41 +122,49 @@ def create_composite_img(labels, background, max_alpha=1.0, cvals=None):
             background = background[..., 0]
         comp = Image.fromarray(background, 'L')
     else:
-       comp = create_overlay_img(labels, background, cvals=cvals)
+       comp = create_overlay_img(labels, background, cvals=cvals, max_alpha_raw=max_alpha_raw)
     return comp
 
 
-def create_overlay_img(labels, background, cvals=None):
+def create_overlay_img(labels, background, cvals, n_dils=0, max_alpha_raw=0.8):
     """
     :param label_prob_dict:
     :param background:
     :param cvals:
     :return:
     """
-    if cvals is not None:
-        assert isinstance(cvals, dict)
-    else:
-        cvals = {}
-        np.random.seed(0)
+    assert isinstance(cvals, dict)
     if 0 <= np.max(background) <= 1.0 and not background.dtype.kind in ('u', 'i'):
         background = (background * 255).astype(np.uint8)
     labels = labels.squeeze()
+    labels = multi_dilation(labels, n_dils)
     sh = labels.shape
     target_img = np.zeros([sh[0], sh[1], 4], dtype=np.uint8)
     # vectorized double for loop should perform better than single for-loop which contains fancy indexing
     #  of the whole array for each label (if number of labels is high)
-
-    for i, j in itertools.product(np.arange(labels.shape[0]),
-                                  np.arange(labels.shape[1])):
-        l = labels[i, j]
-        target_img[i, j] = np.array(np.array(cvals[l]) * 255, dtype=np.uint8)
+    # import tqdm
+    # pbar = tqdm.tqdm(total=np.prod(labels.shape[:2]), mininterval=5)
+    # for i, j in itertools.product(np.arange(labels.shape[0]),
+    #                               np.arange(labels.shape[1])):
+    #     target_img[i, j] = cvals[labels[i, j]]
+    #     pbar.update(1)
+    target_img = label_mapping(labels, target_img, cvals)
     if background is not None:
         if len(np.shape(background)) == 2:
             background = background[..., None]
-        background = np.concatenate([background, background, background, np.ones_like(background) * 255], axis=2)
+        background = np.concatenate([background, background, background,
+                                     np.ones_like(background) * 255 * max_alpha_raw], axis=2)
         target_img = alpha_composite(target_img, background)
     else:
         target_img = Image.fromarray(target_img, 'RGBA')
+    return target_img
+
+
+@jit
+def label_mapping(labels, target_img, cvals):
+    for i in range(labels.shape[0]):
+        for j in range(labels.shape[1]):
+            target_img[i, j] = cvals[labels[i, j]]
     return target_img
 
 
