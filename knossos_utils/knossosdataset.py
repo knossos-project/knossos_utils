@@ -360,7 +360,7 @@ class KnossosDataset(object):
     @property
     def http_auth(self):
         if self.in_http_mode:
-            return self.http_user, self.http_passwd
+            return (self.http_user, self.http_passwd)
         else:
             return None
 
@@ -1102,20 +1102,15 @@ class KnossosDataset(object):
                                 request.raise_for_status()
                                 values = np.fromstring(request.content,
                                                        dtype=datatype)
-                                if values.sum() == 0:
-                                    pass
-                                    # if http_verbose:
-                                    #     _print("Zero value array encountered("
-                                    #           "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
-                                else:
-                                    try:
-                                        values.reshape(self.cube_shape)
-                                        valid_values = True
-                                        break
-                                    except ValueError:
-                                        # if verbose:
-                                        #     _print("Reshape error("
-                                        #       "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
+
+                                try:
+                                    values.reshape(self.cube_shape)
+                                    valid_values = True
+                                    break
+                                except ValueError:
+                                    if verbose:
+                                        _print("Reshape error("
+                                        "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
                                         pass
                             except requests.exceptions.Timeout as e:
                                 if http_verbose:
