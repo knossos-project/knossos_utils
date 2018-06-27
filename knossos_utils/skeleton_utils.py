@@ -1431,12 +1431,12 @@ def load_skeleton(path):
         Dict of trees
     """
     anno_dict = {}
-    try:
-        annotations = loadj0126NML(path)
-    # TODO: specific exception handling
-    except Exception as e:
-        print(e)
-        annotations = []
+    # try:
+    annotations = loadj0126NML(path)
+    # # TODO: specific exception handling
+    # except Exception as e:
+    #     print(e)
+    #     annotations = []
     for anno in annotations:
         anno_dict[anno.comment] = anno
 
@@ -1492,7 +1492,8 @@ def load_jk_NML(pathToFile,
         if filename == None:
             raise Exception('Filename none')
 
-        if skeletonObj.getSkeletonTime() >= 0 and skeletonObj.getIdleTime() \
+        if skeletonObj.getSkeletonTime() is not None and skeletonObj.getIdleTime() is not None \
+                and skeletonObj.getSkeletonTime() >= 0 and skeletonObj.getIdleTime() \
                 >= 0:
             anno.avg_node_time = ((skeletonObj.getSkeletonTime() - \
                          skeletonObj.getIdleTime()) / 1000.)
