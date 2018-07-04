@@ -104,7 +104,7 @@ class Skeleton:
         self.skeleton_idletime = 0
 
     def getAnnotations(self):
-        return sorted(self.annotations)
+        return sorted(self.annotations, key=len)
 
     def getNodes(self):
         all_nodes_lst = []

@@ -1431,12 +1431,12 @@ def load_skeleton(path):
         Dict of trees
     """
     anno_dict = {}
-    # try:
-    annotations = loadj0126NML(path)
+    try:
+        annotations = loadj0126NML(path)
     # # TODO: specific exception handling
-    # except Exception as e:
-    #     print(e)
-    #     annotations = []
+    except Exception as e:
+        # print(e)
+        annotations = []
     for anno in annotations:
         anno_dict[anno.comment] = anno
 
