@@ -21,6 +21,7 @@ from collections import deque
 import copy
 import h5py
 import hashlib
+import itertools
 import math
 from multiprocessing import Pool
 import numpy as np
@@ -176,43 +177,37 @@ class Skeleton:
                 root_set = False
                 for src_n in e_dict.keys():
                     src_id = src_n.getUniqueID()
-                    if len(e_dict[src_n]) > 0:
-                        for trg_n in e_dict[src_n]:
-                            trg_x = trg_n.getCoordinate()[0]
-                            trg_y = trg_n.getCoordinate()[1]
-                            trg_z = trg_n.getCoordinate()[2]
-                            trg_r = trg_n.getDataElem('radius')
-                            trg_id = trg_n.getUniqueID()
 
-                            trg_type = {
-                                'undefined': 0,
-                                'soma': 1,
-                                'axon': 2,
-                                'dendrite': 3,
-                                'basal dendrite': 3,
-                                '(basal) dendrite': 3,
-                                'apical dendrite': 4,
-                                'fork point': 5,
-                                'end point': 6,
-                                'custom': 7,
-                            }.get(trg_n.getComment(), 0)
-
-                            n_str = '{} {} {} {} {} {} {}'.format(
-                                trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
-
-                            trg_file.write(n_str + '\n')
-                    if (len(rev_edges[anno_index][src_n]) == 0) and not \
-                            root_set:
-                        # set the root
+                    nodes = [e_dict[src_n]]
+                    if (len(rev_edges[anno_index][src_n]) == 0) and not root_set:
                         root_set = True
-                        trg_x = src_n.getCoordinate()[0]
-                        trg_y = src_n.getCoordinate()[1]
-                        trg_z = src_n.getCoordinate()[2]
-                        trg_r = src_n.getDataElem('radius')
-                        trg_id = src_n.getUniqueID()
+                        # add root node to iteration
+                        nodes = [e_dict[src_n], [src_n]]
 
-                        n_str = '{0:d} 0 {1:f} {2:f} {3:f} {4:f} {5:d}'.format(
-                            trg_id, trg_x, trg_y, trg_z, trg_r, -1)
+                    for trg_n in itertools.chain(*nodes):
+                        trg_x = trg_n.getCoordinate()[0]
+                        trg_y = trg_n.getCoordinate()[1]
+                        trg_z = trg_n.getCoordinate()[2]
+                        trg_r = trg_n.getDataElem('radius')
+                        trg_id = trg_n.getUniqueID()
+
+                        trg_type = {
+                            'undefined': 0,
+                            'soma': 1,
+                            'axon': 2,
+                            'dendrite': 3,
+                            'basal dendrite': 3,
+                            '(basal) dendrite': 3,
+                            'apical dendrite': 4,
+                            'fork point': 5,
+                            'end point': 6,
+                            'custom': 7,
+                        }.get(trg_n.getComment(), 0)
+
+                        if trg_n == src_n:
+                            src_id = -1
+                        n_str = '{} {} {} {} {} {} {}'.format(
+                            trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
 
                         trg_file.write(n_str + '\n')
 
