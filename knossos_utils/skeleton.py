@@ -17,21 +17,21 @@
 #
 ################################################################################
 
-from xml.dom import minidom
-import xml.etree.cElementTree as cElementTree
-import math
-import copy
 from collections import deque
-import tempfile
-import unicodedata
-import hashlib
-import struct
-import numpy as np
+import copy
 import h5py
+import hashlib
+import math
+from multiprocessing import Pool
+import numpy as np
 import os
 import shutil
+import struct
+import tempfile
+import unicodedata
 import zipfile
-from multiprocessing import Pool
+from xml.dom import minidom
+import xml.etree.cElementTree as cElementTree
 
 def euclidian_distance(c1, c2):
     return math.sqrt(math.pow((c2[0] - c1[0]), 2) +
