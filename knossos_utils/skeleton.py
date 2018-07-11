@@ -184,9 +184,21 @@ class Skeleton:
                             trg_r = trg_n.getDataElem('radius')
                             trg_id = trg_n.getUniqueID()
 
-                            n_str = '{0:d} 0 {1:f} {2:f} {3:f} {4:f} {' \
-                                    '5:d}'.format(
-                                trg_id, trg_x, trg_y, trg_z, trg_r, src_id)
+                            trg_type = {
+                                'undefined': 0,
+                                'soma': 1,
+                                'axon': 2,
+                                'dendrite': 3,
+                                'basal dendrite': 3,
+                                '(basal) dendrite': 3,
+                                'apical dendrite': 4,
+                                'fork point': 5,
+                                'end point': 6,
+                                'custom': 7,
+                            }.get(trg_n.getComment(), 0)
+
+                            n_str = '{} {} {} {} {} {} {}'.format(
+                                trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
 
                             trg_file.write(n_str + '\n')
                     if (len(rev_edges[anno_index][src_n]) == 0) and not \
