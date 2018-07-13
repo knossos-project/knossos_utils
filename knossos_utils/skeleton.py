@@ -182,7 +182,7 @@ class Skeleton:
                     if (len(rev_edges[anno_index][src_n]) == 0) and not root_set:
                         root_set = True
                         # add root node to iteration
-                        nodes = [e_dict[src_n], [src_n]]
+                        nodes = [[src_n], e_dict[src_n]]
 
                     for trg_n in itertools.chain(*nodes):
                         trg_x = trg_n.getCoordinate()[0]
@@ -205,7 +205,9 @@ class Skeleton:
                         }.get(trg_n.getComment(), 0)
 
                         if trg_n == src_n:
-                            src_id = -1
+                            src_id = -1 # root node
+                        else:
+                            src_id = src_n.getUniqueID()
                         n_str = '{} {} {} {} {} {} {}'.format(
                             trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
 
