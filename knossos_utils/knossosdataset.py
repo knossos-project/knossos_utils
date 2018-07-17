@@ -1614,6 +1614,8 @@ class KnossosDataset(object):
                             module_wide["snappy"].decompress(
                                 archive.read(this_path)), dtype=np.uint64)
                     except KeyError:
+                        if verbose:
+                            _print("Cube {0} does not exist, trying legacy format".format(this_path))
                         try: # legacy path
                             this_path = "{}_mag1_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
                                                                                current[0], current[1], current[2])
@@ -1923,28 +1925,31 @@ class KnossosDataset(object):
                                 dtype=np.uint64)
                     indices = np.where(cube == 0)
                     cube[indices] = existing_cube[indices]
-                if as_raw:
-                    f = open(path, "wb")
-                    f.write(cube)
-                    f.close()
-                else:
 
-                    arc_path = os.path.basename(path)
-                    with zipfile.ZipFile(path + ".zip", "w") as zf:
-                        zf.writestr(arc_path,
-                                    self.module_wide["snappy"].compress(cube),
-                                    compress_type=zipfile.ZIP_DEFLATED)
+                if not np.sum(cube) == 0:
+                    if as_raw:
+                        f = open(path, "wb")
+                        f.write(cube)
+                        f.close()
+                    else:
+
+                        arc_path = os.path.basename(path)
+                        with zipfile.ZipFile(path + ".zip", "w") as zf:
+                            zf.writestr(arc_path,
+                                        self.module_wide["snappy"].compress(cube),
+                                        compress_type=zipfile.ZIP_DEFLATED)
 
                 os.rmdir(folder_path+"block")   # ------------------------------
 
             else:
-                if not overwrite and os.path.isfile(path):
-                    with open(path, "rb") as existing_file:
-                        existing_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
-                        indices = np.where(cube == 0)
-                        cube[indices] = existing_cube[indices]
-                with open(path, "wb") as new_file:
-                    new_file.write(self.module_wide["snappy"].compress(cube))
+                if not np.sum(cube) == 0:
+                    if not overwrite and os.path.isfile(path):
+                        with open(path, "rb") as existing_file:
+                            existing_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
+                            indices = np.where(cube == 0)
+                            cube[indices] = existing_cube[indices]
+                    with open(path, "wb") as new_file:
+                        new_file.write(self.module_wide["snappy"].compress(cube))
 
         # Main Function
         if not self.initialized:
@@ -1971,9 +1976,9 @@ class KnossosDataset(object):
 
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
-                if verbose:
-                    _print("kzip path created, notice that kzips can only be "
-                           "created in mag1")
+                #if verbose:
+                #    _print("kzip path created, notice that kzips can only be "
+                #           "created in mag1")
 
         if not data_path is None:
             if '.h5' in data_path:
@@ -2024,16 +2029,19 @@ class KnossosDataset(object):
             elif mag_ratio < 1:
                 inv_mag_ratio = int(1./mag_ratio)
                 if fast_downsampling:
-                    data_inter = np.zeros(
-                        np.array(data.shape) * inv_mag_ratio,
-                        dtype=data.dtype)
+                    #data_inter = np.zeros(
+                    #    np.array(data.shape) * inv_mag_ratio,
+                    #    dtype=data.dtype)
 
-                    for i_step in range(inv_mag_ratio):
-                        data_inter[i_step:: inv_mag_ratio,
-                                   i_step:: inv_mag_ratio,
-                                   i_step:: inv_mag_ratio] = data
+                    #for i_step in range(inv_mag_ratio):
+                    #    data_inter[i_step:: inv_mag_ratio,
+                    #               i_step:: inv_mag_ratio,
+                    #               i_step:: inv_mag_ratio] = data
 
-                    data_inter = data_inter.astype(dtype=datatype, copy=False)
+                    #data_inter = data_inter.astype(dtype=datatype, copy=False)
+                    data_inter = \
+                        scipy.ndimage.zoom(data, inv_mag_ratio, order=0).\
+                            astype(datatype, copy=False)
                 else:
                     data_inter = \
                         scipy.ndimage.zoom(data, inv_mag_ratio, order=3).\
