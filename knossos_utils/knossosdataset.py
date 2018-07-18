@@ -437,7 +437,7 @@ class KnossosDataset(object):
         return values
 
     def initialize_from_conf(self, path_to_conf):
-        if path_to_conf.endswith("ariadne.conf") or path_to_conf.endswith("pyknossos.conf"):
+        if path_to_conf.endswith("ariadne.conf") or path_to_conf.endswith(".pyknossos.conf") or path_to_conf.endswith(".pyk.conf"):
             self.initialize_from_pyknossos_path(path_to_conf)
         else:
             self.initialize_from_knossos_path(path_to_conf)
