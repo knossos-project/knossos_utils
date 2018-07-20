@@ -1135,7 +1135,7 @@ class KnossosDataset(object):
                                    (path, tries, http_max_tries))
                             time.sleep(1)
                     else:
-                        try:
+                        if os.path.exists(path):
                             values = None
                             if self._cube_type == KnossosDataset.CubeType.RAW:
                                 flat_shape = int(np.prod(self.cube_shape))
@@ -1144,7 +1144,7 @@ class KnossosDataset(object):
                             else: # compressed
                                 values = imageio.imread(path)
                             valid_values = True
-                        except FileNotFoundError:
+                        else:
                             if verbose:
                                 _print("Cube {} does not exist, cube with zeros "
                                        "only assigned".format(path))
