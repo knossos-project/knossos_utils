@@ -283,7 +283,6 @@ class KnossosDataset(object):
         self._http_user = None
         self._http_passwd = None
         self._experiment_name = None
-        self._mag = []
         self._name_mag_folder = None
         self._boundary = np.zeros(3, dtype=np.int)
         self._scale = np.ones(3, dtype=np.float)
@@ -295,7 +294,31 @@ class KnossosDataset(object):
 
     @property
     def mag(self):
-        return self._mag
+        found_mags = []
+        if self.in_http_mode:
+            for mag_test_nb in range(10):
+                mag_num = 2 ** mag_test_nb
+                mag_folder = self.http_url + self.name_mag_folder + str(mag_num)
+
+                for tries in range(10):
+                    try:
+                        request = requests.get(mag_folder,
+                                               auth=self.http_auth,
+                                               timeout=10)
+                        request.raise_for_status()
+                        found_mags.append(mag_num)
+                        break
+                    except:
+                        if request.status_code < requests.codes.server_error:
+                            break # no use retrying if client error (e.g. 404)
+                        continue
+        else:
+            regex = re.compile("mag[1-9][0-9]*$")
+            for mag_folder in glob.glob(os.path.join(self._knossos_path, "*mag*")):
+                match = regex.search(mag_folder)
+                if match is not None:
+                    found_mags.append(int(mag_folder[match.start() + 3:])) # mag number
+        return found_mags
 
     @property
     def name_mag_folder(self):
@@ -490,8 +513,6 @@ class KnossosDataset(object):
         self.parse_pyknossos_conf(path)
         self._knossos_path = os.path.dirname(path) + "/"
         self._name_mag_folder = "mag"
-        mag_dirs = [os.path.basename(magdir) for magdir in glob.glob(self._knossos_path + "/{0}*".format(self.name_mag_folder))]
-        self._mag = [int(name[3:]) for name in mag_dirs]
         self._initialized = True
         self._initialize_cache(0)
 
@@ -581,37 +602,6 @@ class KnossosDataset(object):
             self.parse_knossos_conf(path, verbose=verbose)
             if self.in_http_mode:
                 self._name_mag_folder = "mag"
-
-                if fixed_mag:
-                    if isinstance(fixed_mag, int):
-                        self._mag.append(fixed_mag)
-                    else:
-                        raise Exception("Fixed mag must be integer.")
-                else:
-                    for mag_test_nb in range(10):
-                        mag_folder = self.http_url + \
-                                     self.name_mag_folder + str(2**mag_test_nb)
-
-                        tries = 0
-                        while tries < http_max_tries:
-                            try:
-                                request = requests.get(mag_folder,
-                                                       auth=self.http_auth,
-                                                       timeout=10)
-
-                                if request.status_code == 200:
-                                    self._mag.append(2 ** mag_test_nb)
-                                    break
-                                request.raise_for_status()
-                            except:
-                                tries += 1
-                                if tries >= http_max_tries:
-                                    break
-                                else:
-                                    continue
-
-                        if tries >= http_max_tries:
-                            break
             else:
                 folder = os.path.basename(os.path.dirname(path))
                 match = re.search(r'(?<=mag)[\d]+$', folder)
@@ -630,32 +620,20 @@ class KnossosDataset(object):
         if not self.in_http_mode:
             all_mag_folders = our_glob(self._knossos_path+"/*mag*")
 
-            if fixed_mag:
-                if isinstance(fixed_mag, int):
-                    self._mag.append(fixed_mag)
-                else:
-                    raise Exception("Fixed mag must be integer.")
-            else:
-                for mag_test_nb in range(10):
-                    for mag_folder in all_mag_folders:
-                        if "mag"+str(2**mag_test_nb) in mag_folder:
-                            self._mag.append(2**mag_test_nb)
-                            break
-
             if len(all_mag_folders) == 0:
-                raise Exception("No valid mag folders found")
-
-            mag_folder = all_mag_folders[0].split("/")
-            if len(mag_folder[-1]) > 1:
-                mag_folder = mag_folder[-1]
+                self._name_mag_folder = "mag"
             else:
-                mag_folder = mag_folder[-2]
+                mag_folder = all_mag_folders[0].split("/")
+                if len(mag_folder[-1]) > 1:
+                    mag_folder = mag_folder[-1]
+                else:
+                    mag_folder = mag_folder[-2]
 
-            self._name_mag_folder = \
-                mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
+                self._name_mag_folder = \
+                    mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
 
             if not os.path.isfile(path):
-                conf_path = self.knossos_path + self.name_mag_folder + "{}/knossos.conf".format(self.mag[0]) # legacy path
+                conf_path = self.knossos_path + self.name_mag_folder + "1/knossos.conf" # legacy path
                 for name in os.listdir(self.knossos_path):
                     if name == "knossos.conf" or name.endswith(".k.conf"):
                         conf_path = os.path.join(self.knossos_path, name)
@@ -702,7 +680,6 @@ class KnossosDataset(object):
         all_mag_folders = our_glob(path+"*mag*")
 
         if not mags is None:
-            self._mag = mags
             if make_mag_folders:
                 for mag in mags:
                     exists = False
@@ -716,12 +693,6 @@ class KnossosDataset(object):
                                         all_mag_folders[0][:-1])[-1] + str(mag))
                         else:
                             os.makedirs(path+"/mag"+str(mag))
-        else:
-            for mag_test_nb in range(32):
-                for mag_folder in all_mag_folders:
-                    if "mag"+str(2**mag_test_nb) in mag_folder:
-                        self._mag.append(2**mag_test_nb)
-                        break
 
         mag_folder = our_glob(path+"*mag*")[0].split("/")
         if len(mag_folder[-1]) > 1:
@@ -917,7 +888,7 @@ class KnossosDataset(object):
         new_kd.initialize_without_conf(path=path, boundary=self.boundary,
                                        scale=self.scale,
                                        experiment_name=self.experiment_name,
-                                       mags=self.mag)
+                                       mags=mags)
 
         multi_params = []
         if do_raw:
@@ -1252,9 +1223,10 @@ class KnossosDataset(object):
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        if mag not in self._mag:
+        available_mags = self.mag
+        if not mag in available_mags:
             raise Exception("Requested mag {0} not available, only mags {1} are "
-                            "available.".format(mag, self._mag))
+                            "available.".format(mag, available_mags))
 
         if 0 in size:
             raise Exception("The first parameter is size! - "
@@ -2201,7 +2173,6 @@ class KnossosDataset(object):
         with zipfile.ZipFile(kzip_path, "a") as zf:
             mergelist = mergelist_tools.gen_mergelist_from_objects(subobj_pos_dict.keys(), subobj_pos_dict)
             zf.writestr("mergelist.txt", mergelist)
-
 
     def delete_all_overlaycubes(self, nb_processes=4, verbose=False):
         """  Deletes all overlaycubes
