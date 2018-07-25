@@ -1905,11 +1905,14 @@ class KnossosDataset(object):
 
                 if not np.sum(cube) == 0:
                     if as_raw:
-                        f = open(path, "wb")
-                        f.write(cube)
-                        f.close()
+                        if self._raw_ext == "raw":
+                            f = open(path, "wb")
+                            f.write(cube)
+                            f.close()
+                        else:
+                            imageio.imwrite(path, cube.reshape(self._cube_shape[2],
+                                                               self._cube_shape[0]*self._cube_shape[1]))
                     else:
-
                         arc_path = os.path.basename(path)
                         with zipfile.ZipFile(path + ".zip", "w") as zf:
                             zf.writestr(arc_path,
