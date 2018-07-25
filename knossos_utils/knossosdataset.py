@@ -492,9 +492,14 @@ class KnossosDataset(object):
                 self._scale[1] = float(tokens[2])
                 self._scale[2] = float(tokens[3])
             elif key == "_FileType":
+                type_token = int(tokens[1])
                 self._cube_type = KnossosDataset.CubeType.RAW\
-                                  if int(tokens[1]) == 0\
+                                  if type_token == 0\
                                   else KnossosDataset.CubeType.COMPRESSED
+                # set extension automatically if not specified
+                self._raw_ext = "raw" if type_token == 0\
+                                      else "png" if type_token == 2 \
+                                      else "jpg" # type_token == 3
             elif key == "_NumberofCubes":
                 self._number_of_cubes[0] = int(tokens[1])
                 self._number_of_cubes[1] = int(tokens[2])
