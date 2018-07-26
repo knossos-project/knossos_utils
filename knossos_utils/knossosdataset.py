@@ -581,6 +581,12 @@ class KnossosDataset(object):
         self._number_of_cubes = \
             np.array(np.ceil(self.boundary.astype(np.float) /
                              self.cube_shape), dtype=np.int)
+        if 'compression_ratio ' not in parsed_dict or parsed_dict['compression_ratio '] == 0:
+            self._cube_type = KnossosDataset.CubeType.RAW
+            self._raw_ext = "raw"
+        else:
+            self._cube_type = KnossosDataset.CubeType.COMPRESSED
+            self._raw_ext = "jpg"
 
     def initialize_from_knossos_path(self, path, fixed_mag=None, http_max_tries=10,
                                      use_abs_path=False, verbose=False, cache_size=0):
