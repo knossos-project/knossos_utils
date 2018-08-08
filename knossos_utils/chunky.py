@@ -896,7 +896,7 @@ class Chunk(object):
         print('getting seg data', size, coords)
         seg = self.dataset.from_overlaycubes_to_matrix(size,
                                                        coords,
-                                                       dtype_opt=dtype_opt)
+                                                       datatype=dtype_opt)
 
         return seg
 
