@@ -387,6 +387,24 @@ class KnossosDataset(object):
         else:
             return None
 
+    def set_channel(self, channel):
+        if channel == 'implicit':
+            return
+
+        known_channels = [
+            ('raw', 'raw', KnossosDataset.CubeType.RAW),
+            ('png', 'png', KnossosDataset.CubeType.COMPRESSED),
+            ('jpg', 'jpg', KnossosDataset.CubeType.COMPRESSED),
+        ]
+
+        for ch, ext, cube_type in known_channels:
+            if channel == ch:
+                self._cube_type = cube_type
+                self._raw_ext = ext
+                return
+
+        raise ValueError('channel must be one of %s' % ([xx[0] for xx in known_channels], ))
+
     def get_first_blocks(self, offset):
         return offset // self.cube_shape
 
@@ -1073,6 +1091,7 @@ class KnossosDataset(object):
                            "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
                            self.experiment_name + \
                            "_mag%d_x%04d_y%04d_z%04d.%s" % (mag, c[0], c[1], c[2], self._raw_ext)
+                    print(path)
 
                     if self.in_http_mode:
                         tries = 0
