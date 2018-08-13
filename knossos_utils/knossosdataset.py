@@ -32,6 +32,7 @@
 reading and writing raw and overlay data."""
 
 
+import warnings
 import collections
 from enum import Enum
 import glob
@@ -292,6 +293,7 @@ class KnossosDataset(object):
         self._cube_type = KnossosDataset.CubeType.RAW
         self._raw_ext = 'raw'
         self._initialized = False
+        self._channel_selected = 'implicit'
 
     @property
     def mag(self):
@@ -402,6 +404,7 @@ class KnossosDataset(object):
             if channel == ch:
                 self._cube_type = cube_type
                 self._raw_ext = ext
+                self._channel_selected = ch
                 return
 
         raise ValueError('channel must be one of %s' % ([xx[0] for xx in known_channels], ))
@@ -552,6 +555,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+
         try:
             f = open(path_to_knossos_conf)
             lines = f.readlines()
@@ -624,6 +628,11 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+
+        warnings.warn(
+                'You are initializing a KnossosDataset from a path to a directory. This possibility will soon be'
+                ' removed, please specify paths to configuration files instead.')
+
         while path.endswith("/"):
             path = path[:-1]
 
@@ -981,6 +990,7 @@ class KnossosDataset(object):
         :return: array of int
             array of voxel values corresponding to vx_list
         """
+
         vx_list = np.array(vx_list, dtype=np.int)
         boundary_box = [np.min(vx_list, axis=0),
                         np.max(vx_list, axis=0)]
@@ -1068,6 +1078,9 @@ class KnossosDataset(object):
             if a path is given no data is returned
         """
 
+        if self._channel_selected == 'implicit':
+            warnings.warn('You are using implicit channel selection. This possibility will soon be removed.'
+                    ' Please call set_channel() before reading or writing data using KnossosDataset.')
         def _read_cube(c):
             pos = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
             valid_values = False
@@ -1877,6 +1890,10 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+
+        if self._channel_selected == 'implicit':
+            warnings.warn('You are using implicit channel selection. This possibility will soon be removed.'
+                    ' Please call set_channel() before reading or writing data using KnossosDataset.')
 
         def _write_cubes(args):
             """ Helper function for multithreading """
