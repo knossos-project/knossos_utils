@@ -925,7 +925,6 @@ class Chunk(object):
 
         if labels_data is None:
             labels_data = self.load_chunk(seg_name, seg_set_name)
-            print(np.max(labels_data), np.min(labels_data))
         coord = self.coordinates - self.overlap
 
         if without_overlap:
@@ -933,18 +932,14 @@ class Chunk(object):
                           self.overlap[1]:-self.overlap[1],
                           self.overlap[2]:-self.overlap[2]]
             coord = self.coordinates
-        print(labels_data.shape)
+        if swap_axes:
+            raise NotImplementedError
         if not write_pathlist:
-            print(overwrite)
-            self.dataset.from_matrix_to_overlaycubes(coord,
-                                                     labels_data=[labels_data],
-                                                     swapaxes_option=swap_axes,
-                                                     verbose=True,
-                                                     overwrite=overwrite,
-                                                     mags=mag,
-                                                     as_zip=as_zip,
-                                                     output_zipname=output_zipname)
+            self.dataset.from_matrix_to_cubes(coord, data=[labels_data],
+                                              verbose=False, overwrite=overwrite,
+                                              mags=mag, kzip_path=output_zipname)
         else:
+            raise NotImplementedError
             path_list = self.dataset.from_matrix_to_overlaycubes(coord,
                                                                  labels_data=[
                                                                      labels_data],

@@ -192,7 +192,7 @@ def alpha_composite(src, dst):
     out[rgb] = (src[rgb]*src_a + dst[rgb]*dst_a*(1-src_a))/out[alpha]
     np.seterr(**old_setting)
     out[alpha] *= 255
-    np.clip(out,0,255)
+    np.clip(out, 0, 255)
     # astype('uint8') maps np.nan (and np.inf) to 0
     out = out.astype('uint8')
     out = Image.fromarray(out, 'RGBA')
