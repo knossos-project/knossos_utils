@@ -286,6 +286,7 @@ class KnossosDataset(object):
         self._name_mag_folder = None
         self._boundary = np.zeros(3, dtype=np.int)
         self._scale = np.ones(3, dtype=np.float)
+        self.scales = []
         self._number_of_cubes = np.zeros(3)
         self._cube_shape = np.full(3, 128, dtype=np.int)
         self._cube_type = KnossosDataset.CubeType.RAW
@@ -506,9 +507,10 @@ class KnossosDataset(object):
             if key == "_BaseName":
                 self._experiment_name = tokens[1]
             elif key == "_DataScale":
-                self._scale[0] = float(tokens[1])
-                self._scale[1] = float(tokens[2])
-                self._scale[2] = float(tokens[3])
+                self.scales = []
+                for x, y, z in zip(tokens[1::3], tokens[2::3], tokens[3::3]):
+                    self.scales.append(np.array([float(x), float(y), float(z)]))
+                self._scale = self.scales[0]
             elif key == "_FileType":
                 type_token = int(tokens[1])
                 self._cube_type = KnossosDataset.CubeType.RAW\
@@ -1967,6 +1969,13 @@ class KnossosDataset(object):
         if not isinstance(mags, list):
             mags = [mags]
 
+        if not mags:
+            if len(self.scales) > 1: # ordinal mags (PyKNOSSOS style, 1+)
+                mags = np.arange(data_mag, len(self.scales) + 1, dtype=np.int)
+            else: # power of 2 mags (KNOSSOS style)
+                max_mag = np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
+                mags = np.power(2, np.arange(data_mag - 1, max_mag, dtype=np.int))
+
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
 
@@ -2022,10 +2031,11 @@ class KnossosDataset(object):
 
         for mag in mags:
             mag_ratio = float(mag) / data_mag
+            ratio = 3 * [int(mag_ratio)] if len(self.scales) <= 1 else (self.scales[mag-1] / self.scales[0]).astype(int)
             if mag_ratio > 1:
                 mag_ratio = int(mag_ratio)
                 if fast_downsampling:
-                    data_inter = np.array(data[::mag_ratio, ::mag_ratio, ::mag_ratio],
+                    data_inter = np.array(data[::ratio[0], ::ratio[1], ::ratio[2]],
                                           dtype=datatype)
                 else:
                     data_inter = \
@@ -2056,7 +2066,7 @@ class KnossosDataset(object):
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
 
-            offset_mag = np.array(offset, dtype=np.int) // mag_ratio
+            offset_mag = np.array(offset, dtype=np.int) // ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
             if verbose:
