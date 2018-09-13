@@ -1661,9 +1661,12 @@ class KnossosDataset(object):
         output = cut_matrix(output, offset_start, offset_end, self.cube_shape,
                             start, end)
         if apply_mergelist:
-            if verbose:
-                _print("applying mergelist now")
-            mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
+            if "mergelist.txt" not in archive.namelist():
+                _print("no mergelist to apply")
+            else:
+                if verbose:
+                    _print("applying mergelist now")
+                mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
 
         if False in [output.shape[dim] == size[dim] for dim in range(3)]:
             raise Exception("Incorrect shape! Should be", size, "; got:",
