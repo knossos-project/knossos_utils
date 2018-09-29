@@ -258,12 +258,12 @@ def np_matrix_from_knossos(pth, ds_info, size, offset, channel='raw', mag_scale=
 
 
 def main():
-    exp_name = 'Platy1607'
-    bounds = (2750, 2592, 2854)
+    exp_name = 'Dataset'
+    bounds = (1024, 1024, 1024)
     mag_scales = {1: (100., 100., 100.)}
-    pth = '/mnt/storage02/projects/darendt-1-as/membrane/membrane/prob_map_cubes_100nm_2/'
+    pth = '/path/to/data/'
     size = (256, 256, 256)
-    of = (1279, 1279, 511)
+    of = (1024, 1024, 1024)
 
     ds_info = DatasetInfo(exp_name, bounds, mag_scales)
 
