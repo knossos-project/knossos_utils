@@ -1,3 +1,4 @@
+import requests
 import numpy as np
 import imageio
 import snappy
@@ -5,6 +6,8 @@ from zipfile import ZipFile
 from io import BytesIO
 import itertools as it
 import os
+from threading import Lock
+from multiprocessing.pool import ThreadPool
 
 
 class DatasetInfo(object):
@@ -33,7 +36,7 @@ def _cube_bound_space(lo, hi, cube_edge):
 
 def _iter_cubes(size_px, offset_px, cube_edge):
     """
-    Generator that iterates the cubes and corresponding cube slice bounds required to build up a 3-dimensional
+    Generator that iterates the cubes and corresponding cube slice bounds making up a 3-dimensional
     volume.
 
     Given offset and size in pixels (defining a 3-dimensional region of a dataset), yields the following:
@@ -83,7 +86,7 @@ def _get_extension(channel):
     return channel
 
 
-def _interpret_read_cube_data(data_str, channel):
+def _maybe_decompress_cube_data(data_str, channel):
     if channel == 'raw':
         return data_str
     elif channel in ['png', 'jpg']:
@@ -99,7 +102,7 @@ def _interpret_read_cube_data(data_str, channel):
 
 def _get_pth_to_cube(src, cube, exp_name, mag_scale, channel):
     """
-    Generate a cube path, filesystem, remote or inside zipfile.
+    Generate a cube path: on filesystem, remote (http) or inside a zip file.
 
     If src is str, generate a filesystem or http path. Otherwise, assume that we want a path within a zip file.
     """
@@ -116,7 +119,7 @@ def _get_pth_to_cube(src, cube, exp_name, mag_scale, channel):
     return cur_pth
 
 
-def _get_raw_filesystem_cube(src, pth):
+def _get_raw_filesystem_cube(src, pth, **kw):
     if os.path.exists(pth):
         with open(pth, 'rb') as fp:
             data_str = fp.read()
@@ -126,21 +129,39 @@ def _get_raw_filesystem_cube(src, pth):
     return data_str
 
 
-def _get_http_cube(src, pth):
-    raise Exception('Implement _get_cube_http() please')
+def _get_http_cube(src, pth, **kw):
+    hopeless_codes = [404, ]
+
+    for _ in range(0, kw['http_retries']):
+        r = requests.get(pth, auth=kw['auth'], timeout=60)
+
+        if r.status_code == 200:
+            return r.content
+        elif r.status_code in hopeless_codes:
+            break
+
+    return None
 
 
-def _get_kzip_cube(src, pth):
+def _get_kzip_cube(src, pth, **kw):
     try:
         return src.read(pth)
     except KeyError:
         return None
 
 
-def _get_cube(src, cube, exp_name, mag_scale, channel, cube_edge):
+def _get_cube(src, cube, exp_name, mag_scale, channel, cube_edge, **kw):
     """
-    Helper function to get contents of a cube. The idea is to make this fetch from http and load from zip in the
-    future, too (by having src being a ZipFile object or 'http://'-prefixed str.
+    Helper function to get contents of a cube.
+
+    src : str or ZipFile
+        If str, a filesystem or URL prefix. If ZipFile, a previously opened zip archive (.k.zip).
+
+    cube : 3-tuple of int
+    exp_name : str
+    mag_scale : dict int -> 3-tuple of float
+    channel : str
+    cube_edge : int
     """
 
     pth = _get_pth_to_cube(src, cube, exp_name, mag_scale, channel)
@@ -152,12 +173,12 @@ def _get_cube(src, cube, exp_name, mag_scale, channel, cube_edge):
     else:
         get_cube_fn = _get_raw_filesystem_cube
 
-    data_str = get_cube_fn(src, pth)
+    data_str = get_cube_fn(src, pth, **kw)
 
     if data_str is None:
         return None
     else:
-        data_str = _interpret_read_cube_data(data_str, channel)
+        data_str = _maybe_decompress_cube_data(data_str, channel)
 
     vx_size = len(data_str) / (cube_edge**3)
     if vx_size == 1:
@@ -176,21 +197,22 @@ def _get_cube(src, cube, exp_name, mag_scale, channel, cube_edge):
     return cube_data
 
 
-def np_matrix_from_knossos(pth, ds_info, size, offset, channel='raw', mag_scale=1, to_dtype='default'):
+def np_matrix_from_knossos(
+        pth, ds_info, size, offset, channel='raw', mag_scale=1, to_dtype='default', thread_count=40, auth=None, http_retries=10):
     """
     Read knossos data into a numpy matrix from various sources.
 
     pth : str
-        If the string starts with "http", try to read data from a http source. If the string ends with "zip", try to
-        read data from a k.zip. Otherwise, try to read from the local filesystem.
+        If the string starts with "http", try to read cubes from a http source. If the string ends with "zip", try to
+        read cubes from inside a k.zip. Otherwise, try to read cubes directly from the local filesystem.
 
     ds_info : DatasetInfo
 
     size : 3-tuple of int
-        Size of volume to read
+        Size of volume to read. Given in mag1 coordinates.
 
     offset : 3-tuple of int
-        Offset to volume to read
+        Offset to volume to read. Given in mag1 coordinates.
 
     channel : str
         One of ['jpg', 'png', 'raw', 'seg.sz']
@@ -212,9 +234,19 @@ def np_matrix_from_knossos(pth, ds_info, size, offset, channel='raw', mag_scale=
 
         If str ('default'), use whatever datatype comes out of the first cube that is read, or np.uint8 if there is
         no valid data. Otherwise, if numpy dtype, enforce that datatype.
+
+    thread_count : int
+        Number of threads used to load cubes
+
+    auth : None or 2-tuple of str
+        If http auth is required, specify (username, password).
     """
 
-    output = None
+    # This is a 1-element list because we are loading cubes in parallel below, but only allocating the output array
+    # once we have successfully read the first cube (so that we can probe for the data type if to_dtype=='default').
+    # This requires a mutable variable visible to all worker threads. The first (and only) element will be None until
+    # the first cube is read, at which point it will be replaced by a np array.
+    output = [None, ]
 
     if pth.lower().endswith('zip'):
         pth = ZipFile(pth, 'r')
@@ -223,52 +255,46 @@ def np_matrix_from_knossos(pth, ds_info, size, offset, channel='raw', mag_scale=
     size = tuple(round(xx / yy) for xx, yy in zip(size, down_factor))
     offset = tuple(round(xx / yy) for xx, yy in zip(offset, down_factor))
 
-    for cube, lb, ob in _iter_cubes(size, offset, ds_info.cube_edge):
-        cube_data = _get_cube(pth, cube, ds_info.exp_name, mag_scale, channel, ds_info.cube_edge)
+    output_lock = Lock()
+    def _worker(*args):
+        cube, lb, ob = args[0]
+        cube_data = _get_cube(pth, cube, ds_info.exp_name, mag_scale, channel, ds_info.cube_edge, auth=auth)
 
         if cube_data is None:
-            continue
+            return
 
-        if output is None:
-            # Doing this here so that we can use a read cube to probe for the output datatype.
+        output_lock.acquire()
+        if output[0] is None:
+            # Doing this here so that we can use a cube that has been read to probe for the data type
             if to_dtype == 'default':
-                output = np.zeros(size, dtype=cube_data.dtype)
+                output[0] = np.zeros(size, dtype=cube_data.dtype)
             else:
-                output = np.zeros(size, dtype=to_dtype)
+                output[0] = np.zeros(size, dtype=to_dtype)
+        output_lock.release()
 
-        output[ob[0][0]:ob[0][1],
-               ob[1][0]:ob[1][1],
-               ob[2][0]:ob[2][1]] = cube_data[
+        output[0][ob[0][0]:ob[0][1],
+                  ob[1][0]:ob[1][1],
+                  ob[2][0]:ob[2][1]] = cube_data[
                        lb[0][0]:lb[0][1],
                        lb[1][0]:lb[1][1],
                        lb[2][0]:lb[2][1]]
 
-    if output is None:
+    cube_slices_to_get = list(_iter_cubes(size, offset, ds_info.cube_edge))
+    p = ThreadPool(thread_count)
+    p.map(_worker, cube_slices_to_get)
+    p.close()
+    p.join()
+
+    if output[0] is None:
         # We have never read from a valid cube
         print('No data found in requested range, returning zeros.')
         if to_dtype == 'default':
-            output = np.zeros(size, dtype=np.uint8)
+            output[0] = np.zeros(size, dtype=np.uint8)
         else:
-            output = np.zeros(size, dtype=to_dtype)
+            output[0] = np.zeros(size, dtype=to_dtype)
 
     if isinstance(pth, ZipFile):
         pth.close()
 
-    return output
+    return output[0]
 
-
-def main():
-    exp_name = 'Dataset'
-    bounds = (1024, 1024, 1024)
-    mag_scales = {1: (100., 100., 100.)}
-    pth = '/path/to/data/'
-    size = (256, 256, 256)
-    of = (1024, 1024, 1024)
-
-    ds_info = DatasetInfo(exp_name, bounds, mag_scales)
-
-    O = np_matrix_from_knossos(pth, ds_info, size, of, channel='png')
-
-
-if __name__ == '__main__':
-    main()
