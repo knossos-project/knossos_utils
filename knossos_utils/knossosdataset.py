@@ -2051,18 +2051,18 @@ class KnossosDataset(object):
 
         for mag in mags:
             mag_ratio = float(mag) / data_mag
-            ratio = 3 * [int(mag_ratio)] if len(self.scales) <= 1 else (self.scales[mag-1] / self.scales[0]).astype(int)
+            ratio = 3 * [mag_ratio] if len(self.scales) <= 1 else (self.scales[mag-1] / self.scales[0]).astype(int)
+            inv_mag_ratio = 1.0/np.array(ratio)
             if mag_ratio > 1:
                 mag_ratio = int(mag_ratio)
                 if fast_downsampling:
-                    data_inter = np.array(data[::ratio[0], ::ratio[1], ::ratio[2]],
+                    data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])],
                                           dtype=datatype)
                 else:
                     data_inter = \
-                        scipy.ndimage.zoom(data, 1.0/mag_ratio, order=3).\
+                        scipy.ndimage.zoom(data, inv_mag_ratio, order=3).\
                             astype(datatype, copy=False)
             elif mag_ratio < 1:
-                inv_mag_ratio = int(1./mag_ratio)
                 if fast_downsampling:
                     #data_inter = np.zeros(
                     #    np.array(data.shape) * inv_mag_ratio,
