@@ -1156,7 +1156,7 @@ class KDtree:
                 return [self.lookup[ID] for ID in obj_lookup_IDs.tolist()]
             else:
                 return [self.lookup[ID] for ID in obj_lookup_IDs.tolist()],dists
-        except AttributeError:
+        except TypeError:
             if not return_dists:
                 return self.lookup[obj_lookup_IDs]
             else:
