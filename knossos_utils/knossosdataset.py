@@ -1991,10 +1991,10 @@ class KnossosDataset(object):
 
         if not mags:
             if len(self.scales) > 1: # ordinal mags (PyKNOSSOS style, 1+)
-                mags = np.arange(data_mag, len(self.scales) + 1, dtype=np.int)
+                mags = np.arange(1, len(self.scales) + 1, dtype=np.int)
             else: # power of 2 mags (KNOSSOS style)
                 max_mag = np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
-                mags = np.power(2, np.arange(data_mag - 1, max_mag, dtype=np.int))
+                mags = np.power(2, np.arange(0, max_mag, dtype=np.int))
 
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
