@@ -2053,41 +2053,30 @@ class KnossosDataset(object):
             data = np.max(np.array(data), axis=0)
 
         for mag in mags:
-            mag_ratio = float(mag) / data_mag
-            ratio = 3 * [mag_ratio] if len(self.scales) <= 1 else (self.scales[mag-1] / self.scales[0]).astype(int)
+            mag_i = mag-1 if self._ordinal_mags else int(np.log2(mag))
+            data_mag_i = data_mag-1 if self._ordinal_mags else int(np.log2(data_mag))
+            ratio = 3 * [float(mag) / data_mag] if len(self.scales) <= 1 else (self.scales[mag_i] / self.scales[data_mag_i])
             inv_mag_ratio = 1.0/np.array(ratio)
-            if mag_ratio > 1:
-                mag_ratio = int(mag_ratio)
-                if fast_downsampling:
-                    data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])],
-                                          dtype=datatype)
-                else:
-                    data_inter = \
-                        scipy.ndimage.zoom(data, inv_mag_ratio, order=3).\
-                            astype(datatype, copy=False)
-            elif mag_ratio < 1:
-                if fast_downsampling:
-                    #data_inter = np.zeros(
-                    #    np.array(data.shape) * inv_mag_ratio,
-                    #    dtype=data.dtype)
-
-                    #for i_step in range(inv_mag_ratio):
-                    #    data_inter[i_step:: inv_mag_ratio,
-                    #               i_step:: inv_mag_ratio,
-                    #               i_step:: inv_mag_ratio] = data
-
-                    #data_inter = data_inter.astype(dtype=datatype, copy=False)
-                    data_inter = \
-                        scipy.ndimage.zoom(data, inv_mag_ratio, order=0).\
-                            astype(datatype, copy=False)
-                else:
-                    data_inter = \
-                        scipy.ndimage.zoom(data, inv_mag_ratio, order=3).\
-                            astype(datatype, copy=False)
-            else:
+            if fast_downsampling and all(mag_ratio.is_integer() for mag_ratio in ratio):
+                data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])], dtype=datatype)
+            elif all(mag_ratio == 1 for mag_ratio in ratio):
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
+            elif fast_downsampling:
+                #data_inter = np.zeros(
+                #    np.array(data.shape) * inv_mag_ratio,
+                #    dtype=data.dtype)
+
+                #for i_step in range(inv_mag_ratio):
+                #    data_inter[i_step:: inv_mag_ratio,
+                #               i_step:: inv_mag_ratio,
+                #               i_step:: inv_mag_ratio] = data
+
+                #data_inter = data_inter.astype(dtype=datatype, copy=False)
+                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
+            else:
+                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=3).astype(datatype, copy=False)
 
             offset_mag = np.array(offset, dtype=np.int) // ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
