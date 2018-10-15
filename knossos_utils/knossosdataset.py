@@ -285,6 +285,7 @@ class KnossosDataset(object):
         self._http_passwd = None
         self._experiment_name = None
         self._name_mag_folder = None
+        self._ordinal_mags = False
         self._boundary = np.zeros(3, dtype=np.int)
         self._scale = np.ones(3, dtype=np.float)
         self.scales = []
@@ -509,6 +510,8 @@ class KnossosDataset(object):
             key = tokens[0]
             if key == "_BaseName":
                 self._experiment_name = tokens[1]
+            elif key == "_ServerFormat":
+                self._ordinal_mags = tokens[1] != "knossos";
             elif key == "_DataScale":
                 self.scales = []
                 for x, y, z in zip(tokens[1::3], tokens[2::3], tokens[3::3]):
@@ -1990,7 +1993,7 @@ class KnossosDataset(object):
             mags = [mags]
 
         if not mags:
-            if len(self.scales) > 1: # ordinal mags (PyKNOSSOS style, 1+)
+            if self._ordinal_mags:
                 mags = np.arange(1, len(self.scales) + 1, dtype=np.int)
             else: # power of 2 mags (KNOSSOS style)
                 max_mag = np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
