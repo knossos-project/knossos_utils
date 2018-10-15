@@ -1149,6 +1149,8 @@ class KDtree:
         # This function was written to replace queryNN which is still kept
         # for backwards compatibility
         dists, obj_lookup_IDs = self.tree.query(np.array(coords), k=k)
+        if len(obj_lookup_IDs) == 1:
+            obj_lookup_IDs = obj_lookup_IDs[0]
         try:
             if not return_dists:
                 return [self.lookup[ID] for ID in obj_lookup_IDs.tolist()]
