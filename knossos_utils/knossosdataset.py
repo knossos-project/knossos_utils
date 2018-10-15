@@ -533,7 +533,7 @@ class KnossosDataset(object):
                 self._boundary[2] = float(tokens[3])
             elif key == "_BaseExt":
                 self._raw_ext = tokens[1].replace('.', '')
-                self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext != "raw" else KnossosDataset.CubeType.COMPRESSED 
+                self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == "raw" else KnossosDataset.CubeType.COMPRESSED
             else:
                 print("Skipping parameter " + key)
         self._cube_shape = [128, 128, 128]  # hardcoded cube shape, others are not supported
