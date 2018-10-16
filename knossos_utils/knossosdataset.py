@@ -2079,7 +2079,7 @@ class KnossosDataset(object):
                 #data_inter = data_inter.astype(dtype=datatype, copy=False)
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
             else:
-                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=3).astype(datatype, copy=False)
+                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=1).astype(datatype, copy=False)
 
             offset_mag = np.array(offset, dtype=np.int) // ratio
             size_mag = np.array(data_inter.shape, dtype=np.int)
