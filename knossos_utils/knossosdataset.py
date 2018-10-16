@@ -1937,7 +1937,10 @@ class KnossosDataset(object):
                         time.sleep(1)
 
                 if (not overwrite) and os.path.isfile(path) and as_raw:
-                    existing_cube = np.fromfile(path, dtype=datatype)
+                    if self._raw_ext == "raw":
+                        existing_cube = np.fromfile(path, dtype=datatype)
+                    else:
+                        existing_cube = imageio.imread(path).reshape(cube.shape)
                     indices = np.where(cube == 0)
 
                     cube[indices] = existing_cube[indices]
