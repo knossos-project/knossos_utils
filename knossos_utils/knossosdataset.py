@@ -1833,7 +1833,7 @@ class KnossosDataset(object):
 
         return
 
-    def from_matrix_to_cubes(self, offset, mags=1, data=None, data_mag=1,
+    def from_matrix_to_cubes(self, offset, mags=[], data=None, data_mag=1,
                              data_path=None, hdf5_names=None,
                              datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=True,
