@@ -1838,7 +1838,8 @@ class KnossosDataset(object):
                              datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=True,
                              overwrite=True, kzip_path=None, compress_kzip=True,
-                             annotation_str=None, as_raw=False, nb_threads=20):
+                             annotation_str=None, as_raw=False, nb_threads=20
+                             , upsample=True, downsample=True):
         """ Cubes data for viewing and editing in KNOSSOS
             one can choose from
                 a) (Over-)writing overlay cubes in the dataset
@@ -1996,11 +1997,15 @@ class KnossosDataset(object):
             mags = [mags]
 
         if not mags:
-            if self._ordinal_mags:
-                mags = np.arange(1, len(self.scales) + 1, dtype=np.int)
-            else: # power of 2 mags (KNOSSOS style)
-                max_mag = np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
-                mags = np.power(2, np.arange(0, max_mag, dtype=np.int))
+            start_mag = 1 if upsample else data_mag
+            if downsample:
+                if self._ordinal_mags:
+                    mags = np.arange(start_mag, len(self.scales) + 1, dtype=np.int)
+                else: # power of 2 mags (KNOSSOS style)
+                    max_mag = np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
+                    mags = np.power(2, np.arange(start_mag - 1, max_mag, dtype=np.int))
+            else:
+                mags = [data_mag]
 
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
