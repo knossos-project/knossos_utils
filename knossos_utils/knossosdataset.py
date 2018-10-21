@@ -1953,7 +1953,12 @@ class KnossosDataset(object):
                         if self._raw_ext == "raw":
                             existing_cube = np.fromfile(path, dtype=datatype)
                         else:
-                            existing_cube = imageio.imread(path).reshape(cube.shape)
+                            try:
+                                existing_cube = imageio.imread(path).reshape(cube.shape)
+                            except ValueError:
+                                print(path, "is broken and will be overwritten")
+                                existing_cube = cube
+                                pass
                         cube[indices] = existing_cube[indices]
 
                     if not as_raw and os.path.isfile(path+".zip"):
