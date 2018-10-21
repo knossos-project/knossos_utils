@@ -2010,6 +2010,9 @@ class KnossosDataset(object):
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
 
+        if not as_raw: # overlay cube ids shall not be interpolated
+            fast_downsampling = True
+
         if not kzip_path is None:
             if as_raw:
                 raise Exception("You have to choose between kzip and raw cubes")
