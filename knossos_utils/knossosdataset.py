@@ -1937,25 +1937,31 @@ class KnossosDataset(object):
                             break
                         time.sleep(1)
 
-                if (not overwrite) and os.path.isfile(path) and as_raw:
-                    if self._raw_ext == "raw":
-                        existing_cube = np.fromfile(path, dtype=datatype)
-                    else:
-                        existing_cube = imageio.imread(path).reshape(cube.shape)
-                    indices = np.where(cube == 0)
+                if not overwrite:
+                    mask = np.zeros(self.cube_shape, dtype=datatype)
+                    mask[cube_offset[0]: cube_limit[0],
+                         cube_offset[1]: cube_limit[1],
+                         cube_offset[2]: cube_limit[2]]\
+                         = np.ones((cube_limit[0] - cube_offset[0], 
+                                    cube_limit[1] - cube_offset[1],
+                                    cube_limit[2] - cube_offset[2]), dtype=datatype)
+                    mask = np.swapaxes(mask, 0, 2)
+                    mask = mask.reshape(np.prod(self.cube_shape))
+                    indices = np.where(mask == 0)
 
-                    cube[indices] = existing_cube[indices]
+                    if as_raw and os.path.isfile(path):
+                        if self._raw_ext == "raw":
+                            existing_cube = np.fromfile(path, dtype=datatype)
+                        else:
+                            existing_cube = imageio.imread(path).reshape(cube.shape)
+                        cube[indices] = existing_cube[indices]
 
-                elif (not overwrite) and os.path.isfile(path+".zip") and \
-                        not as_raw:
-                    with zipfile.ZipFile(path+".zip", "r") as zf:
-                        existing_cube = \
-                            np.fromstring(
-                                self.module_wide["snappy"].decompress(
-                                    zf.read(os.path.basename(path))),
-                                dtype=np.uint64)
-                    indices = np.where(cube == 0)
-                    cube[indices] = existing_cube[indices]
+                    if not as_raw and os.path.isfile(path+".zip"):
+                        with zipfile.ZipFile(path+".zip", "r") as zf:
+                            existing_cube = np.fromstring(
+                                    self.module_wide["snappy"].decompress(zf.read(os.path.basename(path))),
+                                    dtype=np.uint64)
+                        cube[indices] = existing_cube[indices]
 
                 if not np.sum(cube) == 0:
                     if as_raw:
