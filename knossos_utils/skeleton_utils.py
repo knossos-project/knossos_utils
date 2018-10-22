@@ -2008,9 +2008,7 @@ def nx_graph_to_annotation(G, scaling=None):
 
     for cur_n in G.nodes():
         x, y, z = cur_n.getCoordinate()
-        cur_n_copy = SkeletonNode()
-        cur_n_copy.from_scratch(a, x, y, z, ID=cur_n.ID)
-        cur_n_copy.data = cur_n.data
+        cur_n_copy = copy.copy(cur_n)
         new_node_mapping[cur_n] = cur_n_copy
         a.addNode(cur_n_copy)
 
