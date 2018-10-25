@@ -59,7 +59,7 @@ class Skeleton:
         self.skeleton_time = None
         self.skeleton_idletime = None
         self.skeleton_comment = None
-        self.scaling = None
+        self.scaling = [1,1,1]
         self.branchNodes = [] # list of node IDs
         self.active_node = None
         self.edit_position = None
@@ -303,7 +303,7 @@ class Skeleton:
             self.scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
         else:
             if isinstance(scaling, str):
-                self.scaling = None
+                self.scaling = [1,1,1]
             else:
                 self.scaling = scaling
 
@@ -600,7 +600,7 @@ class Skeleton:
             build_attributes(dataset, [["path", self.dataset_path]])
             parameters.appendChild(dataset)
 
-        if self.scaling is not None:
+        if self.scaling[0] != 1 or self.scaling[1] != 1 or self.scaling[2] != 1:
             scale = doc.createElement("scale")
             build_attributes(scale, [["x", self.scaling[0]], ["y", self.scaling[1]], ["z", self.scaling[2]]])
             parameters.appendChild(scale)
@@ -773,8 +773,6 @@ class SkeletonAnnotation:
         Add interpolated nodes along edges so that no node distance exceeds max_node_dist_scaled.
         :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
         """
-        if self.scaling is None:
-            print('No scaling present. Assuming scaling of 1.')
         edges_copy = self.edges.copy()
         for src_node in edges_copy:
             for trg_node in edges_copy[src_node]:
@@ -809,7 +807,7 @@ class SkeletonAnnotation:
         self.edges = {}
         self.reverse_edges = {}
         self.nodeBaseID = 1 # this is not the smallest ID found in the annotation but an offset that needs to be added to every node ID to obtain skeleton-wide unique IDs.
-        self.scaling = None
+        self.scaling = [1,1,1]
         self.filename = None
         # Optional
         self.annotation_ID = None
@@ -1255,13 +1253,7 @@ class SkeletonNode:
 
         self.ID = ID
 
-        self.x = self.x_scaled = x
-        self.y = self.y_scaled = y
-        self.z = self.z_scaled = z
-        if self.annotation.scaling:
-            self.x_scaled *= self.annotation.scaling[0]
-            self.y_scaled *= self.annotation.scaling[1]
-            self.z_scaled *= self.annotation.scaling[2]
+        self.x, self.y, self.z = x, y, z
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)
@@ -1277,17 +1269,7 @@ class SkeletonNode:
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]])
         self.ID = ID
-        self.x = x
-        self.y = y
-        self.z = z
-        try:
-            self.x_scaled = self.x * self.annotation.scaling[0]
-            self.y_scaled = self.y * self.annotation.scaling[1]
-            self.z_scaled = self.z * self.annotation.scaling[2]
-        except TypeError:
-            self.x_scaled = self.x
-            self.y_scaled = self.y
-            self.z_scaled = self.z
+        self.x, self.y, self.z = x, y, z
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)
@@ -1302,14 +1284,7 @@ class SkeletonNode:
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]], ret_all_attr=True)
         self.ID = ID
-
-        self.x = x
-        self.y = y
-        self.z = z
-
-        self.x_scaled = self.x * self.annotation.scaling[0]
-        self.y_scaled = self.y * self.annotation.scaling[1]
-        self.z_scaled = self.z * self.annotation.scaling[2]
+        self.x, self.y, self.z = x, y, z
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)
@@ -1369,13 +1344,14 @@ class SkeletonNode:
         self.y = coord[1]
         self.z = coord[2]
 
-        if self.annotation and self.annotation.scaling:
+    def getCoordinate_scaled(self):
+        try:
+            return [self.x_scaled, self.y_scaled, self.z_scaled]
+        except AttributeError:
             self.x_scaled = self.x * self.annotation.scaling[0]
             self.y_scaled = self.y * self.annotation.scaling[1]
             self.z_scaled = self.z * self.annotation.scaling[2]
-
-    def getCoordinate_scaled(self):
-        return [self.x_scaled, self.y_scaled, self.z_scaled]
+            return [self.x_scaled, self.y_scaled, self.z_scaled]
 
     def getID(self):
         # If no corresponding annotation and no ID is set in this
