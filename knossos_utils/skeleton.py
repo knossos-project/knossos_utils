@@ -81,7 +81,7 @@ class Skeleton:
         annotation.nodeBaseID : lowest node id in this annotation
         """
         cnt_a = 1
-        cnt_all_nodes = 1
+        cnt_all_nodes = 0
         for a in self.annotations:
             a.annotation_ID = cnt_a # value currently unused - a nice sign of
             # the clusterfuck
