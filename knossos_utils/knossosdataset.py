@@ -1839,8 +1839,8 @@ class KnossosDataset(object):
                              datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=True,
                              overwrite=True, kzip_path=None, compress_kzip=True,
-                             annotation_str=None, as_raw=False, nb_threads=20
-                             , upsample=True, downsample=True):
+                             annotation_str=None, as_raw=False, nb_threads=20,
+                             upsample=True, downsample=True, gen_mergelist=True):
         """ Cubes data for viewing and editing in KNOSSOS
             one can choose from
                 a) (Over-)writing overlay cubes in the dataset
@@ -1890,6 +1890,8 @@ class KnossosDataset(object):
             is not None: if writing to k.zip, include this as annotation.xml
         :param as_raw: bool
             True: outputs data as normal KNOSSOS raw cubes
+        :param gen_mergelist: bool
+            True: generates a mergelist when writing into a kzip
         :param nb_threads: int
             if < 2: no multithreading
         :return:
@@ -2193,10 +2195,11 @@ class KnossosDataset(object):
                     for root, dirs, files in os.walk(kzip_path):
                         for file in files:
                             zf.write(os.path.join(root, file), file)
-                    zf.writestr("mergelist.txt",
-                                mergelist_tools.gen_mergelist_from_segmentation(
-                                    data.astype(datatype, copy=False),
-                                    offsets=np.array(offset, dtype=np.uint64)))
+                    if gen_mergelist:
+                        zf.writestr("mergelist.txt",
+                                    mergelist_tools.gen_mergelist_from_segmentation(
+                                        data.astype(datatype, copy=False),
+                                        offsets=np.array(offset, dtype=np.uint64)))
                     if annotation_str is not None:
                         zf.writestr("annotation.xml", annotation_str)
                 shutil.rmtree(kzip_path)
