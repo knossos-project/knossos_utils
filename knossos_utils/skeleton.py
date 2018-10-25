@@ -1227,7 +1227,7 @@ class SkeletonNode:
 
         new = SkeletonNode()
         new.__dict__.update(self.__dict__)
-        new.ID = None
+        new.ID = self.ID
         new.data = {}
         new.data.update(self.data)
         new.metadata = {}
