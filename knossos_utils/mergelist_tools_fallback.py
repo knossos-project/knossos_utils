@@ -100,3 +100,13 @@ def gen_mergelist_from_segmentation(segmentation, background_id=0, pad=0, offset
                 seen_subobjects.add(next_id)
                 new_mergelist += "{0} 0 0 {0}\n{1} {2} {3}\n\n\n".format(next_id, int(offsets[0]+x), int(offsets[1]+y), int(offsets[2]+z))
     return new_mergelist
+
+def gen_mergelist_from_objects(objects):
+    new_mergelist = ""
+    for obj, (subobjects, coords) in objects.items():
+        sub_obj_str = ""
+        for subobj_id in subobjects:
+            sub_obj_str += "{} ".format(subobj_id)
+        new_mergelist += "{} 0 0 {}\n".format(obj.first, sub_obj_str[:-1]) # remove trailing white space
+        new_mergelist += "{} {} {}\n\n\n".format(coords[0], coords[1], coords[2])
+    return new_mergelist
