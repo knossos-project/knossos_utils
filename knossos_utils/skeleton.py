@@ -54,6 +54,8 @@ class Skeleton:
         # Uninitialized Mandatory
         self.annotations = set()
         # Uninitialized Optional
+        self.created_version = None
+        self.last_saved_version = None
         self.skeleton_time = None
         self.skeleton_idletime = None
         self.skeleton_comment = None
@@ -62,7 +64,6 @@ class Skeleton:
         self.active_node = None
         self.edit_position = None
         self.experiment_name = None
-        self.version = '4.1.2'
         self.dataset_path = None
         self.movement_area_min = None
         self.movement_area_max = None
@@ -309,11 +310,11 @@ class Skeleton:
         try:
             [self.last_saved_version] = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("lastsavedin")[0], [["version", str]])
         except IndexError:
-            self.last_saved_version = '0'
+            self.last_saved_version = None
         try:
             [self.created_version] = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("createdin")[0], [["version", str]])
         except IndexError:
-            self.created_version = '0'
+            self.created_version = None
 
         if read_time:
             if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
@@ -425,11 +426,11 @@ class Skeleton:
         try:
             [self.last_saved_version] = parse_cET(root.find("parameters").find("lastsavedin"), [["version", str]])
         except AttributeError:
-            self.last_saved_version = '0'
+            self.last_saved_version = None
         try:
             [self.created_version] = parse_cET(root.find("parameters").find("createdin"), [["version", str]])
         except AttributeError:
-            self.created_version = '0'
+            self.created_version = None
 
         if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
             # Has SHA256 checksums
@@ -648,22 +649,19 @@ class Skeleton:
         build_attributes(time, [["ms", 0], ["checksum", integer_checksum(0)]])
         parameters.appendChild(time)
 
-        time = doc.createElement("idleTime")
-        build_attributes(time, [["ms", 0], ["checksum", integer_checksum(0)]])
-        parameters.appendChild(time)
-
         if self.active_node is not None:
             activenode = doc.createElement("activeNode")
             build_attributes(activenode, [["id", self.active_node.getID()]])
             parameters.appendChild(activenode)
 
-        createdInVersion = doc.createElement("createdin")
-        build_attributes(createdInVersion, [["version", self.version]])
-        parameters.appendChild(createdInVersion)
-
-        createdInVersion = doc.createElement("lastsavedin")
-        build_attributes(createdInVersion, [["version", self.version]])
-        parameters.appendChild(createdInVersion)
+        if self.created_version:
+            createdInVersion = doc.createElement("createdin")
+            build_attributes(createdInVersion, [["version", self.created_version]])
+            parameters.appendChild(createdInVersion)
+        if self.last_saved_version:
+            createdInVersion = doc.createElement("lastsavedin")
+            build_attributes(createdInVersion, [["version", self.last_saved_version]])
+            parameters.appendChild(createdInVersion)
 
         comments_elem = doc.createElement("comments")
         annotations_elem.appendChild(comments_elem)
@@ -704,14 +702,14 @@ class Skeleton:
         # Check whether the version string consists of a number or dot separated numbers.
         try:
             int(self.created_version.replace('.', ""))
-        except ValueError:
+        except (AttributeError, ValueError): # Attribute Error: None
             created_version = [0,]
         else:
             created_version = [int(x) for x in self.created_version.split('.')]
 
         try:
             int(self.last_saved_version.replace('.', ""))
-        except ValueError:
+        except (AttributeError, ValueError): # Attribute Error: None
             last_saved_version = [0,]
         else:
             last_saved_version = [int(x) for x in self.last_saved_version.split('.')]
