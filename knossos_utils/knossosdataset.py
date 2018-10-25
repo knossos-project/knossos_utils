@@ -34,6 +34,7 @@ reading and writing raw and overlay data."""
 
 import warnings
 import collections
+from collections import defaultdict
 from enum import Enum
 import glob
 import h5py
@@ -1673,7 +1674,7 @@ class KnossosDataset(object):
                     current[0] += 1
                 current[1] += 1
             current[2] += 1
-
+        if show_progress: print("\n") # newline after sys.stdout.writes inside loop
         output = cut_matrix(output, offset_start, offset_end, self.cube_shape,
                             start, end)
         if apply_mergelist:
@@ -2234,21 +2235,30 @@ class KnossosDataset(object):
                                   mags=trg_mags)
 
     def add_mergelist_to_kzip(self, kzip_path, background_id=0):
-        subobj_pos_dict = {}
-        with zipfile.ZipFile(kzip_path, "r") as zf:
-            for cube_filename in [cube_name for cube_name in zf.namelist() if cube_name.endswith(".seg.sz")]:
-                cube_coords = np.array(self.cube_shape) * self.get_cube_coordinates(cube_filename)
-                cube = zf.read(os.path.basename(cube_filename))
-                cube = np.fromstring(self.module_wide["snappy"].decompress(cube), dtype=np.uint64)
-                subobj_ids, indices = np.unique(cube, return_index=True)
-                unravelled_indices = np.unravel_index(indices, [128, 128, 128])
-                for i in range(0, len(subobj_ids)):
-                    if subobj_ids[i] == background_id or subobj_ids[i] in subobj_pos_dict: continue
-                    subobj_coords = [unravelled_indices[2][i], unravelled_indices[1][i], unravelled_indices[0][i]]
-                    subobj_pos_dict[subobj_ids[i]] = subobj_coords + cube_coords
+        ids = defaultdict(lambda: ([], [], []))
+        for idx_z, z in enumerate(range(0, self.boundary[2], 128)):
+            for idx_y, y in enumerate(range(0, self.boundary[1], 128)):
+                for idx_x, x in enumerate(range(0, self.boundary[0], 128)):
+                    min_x, min_y, min_z = np.array([idx_x, idx_y, idx_z]) * 128
+                    cube = self.from_kzip_to_matrix(kzip_path, size=(128, 128, 128),
+                                                            offset=(min_x, min_y, min_z), mag=1,
+                                                            return_empty_cube_if_nonexistent=False,
+                                                            apply_mergelist=False,
+                                                            show_progress=False, verbose=False)
+                    if cube is None: continue
+                    labels = np.unique(cube)[1:]  # no 0
+                    for sv_id in labels:
+                        indices = np.where(cube == sv_id)
+                        ids[sv_id][0].extend(indices[0] + min_x)
+                        ids[sv_id][1].extend(indices[1] + min_y)
+                        ids[sv_id][2].extend(indices[2] + min_z)
+        obj_dict = {}
+        for obj_id, indices in ids.items():
+            center = np.mean(indices, axis=1)
+            obj_dict[obj_id] = ({obj_id}, center)
 
         with zipfile.ZipFile(kzip_path, "a") as zf:
-            mergelist = mergelist_tools.gen_mergelist_from_objects(subobj_pos_dict.keys(), subobj_pos_dict)
+            mergelist = mergelist_tools.gen_mergelist_from_objects(obj_dict)
             zf.writestr("mergelist.txt", mergelist)
 
     def delete_all_overlaycubes(self, nb_processes=4, verbose=False):

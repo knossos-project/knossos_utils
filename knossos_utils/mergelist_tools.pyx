@@ -9,6 +9,7 @@ import numpy as np
 cimport numpy as np
 from cython.operator cimport dereference
 from libcpp cimport bool
+from libcpp.pair cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.unordered_set cimport unordered_set
 from libcpp.vector cimport vector
@@ -129,12 +130,15 @@ def gen_mergelist_from_segmentation(np.ndarray[np.uint64_t, ndim=3] segmentation
 
 
 @cython.boundscheck(False)
-def gen_mergelist_from_objects(unordered_set[np.uint64_t] sub_objects, unordered_map[np.uint64_t, vector[np.uint64_t]] subobj_positions):
+def gen_mergelist_from_objects(unordered_map[np.uint64_t, pair[unordered_set[np.uint64_t], vector[np.uint64_t]]] objects):
     new_mergelist = ""
-    for sub_obj in sub_objects:
-        new_mergelist += "{0} 0 0 {0}".format(sub_obj)
-        coord = subobj_positions[sub_obj]
-        new_mergelist += "\n{0} {1} {2}\n\n\n".format(coord[0], coord[1], coord[2])
+    for obj in objects:
+        sub_obj_str = ""
+        for subobj_id in obj.second.first:
+            sub_obj_str += "{} ".format(subobj_id)
+        new_mergelist += "{} 0 0 {}\n".format(obj.first, sub_obj_str[:-1]) # remove trailing white space
+        coord = obj.second.second
+        new_mergelist += "{} {} {}\n\n\n".format(coord[0], coord[1], coord[2])
     return new_mergelist
 
 
