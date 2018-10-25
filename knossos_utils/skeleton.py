@@ -774,26 +774,26 @@ class SkeletonAnnotation:
         :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
         """
         edges_copy = self.edges.copy()
-        for src_node in edges_copy:
-            for trg_node in edges_copy[src_node]:
+        for src_node, targets in edges_copy.items():
+            for trg_node in targets:
                 distance = src_node.distance_scaled(trg_node)
                 if distance < max_node_dist_scaled:
                     continue
 
                 self.removeEdge(src_node, trg_node)
                 # number of nodes to be added along this edge
-                num_interpolation_nodes = math.floor(distance / max_node_dist_scaled)
+                num_interpolation_nodes = int(math.floor(distance / max_node_dist_scaled))
 
                 src_coords = np.array(src_node.getCoordinate())
                 trg_coords = np.array(trg_node.getCoordinate())
                 direction_vec = trg_coords - src_coords
-                direction_vec = direction_vec / np.linalg.norm(direction_vec) # normalize
+                direction_vec = direction_vec / distance # normalize
                 last_node = src_node
                 for i in range(1, num_interpolation_nodes + 2):
-                    c = src_coords + np.round(direction_vec * i)
-                    if np.all(c >= trg_coords): continue
+                    c = src_coords + np.ceil(direction_vec * i)
+                    if np.linalg.norm(c - src_coords) > distance: break
                     new_node = SkeletonNode()
-                    new_node.from_scratch(self, c[0], c[1], c[2])
+                    new_node.setCoordinate(c)
                     self.addNode(new_node)
                     self.addEdge(last_node, new_node)
                     last_node = new_node
