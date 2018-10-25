@@ -579,11 +579,14 @@ class KnossosDataset(object):
             else:
                 try:
                     match = re.search(r'(?P<key>[A-Za-z _]+)'
-                                      r'((?P<numeric_value>[0-9\.]+)'
-                                      r'|"(?P<string_value>[A-Za-z0-9._/-]+)");',
+                                      r'((((?P<numeric_value>[0-9\.]+)'
+                                      r'|"(?P<string_value>[A-Za-z0-9._/-]+)");)'
+                                      r'|(?P<empty_value>;))',
                                       line).groupdict()
 
-                    if match['string_value']:
+                    if match['empty_value']:
+                        val = True
+                    elif match['string_value']:
                         val = match['string_value']
                     elif '.' in match['numeric_value']:
                         val = float(match['numeric_value'])
@@ -610,12 +613,13 @@ class KnossosDataset(object):
         self._number_of_cubes = \
             np.array(np.ceil(self.boundary.astype(np.float) /
                              self.cube_shape), dtype=np.int)
-        if 'compression_ratio ' not in parsed_dict or parsed_dict['compression_ratio '] == 0:
-            self._cube_type = KnossosDataset.CubeType.RAW
-            self._raw_ext = "raw"
-        else:
+
+        if 'png' in parsed_dict:
             self._cube_type = KnossosDataset.CubeType.COMPRESSED
-            self._raw_ext = "jpg"
+            self._raw_ext = 'png'
+        else:
+            self._cube_type = KnossosDataset.CubeType.RAW
+            self._raw_ext = 'raw'
 
     def initialize_from_knossos_path(self, path, fixed_mag=None, http_max_tries=10,
                                      use_abs_path=False, verbose=False, cache_size=0):
