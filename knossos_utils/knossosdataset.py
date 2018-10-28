@@ -1942,12 +1942,13 @@ class KnossosDataset(object):
                         os.makedirs(folder_path+"block")    # Semaphore --------
                         break
                     except:
-                        if time.time() - \
-                                os.stat(folder_path+"block").st_mtime > 5:
-                            os.rmdir(folder_path+"block")
-                            os.makedirs(folder_path+"block")
-                            break
-                        time.sleep(1)
+                        if time.time() - os.stat(folder_path+"block").st_mtime <= 5:
+                            time.sleep(1)
+                        else:
+                            try:
+                                os.rmdir(folder_path+"block")
+                            except FileNotFoundError:
+                                pass
 
                 if not overwrite:
                     mask = np.zeros(self.cube_shape, dtype=datatype)
