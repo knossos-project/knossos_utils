@@ -1929,8 +1929,13 @@ class KnossosDataset(object):
 
             if kzip_path is None:
 
-                if not os.path.exists(folder_path):
-                    os.makedirs(folder_path)
+                while True:
+                    try:
+                        os.makedirs(folder_path, exist_ok=True)
+                        break
+                    except PermissionError: # sometimes happens via sshfs with multiple workers
+                        time.sleep(1)
+                        pass
 
                 while True:
                     try:
