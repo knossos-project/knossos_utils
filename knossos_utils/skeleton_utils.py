@@ -1149,12 +1149,14 @@ class KDtree:
         # This function was written to replace queryNN which is still kept
         # for backwards compatibility
         dists, obj_lookup_IDs = self.tree.query(np.array(coords), k=k)
+        if len(obj_lookup_IDs) == 1:
+            obj_lookup_IDs = obj_lookup_IDs[0]
         try:
             if not return_dists:
                 return [self.lookup[ID] for ID in obj_lookup_IDs.tolist()]
             else:
                 return [self.lookup[ID] for ID in obj_lookup_IDs.tolist()],dists
-        except AttributeError:
+        except TypeError:
             if not return_dists:
                 return self.lookup[obj_lookup_IDs]
             else:
@@ -2006,9 +2008,7 @@ def nx_graph_to_annotation(G, scaling=None):
 
     for cur_n in G.nodes():
         x, y, z = cur_n.getCoordinate()
-        cur_n_copy = SkeletonNode()
-        cur_n_copy.from_scratch(a, x, y, z, ID=cur_n.ID)
-        cur_n_copy.data = cur_n.data
+        cur_n_copy = copy.copy(cur_n)
         new_node_mapping[cur_n] = cur_n_copy
         a.addNode(cur_n_copy)
 

@@ -17,21 +17,23 @@
 #
 ################################################################################
 
-from xml.dom import minidom
-import xml.etree.cElementTree as cElementTree
-import math
-import copy
 from collections import deque
-import tempfile
-import unicodedata
+import copy
+import h5py
 import hashlib
-import struct
+import itertools
+import math
+from multiprocessing import Pool
 import numpy as np
 import h5py
 import os
 import shutil
+import struct
+import tempfile
+import unicodedata
 import zipfile
-from multiprocessing import Pool
+from xml.dom import minidom
+import xml.etree.cElementTree as cElementTree
 
 
 def euclidian_distance(c1, c2):
@@ -55,15 +57,16 @@ class Skeleton:
         # Uninitialized Mandatory
         self.annotations = set()
         # Uninitialized Optional
+        self.created_version = None
+        self.last_saved_version = None
         self.skeleton_time = None
         self.skeleton_idletime = None
         self.skeleton_comment = None
-        self.scaling = None
+        self.scaling = [1,1,1]
         self.branchNodes = [] # list of node IDs
         self.active_node = None
         self.edit_position = None
         self.experiment_name = None
-        self.version = '4.1.2'
         self.dataset_path = None
         self.movement_area_min = None
         self.movement_area_max = None
@@ -82,7 +85,7 @@ class Skeleton:
         annotation.nodeBaseID : lowest node id in this annotation
         """
         cnt_a = 1
-        cnt_all_nodes = 1
+        cnt_all_nodes = 0
         for a in self.annotations:
             a.annotation_ID = cnt_a # value currently unused - a nice sign of
             # the clusterfuck
@@ -104,7 +107,7 @@ class Skeleton:
         self.skeleton_idletime = 0
 
     def getAnnotations(self):
-        return sorted(self.annotations, key=len)
+        return self.annotations
 
     def getNodes(self):
         all_nodes_lst = []
@@ -141,6 +144,7 @@ class Skeleton:
         Add SkeletonAnnotation annotation to the skeleton. Node IDs in
         annotation may not be preserved.
         """
+
         high_id = self.get_high_node_id()
         annotation.nodeBaseID = high_id + 1
         if annotation.annotation_ID is None:
@@ -177,31 +181,39 @@ class Skeleton:
                 root_set = False
                 for src_n in e_dict.keys():
                     src_id = src_n.getUniqueID()
-                    if len(e_dict[src_n]) > 0:
-                        for trg_n in e_dict[src_n]:
-                            trg_x = trg_n.getCoordinate()[0]
-                            trg_y = trg_n.getCoordinate()[1]
-                            trg_z = trg_n.getCoordinate()[2]
-                            trg_r = trg_n.getDataElem('radius')
-                            trg_id = trg_n.getUniqueID()
 
-                            n_str = '{0:d} 0 {1:f} {2:f} {3:f} {4:f} {' \
-                                    '5:d}'.format(
-                                trg_id, trg_x, trg_y, trg_z, trg_r, src_id)
-
-                            trg_file.write(n_str + '\n')
-                    if (len(rev_edges[anno_index][src_n]) == 0) and not \
-                            root_set:
-                        # set the root
+                    nodes = [e_dict[src_n]]
+                    if (len(rev_edges[anno_index][src_n]) == 0) and not root_set:
                         root_set = True
-                        trg_x = src_n.getCoordinate()[0]
-                        trg_y = src_n.getCoordinate()[1]
-                        trg_z = src_n.getCoordinate()[2]
-                        trg_r = src_n.getDataElem('radius')
-                        trg_id = src_n.getUniqueID()
+                        # add root node to iteration
+                        nodes = [[src_n], e_dict[src_n]]
 
-                        n_str = '{0:d} 0 {1:f} {2:f} {3:f} {4:f} {5:d}'.format(
-                            trg_id, trg_x, trg_y, trg_z, trg_r, -1)
+                    for trg_n in itertools.chain(*nodes):
+                        trg_x = trg_n.getCoordinate()[0]
+                        trg_y = trg_n.getCoordinate()[1]
+                        trg_z = trg_n.getCoordinate()[2]
+                        trg_r = trg_n.getDataElem('radius')
+                        trg_id = trg_n.getUniqueID()
+
+                        trg_type = {
+                            'undefined': 0,
+                            'soma': 1,
+                            'axon': 2,
+                            'dendrite': 3,
+                            'basal dendrite': 3,
+                            '(basal) dendrite': 3,
+                            'apical dendrite': 4,
+                            'fork point': 5,
+                            'end point': 6,
+                            'custom': 7,
+                        }.get(trg_n.getComment(), 0)
+
+                        if trg_n == src_n:
+                            src_id = -1 # root node
+                        else:
+                            src_id = src_n.getUniqueID()
+                        n_str = '{} {} {} {} {} {} {}'.format(
+                            trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
 
                         trg_file.write(n_str + '\n')
 
@@ -294,18 +306,18 @@ class Skeleton:
             self.scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
         else:
             if isinstance(scaling, str):
-                self.scaling = None
+                self.scaling = [1,1,1]
             else:
                 self.scaling = scaling
 
         try:
             [self.last_saved_version] = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("lastsavedin")[0], [["version", str]])
         except IndexError:
-            self.last_saved_version = '0'
+            self.last_saved_version = None
         try:
             [self.created_version] = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("createdin")[0], [["version", str]])
         except IndexError:
-            self.created_version = '0'
+            self.created_version = None
 
         if read_time:
             if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
@@ -417,11 +429,11 @@ class Skeleton:
         try:
             [self.last_saved_version] = parse_cET(root.find("parameters").find("lastsavedin"), [["version", str]])
         except AttributeError:
-            self.last_saved_version = '0'
+            self.last_saved_version = None
         try:
             [self.created_version] = parse_cET(root.find("parameters").find("createdin"), [["version", str]])
         except AttributeError:
-            self.created_version = '0'
+            self.created_version = None
 
         if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
             # Has SHA256 checksums
@@ -461,7 +473,7 @@ class Skeleton:
             try:
                 [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
                 node_ID_to_node[nodeID + base_id].setComment(comment)
-            except KeyError as e:
+            except KeyError:
                 print('Skipping comment, wrong node ID in comments sections: '
                       '' + str(nodeID))
             except UnicodeEncodeError:
@@ -591,7 +603,7 @@ class Skeleton:
             build_attributes(dataset, [["path", self.dataset_path]])
             parameters.appendChild(dataset)
 
-        if self.scaling is not None:
+        if self.scaling[0] != 1 or self.scaling[1] != 1 or self.scaling[2] != 1:
             scale = doc.createElement("scale")
             build_attributes(scale, [["x", self.scaling[0]], ["y", self.scaling[1]], ["z", self.scaling[2]]])
             parameters.appendChild(scale)
@@ -640,22 +652,19 @@ class Skeleton:
         build_attributes(time, [["ms", 0], ["checksum", integer_checksum(0)]])
         parameters.appendChild(time)
 
-        time = doc.createElement("idleTime")
-        build_attributes(time, [["ms", 0], ["checksum", integer_checksum(0)]])
-        parameters.appendChild(time)
-
         if self.active_node is not None:
             activenode = doc.createElement("activeNode")
             build_attributes(activenode, [["id", self.active_node.getID()]])
             parameters.appendChild(activenode)
 
-        createdInVersion = doc.createElement("createdin")
-        build_attributes(createdInVersion, [["version", self.version]])
-        parameters.appendChild(createdInVersion)
-
-        createdInVersion = doc.createElement("lastsavedin")
-        build_attributes(createdInVersion, [["version", self.version]])
-        parameters.appendChild(createdInVersion)
+        if self.created_version:
+            createdInVersion = doc.createElement("createdin")
+            build_attributes(createdInVersion, [["version", self.created_version]])
+            parameters.appendChild(createdInVersion)
+        if self.last_saved_version:
+            createdInVersion = doc.createElement("lastsavedin")
+            build_attributes(createdInVersion, [["version", self.last_saved_version]])
+            parameters.appendChild(createdInVersion)
 
         comments_elem = doc.createElement("comments")
         annotations_elem.appendChild(comments_elem)
@@ -707,14 +716,14 @@ class Skeleton:
         # Check whether the version string consists of a number or dot separated numbers.
         try:
             int(self.created_version.replace('.', ""))
-        except ValueError:
+        except (AttributeError, ValueError): # Attribute Error: None
             created_version = [0,]
         else:
             created_version = [int(x) for x in self.created_version.split('.')]
 
         try:
             int(self.last_saved_version.replace('.', ""))
-        except ValueError:
+        except (AttributeError, ValueError): # Attribute Error: None
             last_saved_version = [0,]
         else:
             last_saved_version = [int(x) for x in self.last_saved_version.split('.')]
@@ -778,29 +787,27 @@ class SkeletonAnnotation:
         Add interpolated nodes along edges so that no node distance exceeds max_node_dist_scaled.
         :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
         """
-        if self.scaling is None:
-            print('No scaling present. Assuming scaling of 1.')
         edges_copy = self.edges.copy()
-        for src_node in edges_copy:
-            for trg_node in edges_copy[src_node]:
+        for src_node, targets in edges_copy.items():
+            for trg_node in targets:
                 distance = src_node.distance_scaled(trg_node)
                 if distance < max_node_dist_scaled:
                     continue
 
                 self.removeEdge(src_node, trg_node)
                 # number of nodes to be added along this edge
-                num_interpolation_nodes = math.floor(distance / max_node_dist_scaled)
+                num_interpolation_nodes = int(math.floor(distance / max_node_dist_scaled))
 
                 src_coords = np.array(src_node.getCoordinate())
                 trg_coords = np.array(trg_node.getCoordinate())
                 direction_vec = trg_coords - src_coords
-                direction_vec = direction_vec / np.linalg.norm(direction_vec) # normalize
+                direction_vec = direction_vec / distance # normalize
                 last_node = src_node
                 for i in range(1, num_interpolation_nodes + 2):
-                    c = src_coords + np.round(direction_vec * i)
-                    if np.all(c >= trg_coords): continue
+                    c = src_coords + np.ceil(direction_vec * i)
+                    if np.linalg.norm(c - src_coords) > distance: break
                     new_node = SkeletonNode()
-                    new_node.from_scratch(self, c[0], c[1], c[2])
+                    new_node.setCoordinate(c)
                     self.addNode(new_node)
                     self.addEdge(last_node, new_node)
                     last_node = new_node
@@ -814,7 +821,7 @@ class SkeletonAnnotation:
         self.edges = {}
         self.reverse_edges = {}
         self.nodeBaseID = 1 # this is not the smallest ID found in the annotation but an offset that needs to be added to every node ID to obtain skeleton-wide unique IDs.
-        self.scaling = None
+        self.scaling = [1,1,1]
         self.filename = None
         # Optional
         self.annotation_ID = None
@@ -875,7 +882,7 @@ class SkeletonAnnotation:
         self.resetObject()
         self.annotation_ID = parse_attributes(annotation_elem, [["id", int],])[0]
         self.setNodeBaseID(base_id)
-        if "visible" in annotation_elem.attributes:
+        if "visible" in annotation_elem.attributes.keys():
             self.visible = parse_attributes(annotation_elem, [["visible", str],])[0]
         else:
             self.visible = True
@@ -1232,7 +1239,7 @@ class SkeletonNode:
 
         new = SkeletonNode()
         new.__dict__.update(self.__dict__)
-        new.ID = None
+        new.ID = self.ID
         new.data = {}
         new.data.update(self.data)
         new.metadata = {}
@@ -1260,13 +1267,7 @@ class SkeletonNode:
 
         self.ID = ID
 
-        self.x = self.x_scaled = x
-        self.y = self.y_scaled = y
-        self.z = self.z_scaled = z
-        if self.annotation.scaling is not None:
-            self.x_scaled *= self.annotation.scaling[0]
-            self.y_scaled *= self.annotation.scaling[1]
-            self.z_scaled *= self.annotation.scaling[2]
+        self.x, self.y, self.z = x, y, z
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)
@@ -1282,17 +1283,7 @@ class SkeletonNode:
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]])
         self.ID = ID
-        self.x = x
-        self.y = y
-        self.z = z
-        try:
-            self.x_scaled = self.x * self.annotation.scaling[0]
-            self.y_scaled = self.y * self.annotation.scaling[1]
-            self.z_scaled = self.z * self.annotation.scaling[2]
-        except TypeError:
-            self.x_scaled = self.x
-            self.y_scaled = self.y
-            self.z_scaled = self.z
+        self.x, self.y, self.z = x, y, z
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)
@@ -1307,14 +1298,7 @@ class SkeletonNode:
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]], ret_all_attr=True)
         self.ID = ID
-
-        self.x = x
-        self.y = y
-        self.z = z
-
-        self.x_scaled = self.x * self.annotation.scaling[0]
-        self.y_scaled = self.y * self.annotation.scaling[1]
-        self.z_scaled = self.z * self.annotation.scaling[2]
+        self.x, self.y, self.z = x, y, z
 
         self.setDataElem("inVp", inVp)
         self.setDataElem("radius", radius)
@@ -1374,13 +1358,14 @@ class SkeletonNode:
         self.y = coord[1]
         self.z = coord[2]
 
-        if self.annotation and self.annotation.scaling:
+    def getCoordinate_scaled(self):
+        try:
+            return [self.x_scaled, self.y_scaled, self.z_scaled]
+        except AttributeError:
             self.x_scaled = self.x * self.annotation.scaling[0]
             self.y_scaled = self.y * self.annotation.scaling[1]
             self.z_scaled = self.z * self.annotation.scaling[2]
-
-    def getCoordinate_scaled(self):
-        return [self.x_scaled, self.y_scaled, self.z_scaled]
+            return [self.x_scaled, self.y_scaled, self.z_scaled]
 
     def getID(self):
         # If no corresponding annotation and no ID is set in this
