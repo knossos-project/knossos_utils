@@ -246,6 +246,38 @@ class Skeleton:
 
         return self
 
+    def from_pyknossos_annotation(self, filename, scaling=(1,1,1)):
+        def get_time(nml_string):
+            # pyk nmls don’t have checksum, which fromNmlString expects to read the time
+            try:
+                doc = minidom.parseString(nml_string)
+                time_elem = doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0]
+                return int(time_elem.attributes["ms"].value)
+            except IndexError:
+                return 0
+
+        self.scaling = scaling # do this here so new annotations receive scaling too
+        if filename.endswith('nmx'):
+            times = []
+            with zipfile.ZipFile(filename, 'r') as zf:
+                for file in zf.namelist():
+                    if not file.endswith('.nml'):
+                        continue
+                    nml_content = zf.read(file)
+                    self.fromNmlString(nml_content, read_time=False)
+                    times.append(get_time(nml_content))
+            self.skeleton_time = max(times) # in nmx
+
+        else: # nml
+            with open(filename, 'r') as f:
+                nml_content = f.read()
+                self.fromNmlString(nml_content, read_time=False)
+                self.skeleton_time = get_time(nml_content)
+
+        for node in self.getNodes():
+            node.x, node.y, node.z = node.x//scaling[0], node.y//scaling[1], node.z//scaling[2]
+            node.data["radius"] = node.data["radius"]/scaling[0]
+
     def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         try:
             [self.experiment_name] = parse_attributes(
