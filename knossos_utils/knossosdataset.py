@@ -2054,7 +2054,11 @@ class KnossosDataset(object):
 
                 while True:
                     try:
-                        os.makedirs(folder_path, exist_ok=True)
+                        try:
+                            os.makedirs(folder_path, exist_ok=True)
+                        except TypeError:
+                            if not os.path.isdir(folder_path):
+                                os.makedirs(folder_path)
                         break
                     except PermissionError: # sometimes happens via sshfs with multiple workers
                         time.sleep(1)
