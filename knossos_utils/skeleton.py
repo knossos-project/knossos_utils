@@ -1270,11 +1270,11 @@ class SkeletonNode:
              ["time", int], ["id", int], ["radius", float]])
         self.ID = ID
         self.x, self.y, self.z = x, y, z
-
-        self.setDataElem("inVp", inVp)
-        self.setDataElem("radius", radius)
-        self.setDataElem("inMag", inMag)
-        self.setDataElem("time", time)
+        # KNOSSOS defaults
+        self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
+        self.setDataElem("radius", radius or 1.5)
+        self.setDataElem("inMag", inMag or 0)
+        self.setDataElem("time", time or 0)
         return self
 
     def fromNmlcTree(self, annotation, node_elem):
@@ -1285,11 +1285,11 @@ class SkeletonNode:
              ["time", int], ["id", int], ["radius", float]], ret_all_attr=True)
         self.ID = ID
         self.x, self.y, self.z = x, y, z
-
-        self.setDataElem("inVp", inVp)
-        self.setDataElem("radius", radius)
-        self.setDataElem("inMag", inMag)
-        self.setDataElem("time", time)
+        # KNOSSOS defaults
+        self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
+        self.setDataElem("radius", radius or 1.5)
+        self.setDataElem("inMag", inMag or 1)
+        self.setDataElem("time", time or 0)
 
         for key, val in additional_attr.items():
             self.setDataElem(key, val)
