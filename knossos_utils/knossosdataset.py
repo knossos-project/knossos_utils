@@ -1398,7 +1398,7 @@ class KnossosDataset(object):
             if verbose:
                 _print("Shape was verified")
 
-        if np.any(mirror_overlap != 0):
+        if np.any(mirror_overlap):
             if not zyx_mode:
                 if mirror_oob:
                     output = np.lib.pad(output, mirror_overlap, 'symmetric')
