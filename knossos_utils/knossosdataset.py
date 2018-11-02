@@ -1232,7 +1232,7 @@ class KnossosDataset(object):
                                 values = np.fromstring(
                                     self.module_wide["snappy"].decompress(
                                         zf.read(os.path.basename(path))),
-                                    dtype=datatype)
+                                    dtype=np.uint64).astype(datatype)
                                 valid_values = True
                         except:
                             if verbose:
