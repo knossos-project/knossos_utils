@@ -2087,7 +2087,7 @@ class KnossosDataset(object):
         for mag in mags:
             mag_i = mag-1 if self._ordinal_mags else int(np.log2(mag))
             data_mag_i = data_mag-1 if self._ordinal_mags else int(np.log2(data_mag))
-            ratio = 3 * [float(mag) / data_mag] if len(self.scales) <= 1 else (self.scales[mag_i] / self.scales[data_mag_i])
+            ratio = (self.scales[mag_i] / self.scales[data_mag_i]) if self._ordinal_mags else 3 * [float(mag) / data_mag]
             inv_mag_ratio = 1.0/np.array(ratio)
             if fast_downsampling and all(mag_ratio.is_integer() for mag_ratio in ratio):
                 data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])], dtype=datatype)
