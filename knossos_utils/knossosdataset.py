@@ -74,10 +74,10 @@ def our_glob(s):
     return l
 
 
-def _print(s):
+def _print(*args, **kwargs):
     global module_wide
     if not module_wide["noprint"]:
-        print(s)
+        print(*args, **kwargs)
     return
 
 
@@ -1234,10 +1234,9 @@ class KnossosDataset(object):
                                         zf.read(os.path.basename(path))),
                                     dtype=np.uint64).astype(datatype)
                                 valid_values = True
-                        except:
+                        except Exception as e:
                             if verbose:
-                                _print("Cube does not exist, cube with zeros "
-                                       "only assigned")
+                                _print(e, "cube with zeros only assigned")
 
                 if valid_values:
                     if zyx_mode:
@@ -1251,14 +1250,13 @@ class KnossosDataset(object):
                     else:
                         try:
                             values = values.reshape(self.cube_shape).T
-                        except:
+                        except Exception as e:
                             # _print('Exception in reshape: values.shape {0}'.
                             #        format(values.shape))
                             # _print('Exception in reshape:self.cube_shape {0}'.
                             #        format(self.cube_shape))
                             # if verbose:
-                            _print("Cube is invalid, cube with zeros "
-                                   "only assigned")
+                            _print(e, "cube with zeros only assigned")
                             _print(c)
                             values = np.zeros(self.cube_shape)
 
