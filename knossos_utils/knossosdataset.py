@@ -303,8 +303,7 @@ class KnossosDataset(object):
         if self.in_http_mode:
             for mag_test_nb in range(10):
                 mag_num = 2 ** mag_test_nb
-                mag_folder = self.http_url + self.name_mag_folder + str(mag_num)
-
+                mag_folder = "{}/{}{}".format(self.http_url, self.name_mag_folder, mag_num)
                 for tries in range(10):
                     try:
                         request = requests.get(mag_folder,
@@ -511,6 +510,12 @@ class KnossosDataset(object):
             key = tokens[0]
             if key == "_BaseName":
                 self._experiment_name = tokens[1]
+            elif key == "_BaseURL":
+                self._http_url = tokens[1]
+            elif key == "_UserName":
+                self._http_user = tokens[1]
+            elif key == "_Password":
+                self._http_passwd = tokens[1]
             elif key == "_ServerFormat":
                 self._ordinal_mags = tokens[1] != "knossos";
             elif key == "_DataScale":
@@ -1107,11 +1112,8 @@ class KnossosDataset(object):
                         values
             else:
                 if from_raw:
-                    path = self.knossos_path + \
-                           self.name_mag_folder + \
-                           "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                           self.experiment_name + \
-                           "_mag%d_x%04d_y%04d_z%04d.%s" % (mag, c[0], c[1], c[2], self._raw_ext)
+                    path = "{0}/{1}{2}/x{3:04}/y{4:04}/z{5:04}/{6}_mag{2}_x{3:04}_y{4:04}_z{5:04}.{7}"\
+                           .format(self.knossos_path, self.name_mag_folder, mag, c[0], c[1], c[2], self.experiment_name, self._raw_ext)
 
                     if self.in_http_mode:
                         tries = 0
@@ -1121,9 +1123,8 @@ class KnossosDataset(object):
                                                        auth=self.http_auth,
                                                        timeout=60)
                                 request.raise_for_status()
-                                values = np.fromstring(request.content,
-                                                       dtype=datatype)
-
+                                values = np.fromstring(request.content, dtype=datatype) if self._raw_ext == "raw"\
+                                         else imageio.imread(request.content)
                                 try:
                                     values.reshape(self.cube_shape)
                                     valid_values = True
@@ -1272,7 +1273,7 @@ class KnossosDataset(object):
             raise Exception("Dataset is not initialized")
 
         available_mags = self.mag
-        if not mag in available_mags:
+        if mag not in available_mags:
             raise Exception("Requested mag {0} not available, only mags {1} are "
                             "available.".format(mag, available_mags))
 
