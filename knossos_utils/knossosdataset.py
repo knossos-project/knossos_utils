@@ -2623,5 +2623,5 @@ def _downsample_kd_thread(args):
         datatype = np.uint64
     kd.from_matrix_to_cubes(offset, data_mag=orig_mag, mags=target_mags,
                             data=data, as_raw=as_raw, nb_threads=1,
-                            overwrite=True, datatype=datatype, verbose=False,
+                            overwrite=False, datatype=datatype, verbose=False,
                             fast_downsampling=fast_downsampling)

@@ -102,19 +102,19 @@ def create_composite_img(labels, background, max_alpha_raw=0.8, max_alpha_ol=1.0
     :param cvals:
     :return:
     """
+    unique_labels = np.unique(labels)
     if cvals is None:
         cvals = {}
+        np.random.seed(0)
+        for unique_label in unique_labels:
+            if unique_label == 0:
+                cvals[unique_label] = np.array([0, 0, 0, 0], dtype=np.uint8)
+            else:
+                cvals[unique_label] = np.array([np.random.rand() * 255 for _ in range(3)]
+                                               + [max_alpha_ol * 255], dtype=np.uint8)
     else:
         assert isinstance(cvals, dict)
 
-    np.random.seed(0)
-    unique_labels = np.unique(labels)
-    for unique_label in unique_labels:
-        if unique_label == 0:
-            cvals[unique_label] = np.array([0, 0, 0, 0], dtype=np.uint8)
-        else:
-            cvals[unique_label] = np.array([np.random.rand() * 255 for _ in range(3)]
-                                           + [max_alpha_ol * 255], dtype=np.uint8)
     if len(unique_labels) == 0:
         print("No labels detected! No overlay image created")
         if len(background.shape) == 3:
