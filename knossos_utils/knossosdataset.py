@@ -391,6 +391,13 @@ class KnossosDataset(object):
         else:
             return None
 
+    def iter(self, offset=(0, 0, 0), end=None, step=(512, 512, 512)):
+        end = np.minimum(end or self.boundary, self.boundary)
+        step = np.minimum(step, end)
+        return ((x, y, z) for x in range(offset[0], end[0], step[0])
+                          for y in range(offset[1], end[1], step[1])
+                          for z in range(offset[2], end[2], step[2]))
+
     def set_channel(self, channel):
         if channel == 'implicit':
             return
