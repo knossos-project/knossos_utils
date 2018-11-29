@@ -1984,7 +1984,7 @@ class KnossosDataset(object):
                                     dtype=np.uint64)
                         cube[indices] = existing_cube[indices]
 
-                if not np.sum(cube) == 0:
+                if np.any(cube):
                     if as_raw:
                         if self._raw_ext == "raw":
                             f = open(path, "wb")
