@@ -186,10 +186,12 @@ class Skeleton:
                         nodes = [[src_n], e_dict[src_n]]
 
                     for trg_n in itertools.chain(*nodes):
-                        trg_x = trg_n.getCoordinate()[0]
-                        trg_y = trg_n.getCoordinate()[1]
-                        trg_z = trg_n.getCoordinate()[2]
-                        trg_r = trg_n.getDataElem('radius')
+                        # µm unit
+                        trg_x, trg_y, trg_z = trg_n.getCoordinate_scaled()
+                        trg_x /= 1000
+                        trg_y /= 1000
+                        trg_z /= 1000
+                        trg_r = trg_n.getDataElem('radius')*trg_n.getCoordinate_scaled()[0]/1000
                         trg_id = trg_n.getUniqueID()
 
                         trg_type = {
