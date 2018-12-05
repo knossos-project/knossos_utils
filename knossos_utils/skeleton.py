@@ -155,69 +155,64 @@ class Skeleton:
         self.movement_area_min = np.array(area_min, dtype=np.int)
         self.movement_area_max = np.array(area_max, dtype=np.int)
 
-    def toSWC(self, path=''):
+    def toSWC(self, basename, dest_folder=''):
         """
         SWC is a standard skeleton format, very similar to nml, however,
         it is edge-centric instead of node-centric. Some spec can be found here:
         http://research.mssm.edu/cnic/swc.html
         SWC can also be read by Amira
-        :param path: str
+        :param basename: str
+        :param dest_folder: str
         :return:
         """
-        with open(path, 'w') as trg_file:
-            edges = []
-            rev_edges = []
-            for a in self.getAnnotations():
-                # after this, edges is a list of dictionaries containing the
-                # edges: key: node, value: node obj
-                edges.append(a.getEdges())
-                rev_edges.append(a.getReverseEdges())
+        trg_types = {
+                        'undefined': 0,
+                        'soma': 1,
+                        'axon': 2,
+                        'dendrite': 3,
+                        'basal dendrite': 3,
+                        '(basal) dendrite': 3,
+                        'apical dendrite': 4,
+                        'fork point': 5,
+                        'end point': 6,
+                        'custom': 7,
+                    }
+        def write_line(file, node, source=None):
+            trg_x, trg_y, trg_z = map(lambda coord: coord/1000, node.getCoordinate_scaled()) # µm unit
+            trg_r = node.getDataElem('radius')*node.annotation.scaling[0]/1000
+            trg_id = node.getUniqueID()
+            trg_type =  trg_types.get(node.getComment(), 0)
+            src_id = -1 if source is None else source.getUniqueID()
+            n_str = '{} {} {} {} {} {} {}'.format(
+                trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
+            file.write(n_str + '\n')
 
-            # find a root
-            for anno_index, e_dict in enumerate(edges):
-                root_set = False
-                for src_n in e_dict.keys():
-                    src_id = src_n.getUniqueID()
+        for idx, annotation in enumerate(self.annotations):
+            idx_part = "_{}".format(idx) if len(self.annotations) > 1 else ""
+            with open("{}/{}{}.swc".format(dest_folder, basename, idx_part), 'w') as trg_file:
+                # find root
+                roots = []
+                for src_node in annotation.getEdges():
+                    if len(annotation.getReverseEdges()[src_node]) == 0:
+                        roots.append(src_node)
+                root = roots[0] if len(roots) > 0 else list(annotation.getNodes())[0] # any node as root
+                write_line(trg_file, root)
 
-                    nodes = [e_dict[src_n]]
-                    if (len(rev_edges[anno_index][src_n]) == 0) and not root_set:
-                        root_set = True
-                        # add root node to iteration
-                        nodes = [[src_n], e_dict[src_n]]
-
-                    for trg_n in itertools.chain(*nodes):
-                        # µm unit
-                        trg_x, trg_y, trg_z = trg_n.getCoordinate_scaled()
-                        trg_x /= 1000
-                        trg_y /= 1000
-                        trg_z /= 1000
-                        trg_r = trg_n.getDataElem('radius')*trg_n.getCoordinate_scaled()[0]/1000
-                        trg_id = trg_n.getUniqueID()
-
-                        trg_type = {
-                            'undefined': 0,
-                            'soma': 1,
-                            'axon': 2,
-                            'dendrite': 3,
-                            'basal dendrite': 3,
-                            '(basal) dendrite': 3,
-                            'apical dendrite': 4,
-                            'fork point': 5,
-                            'end point': 6,
-                            'custom': 7,
-                        }.get(trg_n.getComment(), 0)
-
-                        if trg_n == src_n:
-                            src_id = -1 # root node
-                        else:
-                            src_id = src_n.getUniqueID()
-                        n_str = '{} {} {} {} {} {} {}'.format(
-                            trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
-
-                        trg_file.write(n_str + '\n')
-
-                if not root_set:
-                    print('Warning, no root set.')
+                # traverse from there
+                next_nodes = deque([root])
+                visited = set()
+                while len(next_nodes) > 0:
+                    next_node = next_nodes.popleft()
+                    visited.add(next_node)
+                    # ignores saved directions, because they could be incorrect. Instead use traversal direction.
+                    for target in itertools.chain(annotation.getEdges()[next_node], annotation.getReverseEdges()[next_node]):
+                        if target in visited: continue
+                        next_nodes.append(target)
+                        write_line(trg_file, target, next_node)
+            if len(roots) == 0:
+                print('Warning, no root found in tree {}. Selected random node as root {}'.format(annotation.annotation_ID), root)
+            elif len(roots) > 1:
+                print("Found multiple roots. Set as root: {}. Handled others as ordinary nodes: {}".format(root, roots[1:]))
 
     def fromSWC(self, path=''):
         """
