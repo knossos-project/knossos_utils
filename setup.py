@@ -3,7 +3,7 @@
 import os
 import sys
 import setuptools
-from setuptools import setup, Extension
+from setuptools import find_packages, setup, Extension
 from pkg_resources import parse_version
 
 
@@ -56,7 +56,7 @@ setup(
     url="https://github.com/knossos-project/knossos_utils",
     license="GPL",
     long_description=read("README.md"),
-    packages=["knossos_utils"],
+    packages=find_packages(),
     data_files=[("", ["LICENSE"])],
     ext_modules=extensions,
     setup_requires=[
