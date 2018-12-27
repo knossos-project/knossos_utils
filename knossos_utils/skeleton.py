@@ -272,7 +272,7 @@ class Skeleton:
                 self.skeleton_time = get_time(nml_content)
 
         for node in self.getNodes():
-            node.x, node.y, node.z = node.x//scaling[0], node.y//scaling[1], node.z//scaling[2]
+            node.x, node.y, node.z = int(round(node.x/scaling[0])), int(round(node.y/scaling[1])), int(round(node.z/scaling[2]))
             node.data["radius"] = node.data["radius"]/scaling[0]
 
     def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False, read_time=True):
