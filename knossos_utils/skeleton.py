@@ -350,7 +350,7 @@ class Skeleton:
             self.created_version = None
 
         if read_time:
-            if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
+            if Version(self.get_version()['saved']) >= Version(("3", "4", "2")):
                 # Has SHA256 checksums
                 if self.skeleton_time is not None and self.skeleton_idletime is not None:
                     if skeleton_time_checksum != integer_checksum(self.skeleton_time) or \
@@ -465,7 +465,7 @@ class Skeleton:
         except AttributeError:
             self.created_version = None
 
-        if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
+        if Version(self.get_version()['saved']) >= Version(("3", "4", "2")):
             # Has SHA256 checksums
             if self.skeleton_time:
                 if skeleton_time_checksum != integer_checksum(self.skeleton_time):
@@ -718,7 +718,7 @@ class Skeleton:
     def getSkeletonTime(self):
         if self.skeleton_time == None:
             return None
-        if Version(self.get_version()['saved']) == Version((3, 4)):
+        if Version(self.get_version()['saved']) == Version(("3", "4")):
             return self.skeleton_time ^ 1347211871
         else:
             return self.skeleton_time
@@ -726,39 +726,29 @@ class Skeleton:
     def getIdleTime(self):
         if self.skeleton_idletime == None:
             return None
-        if Version(self.get_version()['saved']) == Version((3, 4)):
+        if Version(self.get_version()['saved']) == Version(("3", "4")):
             return self.skeleton_idletime ^ 1347211871
         else:
             return self.skeleton_idletime
 
     def get_version(self):
         # Check whether the version string consists of a number or dot separated numbers.
-        try:
-            int(self.created_version.replace('.', ""))
-        except (AttributeError, ValueError): # Attribute Error: None
-            created_version = [0,]
-        else:
-            created_version = [int(x) for x in self.created_version.split('.')]
-
-        try:
-            int(self.last_saved_version.replace('.', ""))
-        except (AttributeError, ValueError): # Attribute Error: None
-            last_saved_version = [0,]
-        else:
-            last_saved_version = [int(x) for x in self.last_saved_version.split('.')]
+        created_version = [x for x in self.created_version.split('.')]
+        last_saved_version = [x for x in self.last_saved_version.split('.')]
 
         if self.created_version == '4.0 Beta 2':
-            created_version = [3, 99, 2]
+            created_version = ["3", "99", "2"]
         if self.created_version == '4.1 Alpha':
-            created_version = [4, 0, 99, 2]
+            created_version = ["4", "0", "99", "2"]
         if self.created_version == '4.1 Pre Alpha':
-            created_version = [4, 0, 99, 1]
+            created_version = ["4", "0", "99", "1"]
         if self.last_saved_version == '4.0 Beta 2':
-            last_saved_version = [3, 99, 2]
+            last_saved_version = ["3", "99", "2"]
         if self.last_saved_version == '4.1 Alpha':
-            last_saved_version = [4, 0, 99, 2]
+            last_saved_version = ["4", "0", "99", "2"]
         if self.last_saved_version == '4.1 Pre Alpha':
-            last_saved_version = [4, 0, 99, 1]
+            last_saved_version = ["4", "0", "99", "1"]
+
         return {'created': created_version, 'saved': last_saved_version}
     #
     def set_scaling(self, scaling):
@@ -2034,9 +2024,9 @@ def compare_version(v1, v2):
     v2 = list(v2)
 
     if len(v1) > len(v2):
-        v2.extend([0] * (len(v1) - len(v2)))
+        v2.extend(["0"] * (len(v1) - len(v2)))
     elif len(v1) < len(v2):
-        v1.extend([0] * (len(v2) - len(v1)))
+        v1.extend(["0"] * (len(v2) - len(v1)))
 
     v1v2 = [(v1[x], v2[x]) for (x, y) in enumerate(v1)]
 
