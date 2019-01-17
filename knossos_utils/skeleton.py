@@ -310,24 +310,28 @@ class Skeleton:
 
             if try_time_slice_version:
                 # Time slicing version
-                self.skeleton_time, skeleton_time_checksum = parse_attributes(
-                        doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                        [["min", int], ["checksum", str]])
-                if self.skeleton_time is None:
+                try:
                     self.skeleton_time, skeleton_time_checksum = parse_attributes(
                             doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                            [["ms", int], ["checksum", str]])
-                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                        raise Exception("Checksum mismatch")
-                else:
-                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                        raise Exception("Checksum mismatch")
-                    self.skeleton_time = self.skeleton_time * 60 * 1000
-                    skeleton_time_checksum = integer_checksum(self.skeleton_time)
+                            [["min", int], ["checksum", str]])
+                    if self.skeleton_time is None:
+                        self.skeleton_time, skeleton_time_checksum = parse_attributes(
+                                doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
+                                [["ms", int], ["checksum", str]])
+                        if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                            raise Exception("Checksum mismatch")
+                    else:
+                        if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                            raise Exception("Checksum mismatch")
+                        self.skeleton_time = self.skeleton_time * 60 * 1000
+                        skeleton_time_checksum = integer_checksum(self.skeleton_time)
 
-                self.skeleton_idletime = 0
-                idletime_checksum = integer_checksum(0)
-
+                    self.skeleton_idletime = 0
+                    idletime_checksum = integer_checksum(0)
+                except IndexError:
+                    self.skeleton_time = None
+                    self.skeleton_idletime = None
+                    idletime_checksum = integer_checksum(0)
         if use_file_scaling == True:
             self.scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
         else:
