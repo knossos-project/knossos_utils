@@ -155,7 +155,7 @@ class Skeleton:
         self.movement_area_min = np.array(area_min, dtype=np.int)
         self.movement_area_max = np.array(area_max, dtype=np.int)
 
-    def toSWC(self, basename, dest_folder=''):
+    def toSWC(self, basename, px=False, dest_folder=''):
         """
         SWC is a standard skeleton format, very similar to nml, however,
         it is edge-centric instead of node-centric. Some spec can be found here:
@@ -177,11 +177,13 @@ class Skeleton:
                         'end point': 6,
                         'custom': 7,
                     }
+        multiplier = (1, 1, 1) if px else tuple(map(lambda coord: coord/1000, self.scaling))
         def write_line(file, node, source=None):
-            trg_x, trg_y, trg_z = map(lambda coord: coord/1000, node.getCoordinate_scaled()) # µm unit
-            trg_r = node.getDataElem('radius')*node.annotation.scaling[0]/1000
+            trg_x, trg_y, trg_z = map(lambda coord, mult: coord*mult, node.getCoordinate(), multiplier)
+            if not px: print(trg_x, trg_y, trg_z, node.getCoordinate(), multiplier, self.scaling)
+            trg_r = node.getDataElem('radius') * multiplier[0]
             trg_id = node.getUniqueID()
-            trg_type =  trg_types.get(node.getComment(), 0)
+            trg_type = trg_types.get(node.getComment(), 0)
             src_id = -1 if source is None else source.getUniqueID()
             n_str = '{} {} {} {} {} {} {}'.format(
                 trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
@@ -210,7 +212,7 @@ class Skeleton:
                         next_nodes.append(target)
                         write_line(trg_file, target, next_node)
             if len(roots) == 0:
-                print('Warning, no root found in tree {}. Selected random node as root {}'.format(annotation.annotation_ID), root)
+                print('Warning, no root found in tree {}. Selected random node as root {}'.format(annotation.annotation_ID, root))
             elif len(roots) > 1:
                 print("Found multiple roots. Set as root: {}. Handled others as ordinary nodes: {}".format(root, roots[1:]))
 
