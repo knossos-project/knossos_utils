@@ -180,7 +180,6 @@ class Skeleton:
         multiplier = (1, 1, 1) if px else tuple(map(lambda coord: coord/1000, self.scaling))
         def write_line(file, node, source=None):
             trg_x, trg_y, trg_z = map(lambda coord, mult: coord*mult, node.getCoordinate(), multiplier)
-            if not px: print(trg_x, trg_y, trg_z, node.getCoordinate(), multiplier, self.scaling)
             trg_r = node.getDataElem('radius') * multiplier[0]
             trg_id = node.getUniqueID()
             trg_type = trg_types.get(node.getComment(), 0)
@@ -245,7 +244,7 @@ class Skeleton:
 
         return self
 
-    def from_pyknossos_annotation(self, filename, scaling=(1,1,1)):
+    def from_pyknossos_annotation(self, filename, scaling=(1, 1, 1)):
         def get_time(nml_string):
             # pyk nmls don’t have checksum, which fromNmlString expects to read the time
             try:
@@ -255,7 +254,6 @@ class Skeleton:
             except IndexError:
                 return 0
 
-        self.scaling = scaling # do this here so new annotations receive scaling too
         if filename.endswith('nmx'):
             times = []
             with zipfile.ZipFile(filename, 'r') as zf:
@@ -263,19 +261,23 @@ class Skeleton:
                     if not file.endswith('.nml'):
                         continue
                     nml_content = zf.read(file)
-                    self.fromNmlString(nml_content, read_time=False)
+                    self.fromNmlString(nml_content, use_file_scaling=True, read_time=False)
                     times.append(get_time(nml_content))
             self.skeleton_time = max(times) # in nmx
 
         else: # nml
             with open(filename, 'r') as f:
                 nml_content = f.read()
-                self.fromNmlString(nml_content, read_time=False)
+                self.fromNmlString(nml_content, use_file_scaling=True, read_time=False)
                 self.skeleton_time = get_time(nml_content)
 
+        # the scaling argument is only for nmls that don’t contain the nm/px scale information
+        # if the nml already contains scale information (i.e. coords already in px space), this prevents an incorrect second divison
+        mult = tuple(map(lambda s1, s2: s1/s2, self.scaling, scaling))
+        self.set_scaling(scaling) # do this after nml parsing that sets scaling to value in nml
         for node in self.getNodes():
-            node.x, node.y, node.z = int(round(node.x/scaling[0])), int(round(node.y/scaling[1])), int(round(node.z/scaling[2]))
-            node.data["radius"] = node.data["radius"]/scaling[0]
+            node.x, node.y, node.z = int(round(node.x*mult[0])), int(round(node.y*mult[1])), int(round(node.z*mult[2]))
+            node.data["radius"] = node.data["radius"]*mult[0]
 
     def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False, read_time=True):
         try:
