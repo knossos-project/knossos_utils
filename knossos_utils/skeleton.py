@@ -1274,7 +1274,7 @@ class SkeletonNode:
         new.setCoordinate(coordinate)
         return new
 
-    def from_scratch(self, annotation, x, y, z, inVp=1, inMag=1, time=0, ID=None, radius=1.0):
+    def from_scratch(self, annotation, x, y, z, inVp=1, inMag=1, time=0, ID=None, radius=1.5):
         self.resetObject()
         self.annotation = annotation
 
