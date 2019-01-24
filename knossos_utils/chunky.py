@@ -291,9 +291,10 @@ class ChunkDataset(object):
         self._dataset_path = knossos_dataset_object.knossos_path
         self.box_size = box_size
         self.overlap = overlap
-        if not os.path.exists(self.path_head_folder):
-            os.makedirs(self.path_head_folder)
-            print('folder created at %s' % path_head_folder)
+        # TODO: test whether this can be removed safely
+        # if not os.path.exists(self.path_head_folder):
+        #     os.makedirs(self.path_head_folder)
+        #     print('folder created at %s' % path_head_folder)
 
         if len(list_of_coords) == 0:
             if False in np.equal(np.mod(box_size, chunk_size), np.zeros(3)):
@@ -329,12 +330,12 @@ class ChunkDataset(object):
                 new_chunk.path_head_folder = path_head_folder
                 new_chunk.folder = path_head_folder + "/" + new_chunk.folder_name
                 new_chunk.box_size = box_size
-
-        for nb_chunk in self.chunk_dict.keys():
-            try:
-                os.makedirs(self.chunk_dict[nb_chunk].folder)
-            except:
-                pass
+        # TODO: test whether this can be removed safely
+        # for nb_chunk in self.chunk_dict.keys():
+        #     try:
+        #         os.makedirs(self.chunk_dict[nb_chunk].folder)
+        #     except:
+        #         pass
 
     def apply_to_subset(self, function, args=[], kwargs={}, chunklist=[],
                         with_chunk=True, with_chunkclass=False):
