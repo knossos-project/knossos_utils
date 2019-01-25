@@ -186,7 +186,6 @@ def load_dataset(path_head_folder, update_paths=False):
         this_cd = pkl.load(f)
 
     if update_paths:
-        print("Updating paths...")
         this_cd.path_head_folder = path_head_folder + '/'
         for key in this_cd.chunk_dict.keys():
             this_cd.chunk_dict[key].path_head_folder = path_head_folder + '/'
@@ -195,7 +194,6 @@ def load_dataset(path_head_folder, update_paths=False):
             else:
                 rel_path = this_cd.chunk_dict[key].folder.split('/')[-1]
             this_cd.chunk_dict[key].folder = path_head_folder + '/' + rel_path + '/'
-        print("... finished.")
         # save_dataset(this_cd)
 
     return this_cd
