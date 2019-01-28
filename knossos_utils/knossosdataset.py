@@ -48,8 +48,8 @@ from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 try:
     from . import mergelist_tools
-except ImportError as e:
-    print('mergelist_tools not available, using slow python fallback. '
+except (ImportError, ValueError) as e:  # repeated problems with ValueError: numpy.ufunc size changed, may indicate binary incompatibility. Expected 216 from C header, got 192 from PyObject
+    print('mergelist_tools.pyx not available, using slow python fallback. '
           'Try to build the cython version of it.\n' + str(e))
     from . import mergelist_tools_fallback as mergelist_tools
 from .img_proc import create_composite_img, multi_dilation, create_label_overlay_img
