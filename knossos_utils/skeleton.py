@@ -222,7 +222,7 @@ class Skeleton:
         :return:
         """
 
-    def fromNml(self, filename, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
+    def fromNml(self, filename, scaling=None, comment=None, meta_info_only=False, read_time=True):
         if filename.endswith('k.zip'):
             zipper = zipfile.ZipFile(filename)
 
@@ -234,13 +234,13 @@ class Skeleton:
         else:
             doc = minidom.parse(filename)
 
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=meta_info_only, read_time=read_time)
+        self.fromDom(doc, scaling, comment, meta_info_only=meta_info_only, read_time=read_time)
 
         return self
 
-    def fromNmlString(self, nmlString, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
+    def fromNmlString(self, nmlString, scaling=None, comment=None, meta_info_only=False, read_time=True):
         doc = minidom.parseString(nmlString)
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=False, read_time=read_time)
+        self.fromDom(doc, scaling, comment, meta_info_only=False, read_time=read_time)
 
         return self
 
@@ -261,25 +261,17 @@ class Skeleton:
                     if not file.endswith('.nml'):
                         continue
                     nml_content = zf.read(file)
-                    self.fromNmlString(nml_content, use_file_scaling=True, read_time=False)
+                    self.fromNmlString(nml_content, scaling=scaling, read_time=False)
                     times.append(get_time(nml_content))
             self.skeleton_time = max(times) # in nmx
 
         else: # nml
             with open(filename, 'r') as f:
                 nml_content = f.read()
-                self.fromNmlString(nml_content, use_file_scaling=True, read_time=False)
+                self.fromNmlString(nml_content, scaling=scaling, read_time=False)
                 self.skeleton_time = get_time(nml_content)
 
-        # the scaling argument is only for nmls that don’t contain the nm/px scale information
-        # if the nml already contains scale information (i.e. coords already in px space), this prevents an incorrect second divison
-        mult = tuple(map(lambda s1, s2: s1/s2, self.scaling, scaling))
-        self.set_scaling(scaling) # do this after nml parsing that sets scaling to value in nml
-        for node in self.getNodes():
-            node.x, node.y, node.z = int(round(node.x*mult[0])), int(round(node.y*mult[1])), int(round(node.z*mult[2]))
-            node.data["radius"] = node.data["radius"]*mult[0]
-
-    def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False, read_time=True):
+    def fromDom(self, doc, scaling=None, comment=None, meta_info_only=False, read_time=True):
         try:
             [self.experiment_name] = parse_attributes(
                 doc.getElementsByTagName(
@@ -336,13 +328,15 @@ class Skeleton:
                     self.skeleton_time = None
                     self.skeleton_idletime = None
                     idletime_checksum = integer_checksum(0)
-        if use_file_scaling == True:
-            self.scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
-        else:
-            if isinstance(scaling, str):
-                self.scaling = [1,1,1]
-            else:
-                self.scaling = scaling
+
+        # the scaling argument is only for nmls that don’t contain the nm per px scale information
+        # if the nml already contains scale information (i.e. coords already in px space), this prevents an incorrect second divison
+        try:
+            file_scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
+        except IndexError:
+            file_scaling = [1, 1, 1]
+        self.scaling = scaling or file_scaling
+        node_scale = tuple(map(lambda s1, s2: s1 / s2, file_scaling, self.scaling))
 
         zero_based_nodes = len(doc.getElementsByTagName("parameters")[0].getElementsByTagName("nodes_0_based")) > 0
         if not zero_based_nodes:
@@ -380,7 +374,8 @@ class Skeleton:
                     annotation_elem,
                     self,
                     base_id=base_id,
-                    zero_based=zero_based_nodes)
+                    zero_based=zero_based_nodes,
+                    node_scale=node_scale)
             if comment:
                 annotation.setComment(comment)
             self.annotations.add(annotation)
@@ -401,8 +396,7 @@ class Skeleton:
             self.branchNodes.append(nodeID)
         return self
 
-    def fromNmlcTree(self, filename, use_file_scaling=False, scaling='dataset',
-                     comment=None):
+    def fromNmlcTree(self, filename, scaling=None, comment=None):
         """Reads nml file with cElementTree Parser
         is capable of parsing patches
 
@@ -457,13 +451,14 @@ class Skeleton:
             self.skeleton_time = None
             self.skeleton_idletime = None
 
-        if use_file_scaling == True:
-            self.scaling = parse_cET(root.find("parameters").find("scale"), [["x", float], ["y", float], ["z", float]])
-        else:
-            if isinstance(scaling, str):
-                self.scaling = [1.,1.,1.]
-            else:
-                self.scaling = scaling
+        # the scaling argument is only for nmls that don’t contain the nm per px scale information
+        # if the nml already contains scale information (i.e. coords already in px space), this prevents an incorrect second divison
+        try:
+            file_scaling = parse_cET(root.find("parameters").find("scale"), [["x", float], ["y", float], ["z", float]])
+        except IndexError:
+            file_scaling = [1, 1, 1]
+        self.scaling = scaling or file_scaling
+        node_scale = tuple(map(lambda s1, s2: s1 / s2, file_scaling, self.scaling))
 
         zero_based_nodes = root.find("parameters").find("nodes_0_based") is not None
         if not zero_based_nodes:
@@ -497,7 +492,8 @@ class Skeleton:
                     annotation_elem,
                     self,
                     base_id=base_id,
-                    zero_based=zero_based_nodes)
+                    zero_based=zero_based_nodes,
+                    node_scale=node_scale)
 
             if comment:
                 annotation.setComment(comment)
@@ -902,7 +898,7 @@ class SkeletonAnnotation:
         self.nodeBaseID = 0
         self.high_id = 0
 
-    def fromNml(self, annotation_elem, skeleton, base_id=0, zero_based=False):
+    def fromNml(self, annotation_elem, skeleton, base_id=0, zero_based=False, node_scale=(1, 1, 1)):
         self.resetObject()
         self.annotation_ID = parse_attributes(annotation_elem, [["id", int],])[0]
         self.setNodeBaseID(base_id)
@@ -917,7 +913,7 @@ class SkeletonAnnotation:
         # Read nodes
         node_elems = annotation_elem.getElementsByTagName("node")
         for node_elem in node_elems:
-            node = SkeletonNode().fromNml(self, node_elem, zero_based=zero_based)
+            node = SkeletonNode().fromNml(self, node_elem, zero_based=zero_based, node_scale=node_scale)
             self.addNode(node)
         #
         # Read edges
@@ -935,7 +931,7 @@ class SkeletonAnnotation:
 
         return self
 
-    def fromNmlcTree(self, annotation_elem, skeleton, base_id=0, zero_based=False):
+    def fromNmlcTree(self, annotation_elem, skeleton, base_id=0, zero_based=False, node_scale=(1, 1, 1)):
         """ Subfunction of fromNmlcTree from NewSkeleton
 
         Parameters
@@ -962,7 +958,7 @@ class SkeletonAnnotation:
                 node_elems.append(j)
 
         for node_elem in node_elems:
-            node = SkeletonNode().fromNmlcTree(self, node_elem, zero_based=zero_based)
+            node = SkeletonNode().fromNmlcTree(self, node_elem, zero_based=zero_based, node_scale=node_scale)
             self.addNode(node)
 
         # Read edges
@@ -1300,14 +1296,14 @@ class SkeletonNode:
 
         return self
 
-    def fromNml(self, annotation, node_elem, zero_based=False):
+    def fromNml(self, annotation, node_elem, zero_based=False, node_scale=(1, 1, 1)):
         self.resetObject()
         self.annotation = annotation
         [x, y, z, inVp, inMag, time, ID, radius] = parse_attributes(node_elem, \
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]])
         self.ID = ID
-        self.x, self.y, self.z = x, y, z
+        self.x, self.y, self.z = int(round(x * node_scale[0])), int(round(y * node_scale[1])), int(round(z * node_scale[2]))
         if not zero_based: # make it zero based
             self.x -= 1
             self.y -= 1
@@ -1315,26 +1311,26 @@ class SkeletonNode:
 
         # KNOSSOS defaults
         self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
-        self.setDataElem("radius", radius or 1.5)
+        self.setDataElem("radius", (radius or 1.5) * node_scale[0])
         self.setDataElem("inMag", inMag or 0)
         self.setDataElem("time", time or 0)
         return self
 
-    def fromNmlcTree(self, annotation, node_elem, zero_based=False):
+    def fromNmlcTree(self, annotation, node_elem, zero_based=False, node_scale=(1, 1, 1)):
         self.resetObject()
         self.annotation = annotation
         [x, y, z, inVp, inMag, time, ID, radius], additional_attr = parse_cET(node_elem, \
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]], ret_all_attr=True)
         self.ID = ID
-        self.x, self.y, self.z = x, y, z
+        self.x, self.y, self.z = int(round(x * node_scale[0])), int(round(y * node_scale[1])), int(round(z * node_scale[2]))
         if not zero_based: # make it zero based
             self.x -= 1
             self.y -= 1
             self.z -= 1
         # KNOSSOS defaults
         self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
-        self.setDataElem("radius", radius or 1.5)
+        self.setDataElem("radius", (radius or 1.5) * node_scale[0])
         self.setDataElem("inMag", inMag or 1)
         self.setDataElem("time", time or 0)
 
