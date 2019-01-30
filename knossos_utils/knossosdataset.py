@@ -2251,27 +2251,25 @@ class KnossosDataset(object):
                                   nb_threads=nb_threads,
                                   mags=trg_mags)
 
-    def add_mergelist_to_kzip(self, kzip_path, background_id=0):
-        ids = defaultdict(lambda: ([], [], []))
-        for idx_z, z in enumerate(range(0, self.boundary[2], 128)):
-            for idx_y, y in enumerate(range(0, self.boundary[1], 128)):
-                for idx_x, x in enumerate(range(0, self.boundary[0], 128)):
-                    min_x, min_y, min_z = np.array([idx_x, idx_y, idx_z]) * 128
-                    cube = self.from_kzip_to_matrix(kzip_path, size=(128, 128, 128),
-                                                            offset=(min_x, min_y, min_z), mag=1,
-                                                            return_empty_cube_if_nonexistent=False,
-                                                            apply_mergelist=False,
-                                                            show_progress=False, verbose=False)
-                    if cube is None: continue
-                    labels = np.unique(cube)[1:]  # no 0
-                    for sv_id in labels:
-                        indices = np.where(cube == sv_id)
-                        ids[sv_id][0].extend(indices[0] + min_x)
-                        ids[sv_id][1].extend(indices[1] + min_y)
-                        ids[sv_id][2].extend(indices[2] + min_z)
+    def add_mergelist_to_kzip(self, kzip_path):
+        ids = defaultdict(lambda: [0, 0, 0])
+        ids_count = defaultdict(int)
+        for x, y, z in self.iter((0, 0, 0), self.boundary.tolist(), (128, 128, 128)):
+            cube = self.from_kzip_to_matrix(kzip_path, size=(128, 128, 128), offset=(x, y, z), mag=1,
+                                            return_empty_cube_if_nonexistent=False, apply_mergelist=False,
+                                            show_progress=False, verbose=False)
+            if cube is None: continue
+            labels = np.unique(cube)[1:]  # no 0
+            for sv_id in labels:
+                indices = np.where(cube == sv_id)
+                ids[sv_id][0] += np.sum(indices[0] + x)
+                ids[sv_id][1] += np.sum(indices[1] + y)
+                ids[sv_id][2] += np.sum(indices[2] + z)
+                ids_count[sv_id] += len(indices[0])
+
         obj_dict = {}
         for obj_id, indices in ids.items():
-            center = np.mean(indices, axis=1)
+            center = np.divide(indices, ids_count[obj_id])
             obj_dict[obj_id] = ({obj_id}, center)
 
         with zipfile.ZipFile(kzip_path, "a") as zf:
