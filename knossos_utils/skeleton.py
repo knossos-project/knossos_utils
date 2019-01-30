@@ -344,6 +344,10 @@ class Skeleton:
             else:
                 self.scaling = scaling
 
+        zero_based_nodes = len(doc.getElementsByTagName("parameters")[0].getElementsByTagName("nodes_0_based")) > 0
+        if not zero_based_nodes:
+            print("Warning: The <parameters/> section does not contain a tag <nodes_0_based/>.\nSince KNOSSOS NMLs were originally 1-based, your skeleton is assumed to be 1-based and will be converted to 0-based now.")
+
         try:
             [self.last_saved_version] = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("lastsavedin")[0], [["version", str]])
         except IndexError:
@@ -375,7 +379,8 @@ class Skeleton:
             annotation = SkeletonAnnotation().fromNml(
                     annotation_elem,
                     self,
-                    base_id=base_id)
+                    base_id=base_id,
+                    zero_based=zero_based_nodes)
             if comment:
                 annotation.setComment(comment)
             self.annotations.add(annotation)
@@ -460,6 +465,10 @@ class Skeleton:
             else:
                 self.scaling = scaling
 
+        zero_based_nodes = root.find("parameters").find("nodes_0_based") is not None
+        if not zero_based_nodes:
+            print("Warning: The <parameters/> section does not contain a tag <nodes_0_based/>.\nSince KNOSSOS NMLs were originally 1-based, your skeleton is assumed to be 1-based and will be converted to 0-based now.")
+
         try:
             [self.last_saved_version] = parse_cET(root.find("parameters").find("lastsavedin"), [["version", str]])
         except AttributeError:
@@ -487,7 +496,8 @@ class Skeleton:
             annotation = SkeletonAnnotation().fromNmlcTree(
                     annotation_elem,
                     self,
-                    base_id=base_id)
+                    base_id=base_id,
+                    zero_based=zero_based_nodes)
 
             if comment:
                 annotation.setComment(comment)
@@ -637,10 +647,11 @@ class Skeleton:
             build_attributes(dataset, [["path", self.dataset_path]])
             parameters.appendChild(dataset)
 
-        if self.scaling[0] != 1 or self.scaling[1] != 1 or self.scaling[2] != 1:
-            scale = doc.createElement("scale")
-            build_attributes(scale, [["x", self.scaling[0]], ["y", self.scaling[1]], ["z", self.scaling[2]]])
-            parameters.appendChild(scale)
+        scale = doc.createElement("scale")
+        build_attributes(scale, [["x", self.scaling[0]], ["y", self.scaling[1]], ["z", self.scaling[2]]])
+        parameters.appendChild(scale)
+
+        parameters.appendChild(doc.createElement("nodes_0_based"))
 
         if self.edit_position is not None:
             edit_position = doc.createElement("editPosition")
@@ -891,7 +902,7 @@ class SkeletonAnnotation:
         self.nodeBaseID = 0
         self.high_id = 0
 
-    def fromNml(self, annotation_elem, skeleton, base_id=0):
+    def fromNml(self, annotation_elem, skeleton, base_id=0, zero_based=False):
         self.resetObject()
         self.annotation_ID = parse_attributes(annotation_elem, [["id", int],])[0]
         self.setNodeBaseID(base_id)
@@ -906,7 +917,7 @@ class SkeletonAnnotation:
         # Read nodes
         node_elems = annotation_elem.getElementsByTagName("node")
         for node_elem in node_elems:
-            node = SkeletonNode().fromNml(self, node_elem)
+            node = SkeletonNode().fromNml(self, node_elem, zero_based=zero_based)
             self.addNode(node)
         #
         # Read edges
@@ -924,7 +935,7 @@ class SkeletonAnnotation:
 
         return self
 
-    def fromNmlcTree(self, annotation_elem, skeleton, base_id=0):
+    def fromNmlcTree(self, annotation_elem, skeleton, base_id=0, zero_based=False):
         """ Subfunction of fromNmlcTree from NewSkeleton
 
         Parameters
@@ -951,7 +962,7 @@ class SkeletonAnnotation:
                 node_elems.append(j)
 
         for node_elem in node_elems:
-            node = SkeletonNode().fromNmlcTree(self, node_elem)
+            node = SkeletonNode().fromNmlcTree(self, node_elem, zero_based=zero_based)
             self.addNode(node)
 
         # Read edges
@@ -1289,7 +1300,7 @@ class SkeletonNode:
 
         return self
 
-    def fromNml(self, annotation, node_elem):
+    def fromNml(self, annotation, node_elem, zero_based=False):
         self.resetObject()
         self.annotation = annotation
         [x, y, z, inVp, inMag, time, ID, radius] = parse_attributes(node_elem, \
@@ -1297,6 +1308,11 @@ class SkeletonNode:
              ["time", int], ["id", int], ["radius", float]])
         self.ID = ID
         self.x, self.y, self.z = x, y, z
+        if not zero_based: # make it zero based
+            self.x -= 1
+            self.y -= 1
+            self.z -= 1
+
         # KNOSSOS defaults
         self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
         self.setDataElem("radius", radius or 1.5)
@@ -1304,7 +1320,7 @@ class SkeletonNode:
         self.setDataElem("time", time or 0)
         return self
 
-    def fromNmlcTree(self, annotation, node_elem):
+    def fromNmlcTree(self, annotation, node_elem, zero_based=False):
         self.resetObject()
         self.annotation = annotation
         [x, y, z, inVp, inMag, time, ID, radius], additional_attr = parse_cET(node_elem, \
@@ -1312,6 +1328,10 @@ class SkeletonNode:
              ["time", int], ["id", int], ["radius", float]], ret_all_attr=True)
         self.ID = ID
         self.x, self.y, self.z = x, y, z
+        if not zero_based: # make it zero based
+            self.x -= 1
+            self.y -= 1
+            self.z -= 1
         # KNOSSOS defaults
         self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
         self.setDataElem("radius", radius or 1.5)
