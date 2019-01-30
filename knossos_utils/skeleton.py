@@ -184,7 +184,7 @@ class Skeleton:
             trg_id = node.getUniqueID()
             trg_type = trg_types.get(node.getComment(), 0)
             src_id = -1 if source is None else source.getUniqueID()
-            n_str = '{} {} {} {} {} {} {}'.format(
+            n_str = '{} {} {:g} {:g} {:g} {:g} {}'.format(
                 trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
             file.write(n_str + '\n')
 
