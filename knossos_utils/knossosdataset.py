@@ -2251,9 +2251,10 @@ class KnossosDataset(object):
                                   nb_threads=nb_threads,
                                   mags=trg_mags)
 
-    def add_mergelist_to_kzip(self, kzip_path):
+    def add_mergelist_to_kzip(self, kzip_path, subobj_map={}):
         ids = defaultdict(lambda: [0, 0, 0])
         ids_count = defaultdict(int)
+        obj_map = defaultdict(set)
         for x, y, z in self.iter((0, 0, 0), self.boundary.tolist(), (128, 128, 128)):
             cube = self.from_kzip_to_matrix(kzip_path, size=(128, 128, 128), offset=(x, y, z), mag=1,
                                             return_empty_cube_if_nonexistent=False, apply_mergelist=False,
@@ -2261,16 +2262,18 @@ class KnossosDataset(object):
             if cube is None: continue
             labels = np.unique(cube)[1:]  # no 0
             for sv_id in labels:
+                obj_id = subobj_map.get(sv_id, sv_id)
+                obj_map[obj_id].add(sv_id)
                 indices = np.where(cube == sv_id)
-                ids[sv_id][0] += np.sum(indices[0] + x)
-                ids[sv_id][1] += np.sum(indices[1] + y)
-                ids[sv_id][2] += np.sum(indices[2] + z)
-                ids_count[sv_id] += len(indices[0])
+                ids[obj_id][0] += np.sum(indices[0] + x)
+                ids[obj_id][1] += np.sum(indices[1] + y)
+                ids[obj_id][2] += np.sum(indices[2] + z)
+                ids_count[obj_id] += len(indices[0])
 
         obj_dict = {}
         for obj_id, indices in ids.items():
             center = np.divide(indices, ids_count[obj_id])
-            obj_dict[obj_id] = ({obj_id}, center)
+            obj_dict[obj_id] = (obj_map[obj_id], center)
 
         with zipfile.ZipFile(kzip_path, "a") as zf:
             mergelist = mergelist_tools.gen_mergelist_from_objects(obj_dict)
