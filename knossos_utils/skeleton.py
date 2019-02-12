@@ -738,8 +738,6 @@ class Skeleton:
             return self.skeleton_time
 
     def getIdleTime(self):
-        if self.skeleton_idletime == None:
-            return None
         if Version(self.get_version()['saved']) == Version(("3", "4")):
             return self.skeleton_idletime ^ 1347211871
         else:
