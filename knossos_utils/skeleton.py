@@ -191,6 +191,7 @@ class Skeleton:
             file.write(n_str + '\n')
 
         for idx, annotation in enumerate(self.annotations):
+            if len(annotation.nodes) == 0: continue
             idx_part = "_{}".format(idx) if len(self.annotations) > 1 else ""
             with open("{}/{}{}.swc".format(dest_folder, basename, idx_part), 'w') as trg_file:
                 # find root
