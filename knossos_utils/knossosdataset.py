@@ -617,6 +617,7 @@ class KnossosDataset(object):
         self._scale[0] = parsed_dict['scale x ']
         self._scale[1] = parsed_dict['scale y ']
         self._scale[2] = parsed_dict['scale z ']
+        self.scales = [np.multiply(2**i, self._scale) for i in range(0, int(np.ceil(np.log2(np.amax(self._boundary / self._cube_shape)))))]
         self._experiment_name = parsed_dict['experiment name ']
         if self._experiment_name.endswith("mag1"):
             self._experiment_name = self._experiment_name[:-5]
