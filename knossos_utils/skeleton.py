@@ -59,7 +59,9 @@ class Skeleton:
         self.skeleton_time = None
         self.skeleton_idletime = None
         self.skeleton_comment = None
-        self.scaling = [1,1,1]
+        self.scaling = [1, 1, 1]
+        self.task_category = ''
+        self.task_name = ''
         self.branchNodes = [] # list of node IDs
         self.active_node = None
         self.edit_position = None
@@ -364,6 +366,12 @@ class Skeleton:
                 else:
                     raise Exception('No time records exist!')
 
+        try:
+            [self.task_category, self.task_name] = parse_attributes(
+                doc.getElementsByTagName("parameters")[0].getElementsByTagName("task")[0], [["category", str], ['name', str]])
+        except IndexError:
+            pass
+
         if meta_info_only:
             return self
 
@@ -484,6 +492,11 @@ class Skeleton:
             if self.skeleton_idletime:
                 if idletime_checksum != integer_checksum(self.skeleton_idletime):
                     raise Exception('Checksum mismatch!')
+
+        try:
+            [self.task_category, self.task_name] = parse_cET(root.find("parameters").find("task"), [["category", str], ['name', str]])
+        except IndexError:
+            pass
 
         base_id = self.get_high_node_id()
 
@@ -676,6 +689,11 @@ class Skeleton:
             build_attributes(movement_area,
                              [attribute for attribute in min_properties] + [attribute for attribute in max_properties])
             parameters.appendChild(movement_area)
+
+        if self.task_category or self.task_name:
+            task_elem = doc.createElement('task')
+            build_attributes(task_elem, [['category', self.task_category], ['name', self.task_name]])
+            parameters.appendChild(task_elem)
 
         # find property keys
         orig_keys = ["inVp", "node", "id", "inMag", "radius", "time",
