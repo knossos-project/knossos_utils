@@ -8,7 +8,6 @@ import itertools as it
 import os
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
-from image_ops.image_data import   write_tiff_sequence
 
 from typing import Tuple, Dict
 
