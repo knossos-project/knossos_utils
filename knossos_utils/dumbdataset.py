@@ -7,7 +7,10 @@ from io import BytesIO
 import itertools as it
 import os
 from threading import Lock
-from multiprocessing.pool import ThreadPool
+from concurrent.futures import ThreadPoolExecutor
+from image_ops.image_data import   write_tiff_sequence
+
+from typing import Tuple, Dict
 
 
 class DatasetInfo(object):
@@ -134,7 +137,6 @@ def _get_http_cube(src, pth, **kw):
 
     for _ in range(0, kw['http_retries']):
         r = requests.get(pth, auth=kw['auth'], timeout=60)
-
         if r.status_code == 200:
             return r.content
         elif r.status_code in hopeless_codes:
@@ -192,7 +194,7 @@ def _get_cube(src, cube, exp_name, mag_scale, channel, cube_edge, **kw):
     else:
         raise Exception('Unknown word size.')
 
-    cube_data = np.frombuffer(data_str, dtype=dtype).reshape((cube_edge, cube_edge, cube_edge)).T
+    cube_data = np.frombuffer(data_str, dtype=dtype).reshape((cube_edge, cube_edge, cube_edge))
 
     return cube_data
 
@@ -201,6 +203,13 @@ def np_matrix_from_knossos(
         pth, ds_info, size, offset, channel='raw', mag_scale=1, to_dtype='default', thread_count=40, auth=None, http_retries=10):
     """
     Read knossos data into a numpy matrix from various sources.
+
+    Important note: The numpy array returned is indexed in opposite order compared to the Knossos coordinates. That is,
+    a voxel that Knossos finds at (x, y, z) will be at O[z, y, x] if O is the output array. This avoids any expensive
+    array axes swaps in this code. Note also that this allows you to write slices out into images conveniently,
+    e.g. by passing O[z, :, :] to PIL's Image.fromarray().
+
+    However, all coordinates passed to this function are exactly like in Knossos.
 
     pth : str
         If the string starts with "http", try to read cubes from a http source. If the string ends with "zip", try to
@@ -253,48 +262,79 @@ def np_matrix_from_knossos(
 
     down_factor = tuple(xx / yy for xx, yy in zip(ds_info.mag_scales[mag_scale], ds_info.mag_scales[1]))
     size = tuple(round(xx / yy) for xx, yy in zip(size, down_factor))
+    size_out = (size[2], size[1], size[0])
     offset = tuple(round(xx / yy) for xx, yy in zip(offset, down_factor))
 
     output_lock = Lock()
     def _worker(*args):
         cube, lb, ob = args[0]
-        cube_data = _get_cube(pth, cube, ds_info.exp_name, mag_scale, channel, ds_info.cube_edge, auth=auth)
+        cube_data = _get_cube(pth, cube, ds_info.exp_name, mag_scale, channel, ds_info.cube_edge, auth=auth, http_retries=http_retries)
 
         if cube_data is None:
+            print('No data.')
             return
 
         output_lock.acquire()
         if output[0] is None:
             # Doing this here so that we can use a cube that has been read to probe for the data type
             if to_dtype == 'default':
-                output[0] = np.zeros(size, dtype=cube_data.dtype)
+                output[0] = np.zeros(size_out, dtype=cube_data.dtype)
             else:
-                output[0] = np.zeros(size, dtype=to_dtype)
+                output[0] = np.zeros(size_out, dtype=to_dtype)
         output_lock.release()
 
-        output[0][ob[0][0]:ob[0][1],
+        output[0][ob[2][0]:ob[2][1],
                   ob[1][0]:ob[1][1],
-                  ob[2][0]:ob[2][1]] = cube_data[
-                       lb[0][0]:lb[0][1],
+                  ob[0][0]:ob[0][1]] = cube_data[
+                       lb[2][0]:lb[2][1],
                        lb[1][0]:lb[1][1],
-                       lb[2][0]:lb[2][1]]
+                       lb[0][0]:lb[0][1]]
 
     cube_slices_to_get = list(_iter_cubes(size, offset, ds_info.cube_edge))
-    p = ThreadPool(thread_count)
-    p.map(_worker, cube_slices_to_get)
-    p.close()
-    p.join()
+    print(cube_slices_to_get)
+    with ThreadPoolExecutor(max_workers=thread_count) as p:
+        r = p.map(_worker, cube_slices_to_get)
+        r = list(r) # wait for results
 
     if output[0] is None:
         # We have never read from a valid cube
         print('No data found in requested range, returning zeros.')
         if to_dtype == 'default':
-            output[0] = np.zeros(size, dtype=np.uint8)
+            output[0] = np.zeros(size_out, dtype=np.uint8)
         else:
-            output[0] = np.zeros(size, dtype=to_dtype)
+            output[0] = np.zeros(size_out, dtype=to_dtype)
 
     if isinstance(pth, ZipFile):
         pth.close()
 
     return output[0]
 
+
+def oldstyle_knossos_mag_range(mag_1 : Tuple[float, float, float], mag_count : int) -> Dict[int, Tuple[float, float, float]]:
+    """
+    Convenience function to create the mag_scales dictionary required for DatasetInfo when the mags are downsampled
+    in the "old style" Knossos way, i.e. the mags are named 1, 2, 4, 8, ... and the downsampling is by a factor of
+    2 in each dimension for every step.
+
+    mag_1 : Resolution of mag 1
+    mag_count : How many mags there are in total
+    """
+
+    mag_dict = {}
+    for cur_mag in (2**x for x in range(0, mag_count)):
+        mag_dict[cur_mag] = tuple(xx * cur_mag for xx in mag_1)
+
+    return mag_dict
+
+
+def main():
+    exp_name = 'Dataset'
+    bounds = (1024, 1024, 1024)
+    mag_scales = {1: (100., 100., 100.)}
+    pth = '/path/to/data/'
+    size = (256, 256, 256)
+    of = (1024, 1024, 1024)
+
+
+if __name__ == '__main__':
+    main()
