@@ -2211,8 +2211,10 @@ class KnossosDataset(object):
                 for ii in range(1, len(data)):
                     data[ii][data[ii] > 0] += max_label_so_far
                     max_label_so_far = np.max(data[ii])
-
-            data = np.max(np.array(data), axis=0)
+            if len(data) > 1:  # only merge arrays if more than one in list
+                data = np.max(np.array(data), axis=0)
+            else:
+                data = data[0]
 
         for mag in mags:
             mag_i = mag-1 if self._ordinal_mags else int(np.log2(mag))
