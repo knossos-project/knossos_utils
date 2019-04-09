@@ -891,8 +891,8 @@ class KnossosDataset(object):
         :param nb_threads: int
             number of threads to be used (recommended: 2 * number of cpus)
         :param apply_func: function
-            function which will be applied to raw data before writing to new
-            dataset folder
+            function which will be applied to raw/overlay data before writing to
+             new dataset folder
         """
         if apply_func is not None:
             assert callable(apply_func)
@@ -943,8 +943,8 @@ class KnossosDataset(object):
                                             nb_threads=1, verbose=verbose)
                 return err
 
-        if data_range:
-            assert isinstance(data_range, list)
+        if data_range is not None:
+            assert isinstance(data_range, list) or isinstance(data_range, np.ndarray)
             assert len(data_range[0]) == 3
             assert len(data_range[1]) == 3
         else:
@@ -966,11 +966,11 @@ class KnossosDataset(object):
         if do_raw:
             for mag in mags:
                 for x in range(data_range[0][0],
-                               data_range[1][0] / mag, stride):
+                               data_range[1][0] // mag, stride):
                     for y in range(data_range[0][1],
-                                   data_range[1][1] / mag, stride):
+                                   data_range[1][1] // mag, stride):
                         for z in range(data_range[0][2],
-                                       data_range[1][2] / mag, stride):
+                                       data_range[1][2] // mag, stride):
                             multi_params.append([mag, [stride]*3, [x, y, z],
                                                  True])
         else:
@@ -2068,14 +2068,14 @@ class KnossosDataset(object):
                     try:
                         os.makedirs(folder_path+"block")    # Semaphore --------
                         break
-                    except:
-                        if time.time() - os.stat(folder_path+"block").st_mtime <= 5:
-                            time.sleep(1)
-                        else:
-                            try:
-                                os.rmdir(folder_path+"block")
-                            except FileNotFoundError:
-                                pass
+                    except:#
+                        try:
+                            if time.time() - os.stat(folder_path+"block").st_mtime <= 5:
+                                time.sleep(1)
+                            else:
+                                    os.rmdir(folder_path+"block")
+                        except FileNotFoundError:
+                            pass
 
                 if not overwrite:
                     mask = np.zeros(self.cube_shape, dtype=datatype)
