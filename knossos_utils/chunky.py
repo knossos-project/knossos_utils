@@ -65,6 +65,10 @@ def _export_cset_as_kd_thread(args):
     nb_threads = args[8]
     orig_dtype = args[9]
     fast_downsampling = args[10]
+    if len(args) == 12:
+        overwrite = args[11]
+    else:
+        overwrite = True  # default as before
 
     cset = load_dataset(cset_path, update_paths=True)
 
@@ -107,7 +111,7 @@ def _export_cset_as_kd_thread(args):
                             data=data_list,
                             as_raw=as_raw,
                             nb_threads=nb_threads,
-                            overwrite=True,
+                            overwrite=overwrite,
                             datatype=datatype,
                             fast_downsampling=fast_downsampling)
 
