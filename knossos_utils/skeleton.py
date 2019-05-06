@@ -199,7 +199,7 @@ class Skeleton:
                 # find root
                 roots = []
                 for src_node in annotation.getEdges():
-                    if len(annotation.getReverseEdges()[src_node]) == 0:
+                    if 'soma' in src_node.getPureComment() or len(annotation.getReverseEdges()[src_node]) == 0:
                         roots.append(src_node)
                 root = roots[0] if len(roots) > 0 else list(annotation.getNodes())[0] # any node as root
                 write_line(trg_file, root)
