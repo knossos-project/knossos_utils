@@ -2052,7 +2052,7 @@ class KnossosDataset(object):
                     mags = np.power(2, np.arange(start_mag - 1, max_mag, dtype=np.int))
             else:
                 mags = [data_mag]
-
+        _print("mags to write: {}".format(mags))
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
 
@@ -2139,6 +2139,7 @@ class KnossosDataset(object):
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
             if verbose:
+                _print('mag: {}'.format(mag))
                 _print("box_offset: {0}".format(offset_mag))
                 _print("box_size: {0}".format(size_mag))
 
