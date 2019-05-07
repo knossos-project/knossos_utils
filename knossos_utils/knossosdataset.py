@@ -32,37 +32,40 @@
 reading and writing raw and overlay data."""
 
 
-import warnings
 import collections
+import glob
+import os
+import pickle
+import re
+import shutil
+import sys
+import tempfile
+import time
+import warnings
+import zipfile
 from collections import defaultdict
 from enum import Enum
-import glob
-import h5py
-import imageio
 from io import BytesIO
-from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool
+from pathlib import Path
+from threading import Lock
+from xml.etree import ElementTree as ET
+
+import imageio
+import h5py
+import numpy as np
+import requests
+import scipy.misc
+import scipy.ndimage
+from PIL import Image
+
 try:
     from . import mergelist_tools
 except ImportError:
     print('mergelist_tools not available, using slow python fallback. '
           'Try to build the cython version of it.')
     from . import mergelist_tools_fallback as mergelist_tools
-import numpy as np
-import os
-import pickle
-from PIL import Image
-import re
-import requests
-import scipy.misc
-import scipy.ndimage
-import shutil
-import sys
-import time
-from threading import Lock
-import traceback
-from xml.etree import ElementTree as ET
-import zipfile
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
@@ -1702,6 +1705,20 @@ class KnossosDataset(object):
                 _print("Correct shape")
 
         return output
+
+    def set_experiment_name_for_kzip_cubes(self, kzip_path):
+        with tempfile.TemporaryDirectory() as tempdir_path:
+            with zipfile.ZipFile(kzip_path, 'r') as original_kzip:
+                original_kzip.extractall(tempdir_path)
+            tempdir_path = Path(tempdir_path)
+            with zipfile.ZipFile(kzip_path, 'w', zipfile.ZIP_DEFLATED) as new_kzip:
+                for member in tempdir_path.iterdir():
+                    hit = re.search('_mag[0-9]+x[0-9]+y[0-9]+z[0-9]+.seg.sz', member.name)
+                    new_path = member
+                    if hit:
+                        new_path = member.parent / (self.experiment_name + member.name[hit.span()[0]:])
+                        member.rename(new_path)
+                    new_kzip.write(new_path, new_path.name)
 
     def from_raw_cubes_to_image_stack(self, size, offset, output_path,
                                       name="img", output_format='png', mag=1,
