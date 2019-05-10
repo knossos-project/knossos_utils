@@ -1581,7 +1581,7 @@ class KnossosDataset(object):
         size = (area_max[0] - area_min[0], area_max[1] - area_min[1], area_max[2] - area_min[2])
         print(size)
         return self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag,
-                                        apply_mergelist=apply_mergelist)
+                                        apply_mergelist=apply_mergelist), area_min, area_max, size
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
@@ -1735,6 +1735,28 @@ class KnossosDataset(object):
                         new_path = member.parent / (self.experiment_name + member.name[hit.span()[0]:])
                         member.rename(new_path)
                     new_kzip.write(new_path, new_path.name)
+
+    def downsample_upsample_kzip_cubes(self, kzip_path, source_mag, out_mags=None, upsample=True, downsample=True, dest_path=None):
+        from knossos_utils import skeleton as k_skel
+        if dest_path is None:
+            dest_path = kzip_path
+        if out_mags is None:
+            out_mags = []
+        mat, area_min, area_max, size = self.from_kzip_movement_area_to_matrix(str(kzip_path), mag=source_mag, apply_mergelist=False)
+        area_max = np.array(area_max) - 1
+        skel = k_skel.Skeleton()
+        mag_limit = 1
+        if len(out_mags) > 0:
+            mag_limit = np.log2(max(out_mags)) if self._ordinal_mags else max(out_mags)
+        elif downsample:
+            mag_limit = self.highest_mag
+        skel.movement_area_min = np.array(area_min) + (mag_limit - np.array(area_min) % mag_limit)
+        skel.movement_area_max = np.maximum(area_max - area_max % mag_limit, skel.movement_area_min + 1)
+        skel.set_scaling(self.scales[0])
+        skel.experiment_name = self.experiment_name
+        annotation_str = skel.to_xml_string()
+        self.from_matrix_to_cubes(offset=area_min, data=mat, data_mag=source_mag, kzip_path=dest_path, mags=out_mags,
+                                  downsample=downsample, upsample=upsample, annotation_str=annotation_str)
 
     def from_raw_cubes_to_image_stack(self, size, offset, output_path,
                                       name="img", output_format='png', mag=1,
