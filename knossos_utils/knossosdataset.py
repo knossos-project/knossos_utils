@@ -394,6 +394,19 @@ class KnossosDataset(object):
         else:
             return None
 
+    @property
+    def highest_mag(self):
+        return len(self.scales) + 1\
+               if self._ordinal_mags else\
+               np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
+
+    def mag_scale(self, mag): # get scale in specific mag
+        index = mag - 1 if self._ordinal_mags else int(np.log2(mag))
+        return self.scales[index]
+
+    def scale_ratio(self, mag, base_mag): # ratio between scale in mag and scale in base_mag
+        return (self.mag_scale(mag) / self.mag_scale(base_mag)) if self._ordinal_mags else np.array(3 * [float(mag) / base_mag])
+
     def iter(self, offset=(0, 0, 0), end=None, step=(512, 512, 512)):
         end = np.minimum(end or self.boundary, self.boundary)
         step = np.minimum(step, end - offset)
@@ -1070,7 +1083,7 @@ class KnossosDataset(object):
         :param size: 3 sequence of ints
             size of requested data block
         :param offset: 3 sequence of ints
-            coordinate of the corner closest to (0, 0, 0)
+            mag 1 coordinate of the corner closest to (0, 0, 0)
         :param mode: str
             either 'raw' or 'overlay'
         :param mag: int
@@ -1099,7 +1112,6 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
-
         if self._channel_selected == 'implicit':
             warnings.warn('You are using implicit channel selection. This possibility will soon be removed.'
                     ' Please call set_channel() before reading or writing data using KnossosDataset.')
@@ -1303,12 +1315,13 @@ class KnossosDataset(object):
         else:
             raise NotImplementedError("mode has to be 'raw' or 'overlay'")
 
-        size = np.array(size, dtype=np.int)
-        offset = np.array(offset, dtype=np.int)
-
         if zyx_mode:
             size = size[::-1]
             offset = offset[::-1]
+
+        ratio = self.scale_ratio(mag, 1)
+        size = (np.array(size, dtype=np.int)//ratio).astype(int)
+        offset = (np.array(offset, dtype=np.int)//ratio).astype(int)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
 
@@ -1328,9 +1341,8 @@ class KnossosDataset(object):
                                 "offset: [%d, %d, %d]!" %
                                 (offset[0], offset[1], offset[2]))
 
-        start = self.get_first_blocks(offset)
-        end = self.get_last_blocks(offset, size)
-
+        start = self.get_first_blocks(offset).astype(int)
+        end = self.get_last_blocks(offset, size).astype(int)
         uncut_matrix_size = (end - start) * self.cube_shape
         if zyx_mode:
             uncut_matrix_size = uncut_matrix_size[::-1]
@@ -1584,7 +1596,7 @@ class KnossosDataset(object):
         :param size: 3 sequence of ints
             size of requested data block
         :param offset: 3 sequence of ints
-            coordinate of the corner closest to (0, 0, 0)
+            mag 1 coordinate of the corner closest to (0, 0, 0)
         :param empty_cube_label: int
             label for empty cubes
         :param datatype: numpy datatype
@@ -1607,8 +1619,9 @@ class KnossosDataset(object):
                             "overlaycubes or kzips.")
         archive = zipfile.ZipFile(path, 'r')
 
-        size = np.array(size, dtype=np.int)
-        offset = np.array(offset, dtype=np.int)
+        ratio = self.scale_ratio(mag, 1)
+        size = np.array(size, dtype=np.int)//ratio
+        offset = np.array(offset, dtype=np.int)//ratio
 
         start = np.array([get_first_block(dim, offset, self._cube_shape)
                           for dim in range(3)])
@@ -1652,11 +1665,10 @@ class KnossosDataset(object):
                                     archive.read(this_path)), dtype=np.uint64)
                         except KeyError:
                             if verbose:
-                                _print('Cube does not exist, {} cube assigned'
-                                       .format('dataset' if return_dataset_cube_if_nonexistent else empty_cube_label))
+                                _print('Cube does not exist, {} cube assigned'.format('dataset' if return_dataset_cube_if_nonexistent else empty_cube_label))
                             if return_dataset_cube_if_nonexistent:
-                                values = self.from_cubes_to_matrix(offset=current * self.cube_shape,
-                                                                   size=self.cube_shape, mag=mag, mode='overlay')
+                                values = self.from_cubes_to_matrix(offset=current * ratio * self.cube_shape, datatype=datatype,
+                                                                   size=ratio * self.cube_shape, mag=mag, mode='overlay', verbose=verbose, show_progress=show_progress)
                                 values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
                             else:
                                 values = np.full(self.cube_shape, empty_cube_label, dtype=datatype)
@@ -2040,10 +2052,9 @@ class KnossosDataset(object):
             start_mag = 1 if upsample else data_mag
             if downsample:
                 if self._ordinal_mags:
-                    mags = np.arange(start_mag, len(self.scales) + 1, dtype=np.int)
+                    mags = np.arange(start_mag, self.highest_mag, dtype=np.int)
                 else: # power of 2 mags (KNOSSOS style)
-                    max_mag = np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
-                    mags = np.power(2, np.arange(start_mag - 1, max_mag, dtype=np.int))
+                    mags = np.power(2, np.arange(start_mag - 1, self.highest_mag, dtype=np.int))
             else:
                 mags = [data_mag]
         _print("mags to write: {}".format(mags))
@@ -2104,9 +2115,7 @@ class KnossosDataset(object):
             data = np.max(np.array(data), axis=0)
 
         for mag in mags:
-            mag_i = mag-1 if self._ordinal_mags else int(np.log2(mag))
-            data_mag_i = data_mag-1 if self._ordinal_mags else int(np.log2(data_mag))
-            ratio = (self.scales[mag_i] / self.scales[data_mag_i]) if self._ordinal_mags else 3 * [float(mag) / data_mag]
+            ratio = self.scale_ratio(mag, data_mag)
             inv_mag_ratio = 1.0/np.array(ratio)
             if fast_downsampling and all(mag_ratio.is_integer() for mag_ratio in ratio):
                 data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])], dtype=datatype)
@@ -2129,7 +2138,7 @@ class KnossosDataset(object):
             else:
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=1).astype(datatype, copy=False)
 
-            offset_mag = np.array(offset, dtype=np.int) // ratio
+            offset_mag = np.array(offset, dtype=np.int) // self.scale_ratio(mag, 1)
             size_mag = np.array(data_inter.shape, dtype=np.int)
 
             if verbose:
