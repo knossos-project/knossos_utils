@@ -532,7 +532,6 @@ class Skeleton:
         self.annotations.add(annotation)
         return self
 
-
     def get_high_node_id(self):
         """
         Return highest node ID in any annotation in the skeleton.
@@ -600,6 +599,8 @@ class Skeleton:
 
         if self.dataset_path is not None:
             dataset = doc.createElement("dataset")
+            if hasattr(self, "dataset_overlay"):
+                build_attributes(dataset, [["overlay", self.dataset_overlay]])
             build_attributes(dataset, [["path", self.dataset_path]])
             parameters.appendChild(dataset)
 
