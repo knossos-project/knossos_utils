@@ -65,6 +65,10 @@ def _export_cset_as_kd_thread(args):
     nb_threads = args[8]
     orig_dtype = args[9]
     fast_downsampling = args[10]
+    if len(args) == 12:
+        overwrite = args[11]
+    else:
+        overwrite = True  # default as before
 
     cset = load_dataset(cset_path, update_paths=True)
 
@@ -107,7 +111,7 @@ def _export_cset_as_kd_thread(args):
                             data=data_list,
                             as_raw=as_raw,
                             nb_threads=nb_threads,
-                            overwrite=True,
+                            overwrite=overwrite,
                             datatype=datatype,
                             fast_downsampling=fast_downsampling)
 
@@ -291,16 +295,17 @@ class ChunkDataset(object):
         self._dataset_path = knossos_dataset_object.knossos_path
         self.box_size = box_size
         self.overlap = overlap
-        if not os.path.exists(self.path_head_folder):
-            os.makedirs(self.path_head_folder)
-            print('folder created at %s' % path_head_folder)
+        # TODO: test whether this can be removed safely
+        # if not os.path.exists(self.path_head_folder):
+        #     os.makedirs(self.path_head_folder)
+        #     print('folder created at %s' % path_head_folder)
 
         if len(list_of_coords) == 0:
             if False in np.equal(np.mod(box_size, chunk_size), np.zeros(3)):
                 raise Exception("box_size has to be multiple of chunk_size")
             if box_coords is None:
                 raise Exception("No box coords given")
-            multiple = np.divide(box_size, chunk_size)
+            multiple = np.divide(box_size, chunk_size).astype(np.int)
             for x in range(multiple[0]):
                 for y in range(multiple[1]):
                     for z in range(multiple[2]):
@@ -329,12 +334,12 @@ class ChunkDataset(object):
                 new_chunk.path_head_folder = path_head_folder
                 new_chunk.folder = path_head_folder + "/" + new_chunk.folder_name
                 new_chunk.box_size = box_size
-
-        for nb_chunk in self.chunk_dict.keys():
-            try:
-                os.makedirs(self.chunk_dict[nb_chunk].folder)
-            except:
-                pass
+        # TODO: test whether this can be removed safely
+        # for nb_chunk in self.chunk_dict.keys():
+        #     try:
+        #         os.makedirs(self.chunk_dict[nb_chunk].folder)
+        #     except:
+        #         pass
 
     def apply_to_subset(self, function, args=[], kwargs={}, chunklist=[],
                         with_chunk=True, with_chunkclass=False):
