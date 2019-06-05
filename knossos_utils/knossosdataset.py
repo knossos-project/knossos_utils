@@ -1574,13 +1574,13 @@ class KnossosDataset(object):
                 int(area_elem.get("max.z")))
         return (area_min, area_max)
 
-    def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True):
+    def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True, return_area=False):
         area_min, area_max = self.get_movement_area(path)
         print(area_min, area_max)
         size = (area_max[0] - area_min[0], area_max[1] - area_min[1], area_max[2] - area_min[2])
         print(size)
-        return self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag,
-                                        apply_mergelist=apply_mergelist), area_min, area_max, size
+        matrix = self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag, apply_mergelist=apply_mergelist)
+        return (matrix, area_min, size) if return_area else matrix
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
@@ -1740,8 +1740,8 @@ class KnossosDataset(object):
             dest_path = kzip_path
         if out_mags is None:
             out_mags = []
-        mat, area_min, area_max, size = self.from_kzip_movement_area_to_matrix(str(kzip_path), mag=source_mag, apply_mergelist=False)
-        area_max = np.array(area_max) - 1
+        mat, area_min, size = self.from_kzip_movement_area_to_matrix(str(kzip_path), mag=source_mag, apply_mergelist=False, return_area=True)
+        area_max = np.array(area_min) + np.array(size) - 1
         skel = k_skel.Skeleton()
         mag_limit = 1
         if len(out_mags) > 0:
