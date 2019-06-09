@@ -1,3 +1,11 @@
+import re
+
+
+def nat_sorted(sequence):
+    def convert(val): return int(val) if val.isdigit() else val
+    return sorted(sequence, key=lambda elem: [convert(elem) for elem in re.split(r'(\d+)', elem)])    
+
+
 def compare_version(v1, v2):
     """
     Return '>', '<' or '==', depending on whether the version
@@ -21,12 +29,13 @@ def compare_version(v1, v2):
     for (cur_v1, cur_v2) in v1v2:
         if cur_v1 == cur_v2:
             pass
-        elif cur_v1 > cur_v2:
-            return '>'
-        else:
+        elif nat_sorted((cur_v1, cur_v2))[0] == cur_v1:
             return '<'
+        else:
+            return '>'
 
     return '=='
+
 
 class Version(list):
     def __lt__(self, other):
