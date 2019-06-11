@@ -762,25 +762,24 @@ class Skeleton:
             return self.skeleton_idletime
 
     def get_version(self):
-        # Check whether the version string consists of a number or dot separated numbers.
-        created_version = [x for x in self.created_version.split('.')]
-        last_saved_version = [x for x in self.last_saved_version.split('.')]
+        created_version = self.created_version
+        last_saved_version = self.last_saved_version
 
         if self.created_version == '4.0 Beta 2':
-            created_version = ["3", "99", "2"]
+            created_version = '3.99.2'
         if self.created_version == '4.1 Alpha':
-            created_version = ["4", "0", "99", "2"]
+            created_version = '4.0.99.2'
         if self.created_version == '4.1 Pre Alpha':
-            created_version = ["4", "0", "99", "1"]
+            created_version = '4.0.99.1'
         if self.last_saved_version == '4.0 Beta 2':
-            last_saved_version = ["3", "99", "2"]
+            last_saved_version = '3.99.2'
         if self.last_saved_version == '4.1 Alpha':
-            last_saved_version = ["4", "0", "99", "2"]
+            last_saved_version = '4.0.99.2'
         if self.last_saved_version == '4.1 Pre Alpha':
-            last_saved_version = ["4", "0", "99", "1"]
+            last_saved_version = '4.0.99.1'
 
         return {'created': created_version, 'saved': last_saved_version}
-    #
+
     def set_scaling(self, scaling):
         self.scaling = scaling
         for annotation in self.annotations:
