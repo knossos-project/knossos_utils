@@ -1860,6 +1860,68 @@ class KnossosDataset(object):
 
         return
 
+    def save_cube(self, cube_path, data, overwrite=False, overwrite_offset=None, overwrite_limit=None):
+        """
+        Helper function for from_matrix_to_cubes. Can also be used independently to overwrite individual cubes.
+        Expects data, offset and limit in xyz and data.shape == self.cube_shape.
+        :param cube_path: absolute path to destination cube (*.seg.sz.zip, *.seg.sz, *.raw, *.[ending known by imageio.imread])
+        :param data: data to be written to the cube
+        :param overwrite: True (deletes entire cube before writing to it)
+                         | False (preserves original cube values at 0-locations of new data)
+                         | 'area' (overwrites original cube within overwrite_offset and overwrite_limit)
+        :param overwrite_offset: overwrite area offset if overwrite == 'area'
+        :param overwrite_limit: overwrite area offset if overwrite == 'area'
+        """
+        assert np.array_equal(data.shape, self.cube_shape), 'Can only save cubes of shape self.cube_shape ({}). found shape {}'.format(self.cube_shape, data.shape)
+        data = np.swapaxes(data, 0, 2)
+        data = data.reshape(np.prod(self.cube_shape))
+        dest_cube = data
+        if overwrite is not True and os.path.isfile(cube_path):
+            # read
+            if cube_path.endswith('.seg.sz.zip'):
+                with zipfile.ZipFile(cube_path, "r") as zf:
+                    in_zip_name = os.path.basename(cube_path)[:-4]
+                    dest_cube = np.fromstring(self.module_wide["snappy"].decompress(zf.read(in_zip_name)), dtype=np.uint64)
+            elif cube_path.endswith('.seg.sz'):
+                with open(cube_path, "rb") as existing_file:
+                    dest_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
+            elif cube_path.endswith('.raw'):
+                dest_cube = np.fromfile(cube_path, dtype=np.uint8)
+            else: # png or jpg
+                try:
+                    dest_cube = imageio.imread(cube_path)
+                except ValueError:
+                    print(cube_path, "is broken and will be overwritten")
+            dest_cube = dest_cube.reshape(self.cube_shape)
+            data = data.reshape(self.cube_shape)
+
+            if overwrite == 'area' and overwrite_offset is not None and overwrite_limit is not None: # overwrite == 'area'
+                overwrite_offset = overwrite_offset[::-1]
+                overwrite_limit = overwrite_limit[::-1]
+                dest_cube[overwrite_offset[0]: overwrite_limit[0],
+                          overwrite_offset[1]: overwrite_limit[1],
+                          overwrite_offset[2]: overwrite_limit[2]] = data[overwrite_offset[0]: overwrite_limit[0],
+                                                                          overwrite_offset[1]: overwrite_limit[1],
+                                                                          overwrite_offset[2]: overwrite_limit[2]]
+            else: # overwrite == False
+                indices = np.where(data != 0)
+                dest_cube[indices] = data[indices]
+        # write
+        if np.any(dest_cube):
+            dest_cube = dest_cube.reshape(np.prod(dest_cube.shape))
+            if cube_path.endswith('.seg.sz.zip'):
+                in_zip_name = os.path.basename(cube_path)[:-4]
+                with zipfile.ZipFile(cube_path, "w") as zf:
+                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube), compress_type=zipfile.ZIP_DEFLATED)
+            elif cube_path.endswith('.seg.sz'):
+                with open(cube_path, "wb") as dest_file:
+                    dest_file.write(self.module_wide["snappy"].compress(dest_cube))
+            elif cube_path.endswith('.raw'):
+                with open(cube_path, "wb") as dest_file:
+                    dest_file.write(dest_cube)
+            else:  # png or jpg
+                imageio.imwrite(cube_path, dest_cube.reshape(self._cube_shape[2], self._cube_shape[0] * self._cube_shape[1]))
+
     def from_matrix_to_cubes(self, offset, mags=[], data=None, data_mag=1,
                              data_path=None, hdf5_names=None,
                              datatype=np.uint64, fast_downsampling=True,
@@ -1898,18 +1960,9 @@ class KnossosDataset(object):
             list entries
         :param verbose: bool
             True: prints several information
-        :param overwrite: bool
-            True: whole KNOSSOS cube is overwritten with new data
-            False: cube entries where new data == 0 are contained
-            eg.: Two different function calls write to two non-overlapping parts
-                 of one KNOSSOS cube. When overwrite is set to False, the second
-                 call won't overwrite the output of the first one. When they
-                 overlap however, the second call will overwrite the data
-                 from the first call at all voxels where the second data block
-                 has non-zero entries. If overwrite is set to True for the
-                 second call the full block gets replaced with the new data
-                 regardless of its values. In the current implementation this
-                 effects all data within all knossos cubes that are accessed.
+        :param overwrite: True (deletes entire cube before writing to it)
+                         | False (preserves original cube values at 0-locations of new data)
+                         | 'area' (overwrites original cube within offset and offset+data.shape)
         :param kzip_path: str
             is not None: overlay data is written as kzip to this path
         :param annotation_str: str
@@ -1930,27 +1983,18 @@ class KnossosDataset(object):
 
         def _write_cubes(args):
             """ Helper function for multithreading """
-            folder_path = args[0]
-            path = args[1]
-            cube_offset = args[2]
-            cube_limit = args[3]
-            start = args[4]
-            end = args[5]
+            folder_path, path, cube_offset, cube_limit, start, end = args
 
             cube = np.zeros(self.cube_shape, dtype=datatype)
-
             cube[cube_offset[0]: cube_limit[0],
                  cube_offset[1]: cube_limit[1],
-                 cube_offset[2]: cube_limit[2]]\
-                = data_inter[start[0]: start[0] + end[0],
-                             start[1]: start[1] + end[1],
-                             start[2]: start[2] + end[2]]
-
-            cube = np.swapaxes(cube, 0, 2)
-            cube = cube.reshape(np.prod(self.cube_shape))
+                 cube_offset[2]: cube_limit[2]] = data_inter[start[0]: start[0] + end[0],
+                                                             start[1]: start[1] + end[1],
+                                                             start[2]: start[2] + end[2]]
+            if not np.any(cube):
+                return
 
             if kzip_path is None:
-
                 while True:
                     try:
                         os.makedirs(folder_path, exist_ok=True)
@@ -1963,7 +2007,7 @@ class KnossosDataset(object):
                     try:
                         os.makedirs(folder_path+"block")    # Semaphore --------
                         break
-                    except:
+                    except FileExistsError:
                         if time.time() - os.stat(folder_path+"block").st_mtime <= 5:
                             time.sleep(1)
                         else:
@@ -1971,65 +2015,15 @@ class KnossosDataset(object):
                                 os.rmdir(folder_path+"block")
                             except FileNotFoundError:
                                 pass
-
-                if not overwrite:
-                    mask = np.zeros(self.cube_shape, dtype=datatype)
-                    mask[cube_offset[0]: cube_limit[0],
-                         cube_offset[1]: cube_limit[1],
-                         cube_offset[2]: cube_limit[2]]\
-                         = np.ones((cube_limit[0] - cube_offset[0], 
-                                    cube_limit[1] - cube_offset[1],
-                                    cube_limit[2] - cube_offset[2]), dtype=datatype)
-                    mask = np.swapaxes(mask, 0, 2)
-                    mask = mask.reshape(np.prod(self.cube_shape))
-                    indices = np.where(mask == 0)
-
-                    if as_raw and os.path.isfile(path):
-                        if self._raw_ext == "raw":
-                            existing_cube = np.fromfile(path, dtype=datatype)
-                        else:
-                            try:
-                                existing_cube = imageio.imread(path).reshape(cube.shape)
-                            except ValueError:
-                                print(path, "is broken and will be overwritten")
-                                existing_cube = cube
-                                pass
-                        cube[indices] = existing_cube[indices]
-
-                    if not as_raw and os.path.isfile(path+".zip"):
-                        with zipfile.ZipFile(path+".zip", "r") as zf:
-                            existing_cube = np.fromstring(
-                                    self.module_wide["snappy"].decompress(zf.read(os.path.basename(path))),
-                                    dtype=np.uint64)
-                        cube[indices] = existing_cube[indices]
-
-                if np.any(cube):
-                    if as_raw:
-                        if self._raw_ext == "raw":
-                            f = open(path, "wb")
-                            f.write(cube)
-                            f.close()
-                        else:
-                            imageio.imwrite(path, cube.reshape(self._cube_shape[2],
-                                                               self._cube_shape[0]*self._cube_shape[1]))
-                    else:
-                        arc_path = os.path.basename(path)
-                        with zipfile.ZipFile(path + ".zip", "w") as zf:
-                            zf.writestr(arc_path,
-                                        self.module_wide["snappy"].compress(cube),
-                                        compress_type=zipfile.ZIP_DEFLATED)
-
+                self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube, overwrite=overwrite,
+                                overwrite_offset=cube_offset if overwrite == 'area' else None,
+                                overwrite_limit=cube_limit if overwrite == 'area' else None)
                 os.rmdir(folder_path+"block")   # ------------------------------
 
             else:
-                if not np.sum(cube) == 0:
-                    if not overwrite and os.path.isfile(path):
-                        with open(path, "rb") as existing_file:
-                            existing_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
-                            indices = np.where(cube == 0)
-                            cube[indices] = existing_cube[indices]
-                    with open(path, "wb") as new_file:
-                        new_file.write(self.module_wide["snappy"].compress(cube))
+                self.save_cube(cube_path=path, data=cube, overwrite=overwrite,
+                                overwrite_offset=cube_offset if overwrite == 'area' else None,
+                                overwrite_limit=cube_limit if overwrite == 'area' else None)
 
         # Main Function
         if not self.initialized:
