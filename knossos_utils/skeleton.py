@@ -60,6 +60,7 @@ class Skeleton:
         self.skeleton_idletime = None
         self.skeleton_comment = None
         self.scaling = [1, 1, 1]
+        self.task_project = ''
         self.task_category = ''
         self.task_name = ''
         self.branchNodes = [] # list of node IDs
@@ -284,7 +285,11 @@ class Skeleton:
                     "experiment")[0], [["name", str]])
         except IndexError:
             self.experiment_name = None
-
+        try:
+            dataset = doc.getElementsByTagName("parameters")[0].getElementsByTagName("dataset")[0]
+            self.dataset_path = parse_attributes(dataset, [["path", str]])[0]
+        except IndexError:
+            self.dataset_path = None
         try: # movement area
             movement_area = doc.getElementsByTagName("parameters")[0].getElementsByTagName("MovementArea")[0]
             self.movement_area_min = parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]])
@@ -367,8 +372,8 @@ class Skeleton:
                     raise Exception('No time records exist!')
 
         try:
-            [self.task_category, self.task_name] = parse_attributes(
-                doc.getElementsByTagName("parameters")[0].getElementsByTagName("task")[0], [["category", str], ['name', str]])
+            [self.task_project, self.task_category, self.task_name] = parse_attributes(
+                doc.getElementsByTagName("parameters")[0].getElementsByTagName("task")[0], [['project', str], ["category", str], ['name', str]])
         except IndexError:
             pass
 
@@ -449,6 +454,11 @@ class Skeleton:
         except AttributeError:
             self.experiment_name = None
 
+        try:
+            self.dataset_path = parse_cET(root.find("parameters").find("dataset"), [["path", str]])
+        except AttributeError:
+            self.dataset_path = None
+
         # Read skeleton time and idle time
         try:
             [self.skeleton_time, skeleton_time_checksum] = parse_cET(
@@ -494,7 +504,7 @@ class Skeleton:
                     raise Exception('Checksum mismatch!')
 
         try:
-            [self.task_category, self.task_name] = parse_cET(root.find("parameters").find("task"), [["category", str], ['name', str]])
+            [self.task_project, self.task_category, self.task_name] = parse_cET(root.find("parameters").find("task"), [['project', str], ["category", str], ['name', str]])
         except IndexError:
             pass
 
@@ -692,7 +702,7 @@ class Skeleton:
 
         if self.task_category or self.task_name:
             task_elem = doc.createElement('task')
-            build_attributes(task_elem, [['category', self.task_category], ['name', self.task_name]])
+            build_attributes(task_elem, [['project', self.task_project], ['category', self.task_category], ['name', self.task_name]])
             parameters.appendChild(task_elem)
 
         # find property keys
