@@ -1865,23 +1865,20 @@ class KnossosDataset(object):
 
         return
 
-    def save_cube(self, cube_path, data, overwrite=False, overwrite_offset=None, overwrite_limit=None):
+    def save_cube(self, cube_path, data, overwrite_offset=None, overwrite_limit=None):
         """
         Helper function for from_matrix_to_cubes. Can also be used independently to overwrite individual cubes.
         Expects data, offset and limit in xyz and data.shape == self.cube_shape.
         :param cube_path: absolute path to destination cube (*.seg.sz.zip, *.seg.sz, *.raw, *.[ending known by imageio.imread])
         :param data: data to be written to the cube
-        :param overwrite: True (deletes entire cube before writing to it)
-                         | False (preserves original cube values at 0-locations of new data)
-                         | 'area' (overwrites original cube within overwrite_offset and overwrite_limit)
-        :param overwrite_offset: overwrite area offset if overwrite == 'area'
-        :param overwrite_limit: overwrite area offset if overwrite == 'area'
+        :param overwrite_offset: overwrite area offset. Defaults to (0, 0, 0) if overwrite_limit is set.
+        :param overwrite_limit: overwrite area offset. Defaults to self.cube_shape if overwrite_offset is set.
         """
         assert np.array_equal(data.shape, self.cube_shape), 'Can only save cubes of shape self.cube_shape ({}). found shape {}'.format(self.cube_shape, data.shape)
         data = np.swapaxes(data, 0, 2)
         data = data.reshape(np.prod(self.cube_shape))
         dest_cube = data
-        if overwrite is not True and os.path.isfile(cube_path):
+        if os.path.isfile(cube_path):
             # read
             if cube_path.endswith('.seg.sz.zip'):
                 with zipfile.ZipFile(cube_path, "r") as zf:
@@ -1900,15 +1897,15 @@ class KnossosDataset(object):
             dest_cube = dest_cube.reshape(self.cube_shape)
             data = data.reshape(self.cube_shape)
 
-            if overwrite == 'area' and overwrite_offset is not None and overwrite_limit is not None: # overwrite == 'area'
-                overwrite_offset = overwrite_offset[::-1]
-                overwrite_limit = overwrite_limit[::-1]
+            if overwrite_offset is not None or overwrite_limit is not None:
+                overwrite_offset = (overwrite_offset or (0, 0, 0))[::-1]
+                overwrite_limit = (overwrite_limit or self.cube_shape)[::-1]
                 dest_cube[overwrite_offset[0]: overwrite_limit[0],
                           overwrite_offset[1]: overwrite_limit[1],
                           overwrite_offset[2]: overwrite_limit[2]] = data[overwrite_offset[0]: overwrite_limit[0],
                                                                           overwrite_offset[1]: overwrite_limit[1],
                                                                           overwrite_offset[2]: overwrite_limit[2]]
-            else: # overwrite == False
+            else:
                 indices = np.where(data != 0)
                 dest_cube[indices] = data[indices]
         # write
@@ -1965,9 +1962,8 @@ class KnossosDataset(object):
             list entries
         :param verbose: bool
             True: prints several information
-        :param overwrite: True (deletes entire cube before writing to it)
+        :param overwrite: True (overwrites all values within offset and offset+data.shape)
                          | False (preserves original cube values at 0-locations of new data)
-                         | 'area' (overwrites original cube within offset and offset+data.shape)
         :param kzip_path: str
             is not None: overlay data is written as kzip to this path
         :param annotation_str: str
@@ -2020,15 +2016,15 @@ class KnossosDataset(object):
                                 os.rmdir(folder_path+"block")
                             except FileNotFoundError:
                                 pass
-                self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube, overwrite=overwrite,
-                                overwrite_offset=cube_offset if overwrite == 'area' else None,
-                                overwrite_limit=cube_limit if overwrite == 'area' else None)
+                self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube,
+                                overwrite_offset=cube_offset if overwrite else None,
+                                overwrite_limit=cube_limit if overwrite else None)
                 os.rmdir(folder_path+"block")   # ------------------------------
 
             else:
-                self.save_cube(cube_path=path, data=cube, overwrite=overwrite,
-                                overwrite_offset=cube_offset if overwrite == 'area' else None,
-                                overwrite_limit=cube_limit if overwrite == 'area' else None)
+                self.save_cube(cube_path=path, data=cube,
+                                overwrite_offset=cube_offset if overwrite else None,
+                                overwrite_limit=cube_limit if overwrite else None)
 
         # Main Function
         if not self.initialized:
