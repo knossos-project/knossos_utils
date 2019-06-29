@@ -1062,7 +1062,7 @@ class KnossosDataset(object):
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
-                             nb_threads=40, verbose=True, show_progress=True,
+                             nb_threads=40, verbose=False, show_progress=True,
                              http_max_tries=2000, http_verbose=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
@@ -1295,8 +1295,6 @@ class KnossosDataset(object):
 
         if verbose and show_progress:
             show_progress = False
-            _print("when choosing verbose, show_progress is automatically "
-                   "disabled")
 
         if mode == 'raw':
             from_raw = True
@@ -1407,9 +1405,6 @@ class KnossosDataset(object):
         if not np.all(output.shape == ref_size):
             raise Exception("Incorrect shape! Should be", ref_size, "; got:",
                             output.shape)
-        else:
-            if verbose:
-                _print("Shape was verified")
 
         if np.any(mirror_overlap):
             if not zyx_mode:
@@ -2054,7 +2049,7 @@ class KnossosDataset(object):
         if not as_raw: # overlay cube ids shall not be interpolated
             fast_downsampling = True
 
-        if not kzip_path is None:
+        if kzip_path is not None:
             if as_raw:
                 raise Exception("You have to choose between kzip and raw cubes")
             try:
@@ -2069,9 +2064,9 @@ class KnossosDataset(object):
                 #    _print("kzip path created, notice that kzips can only be "
                 #           "created in mag1")
 
-        if not data_path is None:
+        if data_path is not None:
             if '.h5' in data_path:
-                if not hdf5_names is None:
+                if hdf5_names is not None:
                     if not isinstance(hdf5_names, list):
                         hdf5_names = [hdf5_names]
                 else:
