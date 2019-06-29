@@ -1918,6 +1918,8 @@ class KnossosDataset(object):
                     dest_file.write(dest_cube)
             else:  # png or jpg
                 imageio.imwrite(cube_path, dest_cube.reshape(self._cube_shape[2], self._cube_shape[0] * self._cube_shape[1]))
+        elif (overwrite_offset or overwrite_limit) and os.path.exists(cube_path):
+            os.remove(cube_path)
 
     def from_matrix_to_cubes(self, offset, mags=[], data=None, data_mag=1,
                              data_path=None, hdf5_names=None,
