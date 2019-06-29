@@ -1576,7 +1576,7 @@ class KnossosDataset(object):
                             show_progress=True,
                             apply_mergelist=True,
                             binarize_overlay=False,
-                            return_empty_cube_if_nonexistent=True):
+                            return_dataset_cube_if_nonexistent=False):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
@@ -1651,14 +1651,16 @@ class KnossosDataset(object):
                                 module_wide["snappy"].decompress(
                                     archive.read(this_path)), dtype=np.uint64)
                         except KeyError:
-                            if return_empty_cube_if_nonexistent:
-                                if verbose:
-                                    _print("Cube does not exist, cube with {} only" \
-                                           " assigned".format(empty_cube_label))
-                                values = np.full(self.cube_shape, empty_cube_label,
-                                                 dtype=datatype)
+                            if verbose:
+                                _print('Cube does not exist, {} cube assigned'
+                                       .format('dataset' if return_dataset_cube_if_nonexistent else empty_cube_label))
+                            if return_dataset_cube_if_nonexistent:
+                                values = self.from_cubes_to_matrix(offset=current * self.cube_shape,
+                                                                   size=self.cube_shape, mag=mag, mode='overlay')
+                                values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
                             else:
-                                return None
+                                values = np.full(self.cube_shape, empty_cube_label, dtype=datatype)
+
                     if verbose:
                         print(this_path)
                     if binarize_overlay:
@@ -2268,9 +2270,9 @@ class KnossosDataset(object):
         obj_map = defaultdict(set)
         for x, y, z in self.iter((0, 0, 0), self.boundary.tolist(), (128, 128, 128)):
             cube = self.from_kzip_to_matrix(kzip_path, size=(128, 128, 128), offset=(x, y, z), mag=1,
-                                            return_empty_cube_if_nonexistent=False, apply_mergelist=False,
+                                            return_dataset_cube_if_nonexistent=True, apply_mergelist=False,
                                             show_progress=False, verbose=False)
-            if cube is None: continue
+            if not np.any(cube): continue
             labels = np.unique(cube)[1:]  # no 0
             for sv_id in labels:
                 obj_id = subobj_map.get(sv_id, sv_id)
