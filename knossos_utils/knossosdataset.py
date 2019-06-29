@@ -1706,13 +1706,18 @@ class KnossosDataset(object):
 
         return output
 
-    def set_experiment_name_for_kzip_cubes(self, kzip_path):
+    def set_experiment_name_for_kzip(self, kzip_path):
         with tempfile.TemporaryDirectory() as tempdir_path:
             with zipfile.ZipFile(kzip_path, 'r') as original_kzip:
                 original_kzip.extractall(tempdir_path)
             tempdir_path = Path(tempdir_path)
             with zipfile.ZipFile(kzip_path, 'w', zipfile.ZIP_DEFLATED) as new_kzip:
                 for member in tempdir_path.iterdir():
+                    if member.name == 'annotation.xml':
+                        tree = ET.parse(member)
+                        experiment = tree.find('parameters/experiment')
+                        experiment.attrib['name'] = self.experiment_name
+                        tree.write(member)
                     hit = re.search('_mag[0-9]+x[0-9]+y[0-9]+z[0-9]+.seg.sz', member.name)
                     new_path = member
                     if hit:
