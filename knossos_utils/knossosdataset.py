@@ -1895,8 +1895,8 @@ class KnossosDataset(object):
             data = data.reshape(self.cube_shape)
 
             if overwrite_offset is not None or overwrite_limit is not None:
-                overwrite_offset = (overwrite_offset or (0, 0, 0))[::-1]
-                overwrite_limit = (overwrite_limit or self.cube_shape)[::-1]
+                overwrite_offset = (overwrite_offset if overwrite_offset is not None else (0, 0, 0))[::-1]
+                overwrite_limit = (overwrite_limit if overwrite_offset is not None else self.cube_shape)[::-1]
                 dest_cube[overwrite_offset[0]: overwrite_limit[0],
                           overwrite_offset[1]: overwrite_limit[1],
                           overwrite_offset[2]: overwrite_limit[2]] = data[overwrite_offset[0]: overwrite_limit[0],
