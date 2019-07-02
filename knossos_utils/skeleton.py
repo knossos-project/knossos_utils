@@ -32,7 +32,7 @@ import tempfile
 import unicodedata
 import zipfile
 from xml.dom import minidom
-import xml.etree.cElementTree as cElementTree
+
 
 def euclidian_distance(c1, c2):
     return math.sqrt(math.pow((c2[0] - c1[0]), 2) +
@@ -412,152 +412,6 @@ class Skeleton:
             self.branchNodes.append(nodeID)
         return self
 
-    def fromNmlcTree(self, filename, scaling=None, comment=None):
-        """Reads nml file with cElementTree Parser
-        is capable of parsing patches
-
-        Parameters
-        ----------
-        filename : str
-            path to nml-file or path to k.zip-file (but this might cause
-            trouble with other functions since self.filename = *.k.zip)
-        use_file_scaling : bool
-        scaling : str
-        comment : str
-        """
-        if filename:
-            self.filename = filename
-            try:
-                # this was introduced to identify *.nml files that are really
-                #  *.k.zip files that have a wrong file ending.
-                zip_test = zipfile.ZipFile(filename)
-                is_k_zip = True
-            except:
-                is_k_zip = False
-
-        if filename.endswith('k.zip') or is_k_zip:
-            zipper = zipfile.ZipFile(filename)
-
-            if not 'annotation.xml' in zipper.namelist():
-                raise Exception("k.zip file does not contain annotation.xml")
-
-            xml_string = zipper.read('annotation.xml')
-            root = cElementTree.fromstring(xml_string)
-        else:
-            with open(filename) as fh:
-                xml_string = fh.read()
-            root = cElementTree.fromstring(xml_string)
-        try:
-            [self.experiment_name] = parse_cET(
-                root.find("parameters").find("experiment"),
-                [["name", str]])
-        except AttributeError:
-            self.experiment_name = None
-
-        try:
-            self.dataset_path = parse_cET(root.find("parameters").find("dataset"), [["path", str]])
-        except AttributeError:
-            self.dataset_path = None
-
-        # Read skeleton time and idle time
-        try:
-            [self.skeleton_time, skeleton_time_checksum] = parse_cET(
-                root.find("parameters").find("time"),
-                [["ms", int], ["checksum", str]])
-            [self.skeleton_idletime, idletime_checksum] = parse_cET(
-                root.find("parameters").find("idleTime"),
-                [["ms", int], ["checksum", str]])
-
-        except AttributeError:
-            self.skeleton_time = None
-            self.skeleton_idletime = None
-
-        # the scaling argument is only for nmls that don’t contain the nm per px scale information
-        # if the nml already contains scale information (i.e. coords already in px space), this prevents an incorrect second divison
-        try:
-            file_scaling = parse_cET(root.find("parameters").find("scale"), [["x", float], ["y", float], ["z", float]])
-        except IndexError:
-            file_scaling = [1, 1, 1]
-        self.scaling = scaling or file_scaling
-        node_scale = tuple(map(lambda s1, s2: s1 / s2, file_scaling, self.scaling))
-
-        zero_based_nodes = root.find("parameters").find("nodes_0_based") is not None
-        if not zero_based_nodes:
-            print("Warning: The <parameters/> section does not contain a tag <nodes_0_based/>.\nSince KNOSSOS NMLs were originally 1-based, your skeleton is assumed to be 1-based and will be converted to 0-based now.")
-
-        try:
-            [self.last_saved_version] = parse_cET(root.find("parameters").find("lastsavedin"), [["version", str]])
-        except AttributeError:
-            self.last_saved_version = None
-        try:
-            [self.created_version] = parse_cET(root.find("parameters").find("createdin"), [["version", str]])
-        except AttributeError:
-            self.created_version = None
-
-        if Version(self.get_version()['saved']) >= Version(("3", "4", "2")):
-            # Has SHA256 checksums
-            if self.skeleton_time:
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                    raise Exception('Checksum mismatch!')
-            if self.skeleton_idletime:
-                if idletime_checksum != integer_checksum(self.skeleton_idletime):
-                    raise Exception('Checksum mismatch!')
-
-        try:
-            [self.task_project, self.task_category, self.task_name] = parse_cET(root.find("parameters").find("task"), [['project', str], ["category", str], ['name', str]])
-        except IndexError:
-            pass
-
-        base_id = self.get_high_node_id()
-
-        # Construct annotation. Annotations are trees (called things inside the nml files).
-        node_ID_to_node = {}
-        annotation_elems = root.findall("thing")
-        for annotation_elem in annotation_elems:
-            annotation = SkeletonAnnotation().fromNmlcTree(
-                    annotation_elem,
-                    self,
-                    base_id=base_id,
-                    zero_based=zero_based_nodes,
-                    node_scale=node_scale)
-
-            if comment:
-                annotation.setComment(comment)
-            self.annotations.add(annotation)
-            for node in annotation.getNodes():
-                node_ID_to_node[node.getUniqueID()] = node
-
-        # Read node comments
-        try:
-            comment_elems = root.find("comments").findall("comment")
-        except:
-            print("'NoneType' object has no attribute 'findall'")
-            comment_elems = []
-
-
-        for comment_elem in comment_elems:
-            try:
-                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
-                node_ID_to_node[nodeID + base_id].setComment(comment)
-            except KeyError:
-                print('Skipping comment, wrong node ID in comments sections: '
-                      '' + str(nodeID))
-            except UnicodeEncodeError:
-                # this means that a comment contains a non-ascii letter
-                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
-                ascii_comment = unicodedata.normalize('NFKD', comment).encode('ascii','ignore')
-                node_ID_to_node[nodeID + base_id].setComment(ascii_comment)
-        # Read branch points
-        branch_elems = root.findall("branchpoint")
-        for branch_elem in branch_elems:
-            [nodeID] = parse_cET(branch_elem, [["id", int]])
-            self.branchNodes.append(nodeID)
-
-        # pre init scaled coordinates for later usage
-        for node in self.getNodes():
-           node.getCoordinate_scaled()
-
-        return self
 
     def from_skeletopyze_skel(self, pyze_skel, coord_offset=[0, 0, 0]):
         try:
@@ -959,64 +813,6 @@ class SkeletonAnnotation:
 
         return self
 
-    def fromNmlcTree(self, annotation_elem, skeleton, base_id=0, zero_based=False, node_scale=(1, 1, 1)):
-        """ Subfunction of fromNmlcTree from NewSkeleton
-
-        Parameters
-        ----------
-        annotation_elem : XML Element
-        skeleton : Skeleton
-        base_id : int
-        """
-        self.resetObject()
-
-        self.setNodeBaseID(base_id)
-
-        self.scaling = skeleton.scaling
-
-        [comment] = parse_cET(annotation_elem, [['comment', str],])
-        if comment:
-            self.setComment(comment)
-
-        # Read nodes
-        node_elems = []
-
-        for i in annotation_elem.findall("nodes"):
-            for j in i.findall("node"):
-                node_elems.append(j)
-
-        for node_elem in node_elems:
-            node = SkeletonNode().fromNmlcTree(self, node_elem, zero_based=zero_based, node_scale=node_scale)
-            self.addNode(node)
-
-        # Read edges
-        edge_elems = []
-
-        for i in annotation_elem.findall("edges"):
-            for j in i.findall("edge"):
-                edge_elems.append(j)
-
-        for edge_elem in edge_elems:
-            (source_ID, target_ID) = parse_cET(edge_elem, [["source", int], ["target", int]])
-            try:
-                source_node = self.node_ID_to_node[source_ID]
-                target_node = self.node_ID_to_node[target_ID]
-                source_node.addChild(target_node)
-            except KeyError:
-                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
-
-        # Read patches
-        patch_elems = []
-
-        for i in annotation_elem.findall("patches"):
-            for j in i.findall("patch"):
-                patch_elems.append(j)
-
-        for patch_elem in patch_elems:
-            volume = SkeletonVolume().fromNmlcTree(patch_elem)
-            self.volumes.add(volume)
-
-        return self
 
     def toNml(self, doc, annotations_elem, comments_elem, annotation_ID):
         annotation_elem = doc.createElement("thing")
@@ -1344,27 +1140,6 @@ class SkeletonNode:
         self.setDataElem("time", time or 0)
         return self
 
-    def fromNmlcTree(self, annotation, node_elem, zero_based=False, node_scale=(1, 1, 1)):
-        self.resetObject()
-        self.annotation = annotation
-        [x, y, z, inVp, inMag, time, ID, radius], additional_attr = parse_cET(node_elem, \
-            [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
-             ["time", int], ["id", int], ["radius", float]], ret_all_attr=True)
-        self.ID = ID
-        self.x, self.y, self.z = int(round(x * node_scale[0])), int(round(y * node_scale[1])), int(round(z * node_scale[2]))
-        if not zero_based: # make it zero based
-            self.x -= 1
-            self.y -= 1
-            self.z -= 1
-        # KNOSSOS defaults
-        self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
-        self.setDataElem("radius", (radius or 1.5) * node_scale[0])
-        self.setDataElem("inMag", inMag or 1)
-        self.setDataElem("time", time or 0)
-
-        for key, val in additional_attr.items():
-            self.setDataElem(key, val)
-        return self
 
     def toNml(self, doc, nodes_elem, edges_elem, comments_elem):
         node_elem = doc.createElement("node")
@@ -1637,25 +1412,6 @@ class SkeletonVolume:
     def __len__(self):
         return len(self.loops)
 
-    def fromNmlcTree(self, patch_elem):
-        """ Subfunction of fromNmlcTree from SkeletonAnnotation
-
-        Parameters
-        ----------
-        patch_elem : XML Element
-        """
-        self.resetObject()
-
-        [comment] = parse_cET(patch_elem, [['comment', str],])
-        if comment:
-            self.setComment(comment)
-
-        for loop_elem in patch_elem.findall("loop"):
-            loop = SkeletonLoop().fromNmlcTree(loop_elem)
-            self.loops.add(loop)
-            self.setVP(loop.getVP())
-        self.setLimits()
-        return self
 
     def setLimits(self):
         """ Calculates the two outer points (3D) of the box exactly around the volume """
@@ -1712,7 +1468,7 @@ class SkeletonLoop:
         self.setLimits(point)
 
     def fillHole(self, curr, prior):
-        """ Adds a point to a hole detected by fromNmlcTree()
+        """ Adds a point to a hole
 
         The added point has to be a neighbour of curr (= current point)
         to guarantee a successful use of the while loop.
@@ -1739,32 +1495,6 @@ class SkeletonLoop:
 
         self.add(point)
 
-    def fromNmlcTree(self, loop_elem):
-        """Subfunction of fromNmlcTree from SkeletonVolume
-
-        Parameters
-        ----------
-        loop_elem : XML Element
-        """
-        self.resetObject()
-
-        [vp] = parse_cET(loop_elem, [['inVP', str],])
-        if vp:
-            self.setVP(vp)
-        for point_elem in loop_elem.findall("point"):
-            point = SkeletonLoopPoint().fromNmlcTree(point_elem)
-            currentcoord = point.getCoordinates()
-            if currentcoord[0] > -1:
-                if len(self.points) > 0:
-                    while False in \
-                            (2 > abs(currentcoord[dim]-self.last.getCoordinates()[dim]) \
-                            for dim in range(3)):
-                        print("Warning: Loop with hole detected")
-                        self.fillHole(currentcoord, self.last.getCoordinates())
-
-                self.add(point)
-
-        return self
 
     def setLimits(self, point):
         """ Calculates the two outer points (3D) of the box exactly around the loop """
@@ -1825,8 +1555,8 @@ class SkeletonLoopPoint:
     def __repr__(self):
         return "Looppoint at %s" % (self.getCoordinates(),)
 
-    def fromNmlcTree(self, point_elem):
-        """Subfunction of fromNmlcTree from SkeletonLoop
+    def fromNmlTree(self, point_elem):
+        """Subfunction of fromNmlTree from SkeletonLoop
 
         Parameters
         ----------
@@ -1838,7 +1568,7 @@ class SkeletonLoopPoint:
 
     def setCoordinates(self, point_elem):
         """ Sets the coordinates for a point and convert them to int """
-        [x, y, z] = parse_cET(point_elem, [["x", float], ["y", float], ["z", float]])
+        [x, y, z] = parse_attributes(point_elem, [["x", float], ["y", float], ["z", float]])
         if x > -1:
             [x, y, z] = [int(x), int(y), int(z)]
         [self.x, self.y, self.z] = [x, y, z]
@@ -2016,37 +1746,6 @@ def parse_attributes(xml_elem, parse_input):
         except (KeyError, ValueError):
             parse_output.append(None)
     return parse_output
-
-
-def parse_cET(xml_elem, parse_input, ret_all_attr=False):
-    """
-    Implementation of cElementTree Parser
-
-    Keyword arguments:
-    xml_elem -- XML Element
-    parse_input -- what the parser should look for ["whatyouarelookingfor", type]
-
-    returns a list of python-typed values
-    """
-    parse_output = []
-    already_parsed_input_keys = {}
-    additional_attr = {}
-    attributes = xml_elem.attrib
-    for x in parse_input:
-        already_parsed_input_keys[x[0]] = True
-        try:
-            parse_output.append(x[1](attributes[x[0]]))
-        except KeyError:
-                parse_output.append(None)
-    if ret_all_attr:
-        for key in attributes.keys():
-            try:
-                _ = already_parsed_input_keys[key]
-            except KeyError:
-                additional_attr[key] = attributes[key]
-        return parse_output, additional_attr
-    else:
-        return parse_output
 
 
 def build_attributes(xml_elem, attributes):
