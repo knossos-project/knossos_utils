@@ -1575,12 +1575,12 @@ class KnossosDataset(object):
         area_max = (int(area_elem.get("max.x")),
                 int(area_elem.get("max.y")),
                 int(area_elem.get("max.z")))
-        return (area_min, area_max)
+        return (np.array(area_min), np.array(area_max))
 
     def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True, return_area=False):
         area_min, area_max = self.get_movement_area(path)
         print(area_min, area_max)
-        size = (area_max[0] - area_min[0], area_max[1] - area_min[1], area_max[2] - area_min[2])
+        size = area_max - area_min
         print(size)
         matrix = self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag, apply_mergelist=apply_mergelist)
         return (matrix, area_min, size) if return_area else matrix
