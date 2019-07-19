@@ -1975,7 +1975,7 @@ class KnossosDataset(object):
                              data_path=None, hdf5_names=None,
                              datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=True,
-                             overwrite=True, kzip_path=None, compress_kzip=True,
+                             overwrite='area', kzip_path=None, compress_kzip=True,
                              annotation_str=None, as_raw=False, nb_threads=20,
                              upsample=True, downsample=True, gen_mergelist=True):
         """ Cubes data for viewing and editing in KNOSSOS
