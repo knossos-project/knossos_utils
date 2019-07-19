@@ -1116,175 +1116,76 @@ class KnossosDataset(object):
 
             # check cache first
             values = self._cube_from_cache(c, mode)
+            from_cache = values is not None
 
-            if values is not None:
-                #print('Cache hit')
-                if zyx_mode:
-                    output[pos[2]: pos[2] + self.cube_shape[2],
-                           pos[1]: pos[1] + self.cube_shape[1],
-                           pos[0]: pos[0] + self.cube_shape[0]] = \
-                        values
-                else:
-                    output[pos[0]: pos[0] + self.cube_shape[0],
-                           pos[1]: pos[1] + self.cube_shape[1],
-                           pos[2]: pos[2] + self.cube_shape[2]] = \
-                        values
-            else:
-                if from_raw:
-                    path = "{0}/{1}{2}/x{3:04}/y{4:04}/z{5:04}/{6}_mag{2}_x{3:04}_y{4:04}_z{5:04}.{7}"\
-                           .format(self.knossos_path, self.name_mag_folder, mag, c[0], c[1], c[2], self.experiment_name, self._raw_ext)
+            if not from_cache:
+                filename = f'{self.experiment_name}_mag{mag}_x{c[0]:04d}_y{c[1]:04d}_z{c[2]:04d}.{self._raw_ext if from_raw else "seg.sz.zip"}'
+                path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{c[0]:04d}/y{c[1]:04d}/z{c[2]:04d}/{filename}'
 
-                    if self.in_http_mode:
-                        tries = 0
-                        while True:
-                            try:
-                                request = requests.get(path,
-                                                       auth=self.http_auth,
-                                                       timeout=60)
-                                request.raise_for_status()
-                                values = np.fromstring(request.content, dtype=datatype) if self._raw_ext == "raw"\
-                                         else imageio.imread(request.content)
-                                try:
-                                    values.reshape(self.cube_shape)
-                                    valid_values = True
-                                    break
-                                except ValueError:
-                                    if verbose:
-                                        _print("Reshape error("
-                                        "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
-                                        pass
-                            except requests.exceptions.Timeout as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.TooManyRedirects as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.RequestException as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.ConnectionError as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.HTTPError as e:
-                                if http_verbose:
-                                    _print(e)
-                            tries += 1
-                            if tries >= http_max_tries:
-                                _print("Max. #tries reached.")
-                                return "Max-try error"
-                            _print("[%s] Error occured (%d/%d)\n" %
-                                   (path, tries, http_max_tries))
-                            time.sleep(1)
-                    else:
-                        if os.path.exists(path):
-                            values = None
-                            if self._cube_type == KnossosDataset.CubeType.RAW:
-                                flat_shape = int(np.prod(self.cube_shape))
-                                values = np.fromfile(path, dtype=np.uint8,
-                                                     count=flat_shape)
-                            else: # compressed
-                                values = imageio.imread(path)
-                            valid_values = True
-                        else:
-                            if verbose:
-                                _print("Cube {} does not exist, cube with zeros "
-                                       "only assigned".format(path))
-                else:
-                    path = self.knossos_path + \
-                           self.name_mag_folder + \
-                           "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                           self.experiment_name + \
-                           "_mag%d_x%04d_y%04d_z%04d.seg.sz" % \
-                           (mag, c[0], c[1], c[2])
-
-                    if self.in_http_mode:
-                        tries = 0
-                        while tries < http_max_tries:
-                            try:
-                                request = requests.get(path + ".zip",
-                                                       auth=self.http_auth,
-                                                       timeout=60)
-                                request.raise_for_status()
-                                with zipfile.ZipFile(BytesIO(
-                                        request.content), "r") \
-                                        as zf:
-                                    values = np.fromstring(
-                                        self.module_wide["snappy"].decompress(
-                                            zf.read(os.path.basename(path))),
-                                        dtype=datatype)
-                                # check if requested values match shape
-                                try:
-                                    values.reshape(self.cube_shape)
-                                except ValueError:
-                                    if verbose:
-                                        _print("\nReshape error encountered for"
-                                               " %d time. (%s)\n" %
-                                               (1 + tries, path))
-                                    tries += 1
-                                    time.sleep(0.1)
-                                    if tries == http_max_tries:
-                                        if verbose:
-                                            _print("Reshape error.")
-                                        return "Reshape error"
-                                    else:
-                                        continue
-                                valid_values = True
-                            except requests.exceptions.Timeout as e:
-                                return e
-                            except requests.exceptions.TooManyRedirects as e:
-                                return e
-                            except requests.exceptions.RequestException as e:
-                                return e
-                            except requests.exceptions.ConnectionError as e:
-                                tries += 1
-                                time.sleep(1)
-                                if tries == http_max_tries:
-                                    if verbose:
-                                        _print("Max. #tries reached.")
+                if self.in_http_mode:
+                    for tries in range(1, http_max_tries + 1):
+                        try:
+                            request = requests.get(path, auth=self.http_auth, timeout=60)
+                            request.raise_for_status()
+                            if from_raw:
+                                if self._raw_ext == 'raw':
+                                    values = np.fromstring(request.content, dtype=np.uint8).astype(datatype)
                                 else:
-                                    continue
-                            except requests.exceptions.HTTPError as e:
-                                return e
-                            break
-                    else:
-                        try:
-                            with zipfile.ZipFile(path + ".zip", "r") as zf:
-                                values = np.fromstring(
-                                    self.module_wide["snappy"].decompress(
-                                        zf.read(os.path.basename(path))),
-                                    dtype=np.uint64).astype(datatype)
+                                    values = imageio.imread(request.content)
+                            else:
+                                with zipfile.ZipFile(BytesIO(request.content), 'r') as zf:
+                                    snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
+                                    raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
+                                    values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                            try:# check if requested values match shape
+                                values.reshape(self.cube_shape)
                                 valid_values = True
-                        except Exception as e:
-                            if verbose:
-                                _print(e, "cube with zeros only assigned")
+                                break
+                            except ValueError:
+                                if http_verbose:
+                                    _print(f'Reshape error encountered for {1 + tries} time. ({path}). Content length: {len(request.content)}')
+                                time.sleep(0.1)
+                                if tries == http_max_tries:
+                                    raise Exception(f'Reshape errors exceed http_max_tries ({http_max_tries}).')
+                        except requests.exceptions.RequestException as e:
+                            if isinstance(e, requests.exceptions.ConnectionError) and tries < http_max_tries:
+                                time.sleep(0.1)
+                                continue
+                            return e
+                        if http_verbose:
+                            _print(f'[{path}] Error occured ({tries}/{http_max_tries})')
+                    if not valid_values:
+                        raise Exception(f'Max. #tries reached. ({http_max_tries})')
+                else:
+                    if os.path.exists(path):
+                        if not from_raw:
+                            with zipfile.ZipFile(path, 'r') as zf:
+                                snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
+                            raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
+                            values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                        elif self._cube_type == KnossosDataset.CubeType.RAW:
+                            flat_shape = int(np.prod(self.cube_shape))
+                            values = np.fromfile(path, dtype=np.uint8, count=flat_shape).astype(datatype)
+                        else: # compressed
+                            values = imageio.imread(path)
+                        valid_values = True
+                    elif verbose:
+                        _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
 
-                if valid_values:
-                    if zyx_mode:
-                        values = values.reshape(self.cube_shape)
-                        self._add_to_cube_cache(c, mode, values)
-                        output[pos[2]: pos[2]+self.cube_shape[2],
-                               pos[1]: pos[1]+self.cube_shape[1],
-                               pos[0]: pos[0]+self.cube_shape[0]] = \
-                            values
+            if valid_values:
+                values = values.reshape(self.cube_shape)
+                if not from_cache:
+                    self._add_to_cube_cache(c, mode, values)
+                cube_shape = self.cube_shape
+                if zyx_mode:
+                    pos = pos[::-1]
+                    cube_shape = cube_shape[::-1]
+                else:
+                    values = values.T
 
-                    else:
-                        try:
-                            values = values.reshape(self.cube_shape).T
-                        except Exception as e:
-                            # _print('Exception in reshape: values.shape {0}'.
-                            #        format(values.shape))
-                            # _print('Exception in reshape:self.cube_shape {0}'.
-                            #        format(self.cube_shape))
-                            # if verbose:
-                            _print(e, "cube with zeros only assigned")
-                            _print(c)
-                            values = np.zeros(self.cube_shape)
-
-                        self._add_to_cube_cache(c, mode, values)
-                        output[pos[0]: pos[0]+self.cube_shape[0],
-                               pos[1]: pos[1]+self.cube_shape[1],
-                               pos[2]: pos[2]+self.cube_shape[2]] = \
-                            values
+                output[pos[0]: pos[0] + cube_shape[0],
+                       pos[1]: pos[1] + cube_shape[1],
+                       pos[2]: pos[2] + cube_shape[2]] = values
 
         t0 = time.time()
 
@@ -1369,37 +1270,24 @@ class KnossosDataset(object):
                 for x in range(start[0], end[0]):
                     cube_coordinates.append([x, y, z])
 
-        if nb_threads > 1:
-            if not self._test_all_cache_satisfied(cube_coordinates, mode)\
-                    and len(cube_coordinates) > 1:
-                pool = ThreadPool(nb_threads)
-                results = pool.map(_read_cube, cube_coordinates)
-                pool.close()
-                pool.join()
-            else:
-                results = []
-                for c in cube_coordinates:
-                    results.append(_read_cube(c))
+        if nb_threads > 1 and not self._test_all_cache_satisfied(cube_coordinates, mode) and len(cube_coordinates) > 1:
+            pool = ThreadPool(nb_threads)
+            results = pool.map(_read_cube, cube_coordinates)
+            pool.close()
+            pool.join()
         else:
             results = []
             for c in cube_coordinates:
                 results.append(_read_cube(c))
 
-        if (verbose or http_verbose) and self.in_http_mode:
-            errors = {}
-            for result in results:
-                if result:
-                    if result.response:
-                        errno = result.response.status_code
-                        if errno in errors:
-                            errors[errno] += 1
-                        else:
-                            errors[errno] = 1
-            if verbose and len(errors) > 0:
-                _print("%d errors appeared! Keep in mind that Error 404 might be "
-                       "totally fine. Overview:" %len(errors))
-                for errno in errors:
-                    _print("%d: %dx" % (errno, errors[errno]))
+        if http_verbose and self.in_http_mode and results.count(None) < len(results):
+            errors = defaultdict(int)
+            for result in results: # None results are no error
+                if result is not None and result.response is not None: # errors with server response
+                    errors[result.response.status_code] += 1
+                elif result is not None: # errors without server response
+                    errors[result.__class__.__name__] += 1
+            _print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
 
         if zyx_mode:
             output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
@@ -1448,10 +1336,7 @@ class KnossosDataset(object):
         if pickle_path:
             save_to_pickle(output, pickle_path)
 
-        if http_verbose and self.in_http_mode:
-            return output, errors
-        else:
-            return output
+        return output
 
     def from_raw_cubes_to_matrix(self, size, offset, mag=1,
                                  datatype=np.uint8, mirror_oob=False,
