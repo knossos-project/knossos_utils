@@ -1405,6 +1405,9 @@ class KnossosDataset(object):
             output = cut_matrix(output, offset_start, offset_end,
                                 self.cube_shape, start, end)
 
+        if (uncut_matrix_size / output.shape).prod() > 1.5: # shrink allocation
+            output = output.astype(datatype, copy=True)
+
         if show_progress:
             progress = 100.0 * cnt / nb_cubes_to_process
             _stdout('\rProgress: %.2f%%' % progress)
