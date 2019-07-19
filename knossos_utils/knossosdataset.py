@@ -441,7 +441,7 @@ class KnossosDataset(object):
         return offset // self.cube_shape
 
     def get_last_blocks(self, offset, size):
-        return ((offset+size-1) // self.cube_shape) + 1
+        return ((offset + size - 1) // self.cube_shape) + 1
 
     def get_cube_coordinates(self, cube_name):
         x_pos = cube_name.rfind("x")
