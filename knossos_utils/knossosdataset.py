@@ -1923,9 +1923,12 @@ class KnossosDataset(object):
         if os.path.isfile(cube_path):
             # read
             if cube_path.endswith('.seg.sz.zip'):
-                with zipfile.ZipFile(cube_path, "r") as zf:
-                    in_zip_name = os.path.basename(cube_path)[:-4]
-                    dest_cube = np.fromstring(self.module_wide["snappy"].decompress(zf.read(in_zip_name)), dtype=np.uint64)
+                try:
+                    with zipfile.ZipFile(cube_path, "r") as zf:
+                        in_zip_name = os.path.basename(cube_path)[:-4]
+                        dest_cube = np.fromstring(self.module_wide["snappy"].decompress(zf.read(in_zip_name)), dtype=np.uint64)
+                except zipfile.BadZipFile:
+                    print(cube_path, "is broken and will be overwritten")
             elif cube_path.endswith('.seg.sz'):
                 with open(cube_path, "rb") as existing_file:
                     dest_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
