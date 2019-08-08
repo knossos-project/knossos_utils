@@ -134,7 +134,8 @@ def create_overlay_img(labels, background, cvals, n_dils=0, max_alpha_raw=0.8):
     :return:
     """
     assert isinstance(cvals, dict)
-    if 0 <= np.max(background) <= 1.0 and not background.dtype.kind in ('u', 'i'):
+    if (background is not None) and (0 <= np.max(background) <= 1.0) and\
+            not (background.dtype.kind in ('u', 'i')):
         background = (background * 255).astype(np.uint8)
     labels = labels.squeeze()
     labels = multi_dilation(labels, n_dils)
