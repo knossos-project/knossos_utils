@@ -298,7 +298,6 @@ class KnossosDataset(object):
         self._cube_type = KnossosDataset.CubeType.RAW
         self._raw_ext = 'raw'
         self._initialized = False
-        self._channel_selected = 'implicit'
         self._mags = None
 
     @property
@@ -419,23 +418,17 @@ class KnossosDataset(object):
                           for z in range(offset[2], end[2], step[2]))
 
     def set_channel(self, channel):
-        if channel == 'implicit':
-            return
-
-        known_channels = [
-            ('raw', 'raw', KnossosDataset.CubeType.RAW),
-            ('png', 'png', KnossosDataset.CubeType.COMPRESSED),
-            ('jpg', 'jpg', KnossosDataset.CubeType.COMPRESSED),
-        ]
-
-        for ch, ext, cube_type in known_channels:
-            if channel == ch:
-                self._cube_type = cube_type
-                self._raw_ext = ext
-                self._channel_selected = ch
-                return
-
-        raise ValueError('channel must be one of %s' % ([xx[0] for xx in known_channels], ))
+        if channel == 'implicit': return
+        cube_types = {
+            'raw': KnossosDataset.CubeType.RAW,
+            'png': KnossosDataset.CubeType.COMPRESSED,
+            'jpg': KnossosDataset.CubeType.COMPRESSED
+        }
+        if channel in cube_types:
+            self._cube_type = cube_types[channel]
+            self._raw_ext = channel
+        else:
+            raise ValueError(f'channel must be one of {cube_types.keys()}')
 
     def get_first_blocks(self, offset):
         return offset // self.cube_shape
@@ -558,8 +551,8 @@ class KnossosDataset(object):
                                   else KnossosDataset.CubeType.COMPRESSED
                 # set extension automatically if not specified
                 self._raw_ext = "raw" if type_token == 0\
-                                      else "png" if type_token == 2 \
-                                      else "jpg" # type_token == 3
+                                else "jpg" if type_token == 3 \
+                                else "png" # type_token == 2 and default
             elif key == "_NumberofCubes":
                 self._number_of_cubes[0] = int(tokens[1])
                 self._number_of_cubes[1] = int(tokens[2])
@@ -1115,9 +1108,6 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
-        if self._channel_selected == 'implicit':
-            warnings.warn('You are using implicit channel selection. This possibility will soon be removed.'
-                    ' Please call set_channel() before reading or writing data using KnossosDataset.')
         def _read_cube(c):
             pos = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
             valid_values = False
@@ -2021,11 +2011,6 @@ class KnossosDataset(object):
         :return:
             nothing
         """
-
-        if self._channel_selected == 'implicit':
-            warnings.warn('You are using implicit channel selection. This possibility will soon be removed.'
-                    ' Please call set_channel() before reading or writing data using KnossosDataset.')
-
         def _write_cubes(args):
             """ Helper function for multithreading """
             folder_path, path, cube_offset, cube_limit, start, end = args
