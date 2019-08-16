@@ -2021,8 +2021,8 @@ class KnossosDataset(object):
                  cube_offset[2]: cube_limit[2]] = data_inter[start[0]: start[0] + end[0],
                                                              start[1]: start[1] + end[1],
                                                              start[2]: start[2] + end[2]]
-            if not np.any(cube):
-                return
+            if verbose and not np.any(cube):
+               _print(path, 'no data to write, cube will be removed if present')
 
             if kzip_path is None:
                 while True:
