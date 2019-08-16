@@ -36,6 +36,7 @@ import collections
 import glob
 import os
 import pickle
+import random
 import re
 import shutil
 import sys
@@ -1144,12 +1145,12 @@ class KnossosDataset(object):
                             except ValueError:
                                 if http_verbose:
                                     _print(f'Reshape error encountered for {1 + tries} time. ({path}). Content length: {len(request.content)}')
-                                time.sleep(0.1)
+                                time.sleep(random.uniform(0.1, 1.0))
                                 if tries == http_max_tries:
                                     raise Exception(f'Reshape errors exceed http_max_tries ({http_max_tries}).')
                         except requests.exceptions.RequestException as e:
                             if isinstance(e, requests.exceptions.ConnectionError) and tries < http_max_tries:
-                                time.sleep(0.1)
+                                time.sleep(random.uniform(0.1, 1.0))
                                 continue
                             return e
                         if http_verbose:
@@ -1937,7 +1938,8 @@ class KnossosDataset(object):
                         os.makedirs(folder_path, exist_ok=True)
                         break
                     except PermissionError: # sometimes happens via sshfs with multiple workers
-                        time.sleep(1)
+                        print('Permission error while creating cube folder. Sleeping on', folder_path)
+                        time.sleep(random.uniform(0.1, 1.0))
                         pass
 
                 while True:
@@ -1947,7 +1949,7 @@ class KnossosDataset(object):
                     except (FileExistsError, PermissionError):
                         try:
                             if time.time() - os.stat(folder_path+"block").st_mtime <= 30:
-                                time.sleep(1) # wait for other workers to finish
+                                time.sleep(random.uniform(0.1, 1.0)) # wait for other workers to finish
                             else:
                                 print(f'had to remove block folder {folder_path+"block"} that wasn’t accessed recently {os.stat(folder_path+"block").st_mtime}')
                                 os.rmdir(folder_path+"block")
