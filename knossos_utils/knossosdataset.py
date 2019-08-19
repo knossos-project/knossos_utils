@@ -1072,7 +1072,7 @@ class KnossosDataset(object):
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
                              nb_threads=40, verbose=False, show_progress=True,
-                             http_max_tries=2000, http_verbose=False):
+                             http_max_tries=2000, http_verbose=False, expand_area_to_mag=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
             NOTE: You should use one of the two wrappers below
 
@@ -1105,6 +1105,8 @@ class KnossosDataset(object):
             True: prints several information
         :param show_progress: bool
             True: progress is printed to the terminal
+        :param expand_area_to_mag: bool
+            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
@@ -1312,10 +1314,20 @@ class KnossosDataset(object):
             offset = offset[::-1]
 
         ratio = self.scale_ratio(mag, 1)
-        size = (np.array(size, dtype=np.int)//ratio).astype(int)
+        if expand_area_to_mag:
+            # mag1 coords rounded such that when converting back from target mag to mag1 the specified offset and size can be extracted.
+            # i.e. for higher mags the matrix will be larger rather than smaller
+            boundary = np.ceil(np.array(self.boundary, dtype=np.int)/ratio).astype(int)
+            end = np.ceil(np.add(offset, size) / ratio) * ratio
+            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            # offset and size in target mag
+            size = ((end - offset) // ratio).astype(int)
+            offset = (offset // ratio).astype(int)
+        else:
+            size = (np.array(size, dtype=np.int)//ratio).astype(int)
+            offset = (np.array(offset, dtype=np.int)//ratio).astype(int)
+            boundary = (np.array(self.boundary, dtype=np.int)//ratio).astype(int)
         orig_size = np.copy(size)
-        offset = (np.array(offset, dtype=np.int)//ratio).astype(int)
-        boundary = (np.array(self.boundary, dtype=np.int)//ratio).astype(int)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
 
@@ -1580,7 +1592,8 @@ class KnossosDataset(object):
                             show_progress=True,
                             apply_mergelist=True,
                             binarize_overlay=False,
-                            return_dataset_cube_if_nonexistent=False):
+                            return_dataset_cube_if_nonexistent=False,
+                            expand_area_to_mag=False):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
@@ -1597,6 +1610,8 @@ class KnossosDataset(object):
             True: prints several information
         :param apply_mergelist: bool
             True: Merges IDs based on the kzip mergelist
+        :param expand_area_to_mag: bool
+            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
         :param return_empty_cube_if_nonexistent: bool
             True: if kzip doesn't contain specified cube,
             an empty cube (cube filled with empty_cube_label) is returned.
@@ -1612,8 +1627,15 @@ class KnossosDataset(object):
         archive = zipfile.ZipFile(path, 'r')
 
         ratio = self.scale_ratio(mag, 1)
-        size = np.array(size, dtype=np.int)//ratio
-        offset = np.array(offset, dtype=np.int)//ratio
+        if expand_area_to_mag:
+            end = np.ceil(np.add(offset, size) / ratio) * ratio
+            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            size = (end - offset) // ratio
+            offset = offset // ratio
+        else:
+            size = np.array(size, dtype=np.int)//ratio
+            offset = np.array(offset, dtype=np.int)//ratio
+
 
         start = np.array([get_first_block(dim, offset, self._cube_shape)
                           for dim in range(3)])
