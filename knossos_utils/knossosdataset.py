@@ -1269,6 +1269,30 @@ class KnossosDataset(object):
 
         return output
 
+    def load_raw(self, **kwargs):
+        """ from_cubes_to_matrix helper func with mode=raw.
+        datatype default is np.uint8, but can be overriden.
+        """
+        if not self.initialized:
+            raise Exception("Dataset is not initialized")
+        assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to False here.'
+        kwargs.update({'from_overlay': False})
+        if 'datatype' not in kwargs:
+            kwargs.update({'datatype': np.uint8})
+        return self._load(**kwargs)
+
+    def load_seg(self, **kwargs):
+        """ from_cubes_to_matrix helper func with mode=overlay.
+        datatype default is np.uint64, but can be overriden.
+        """
+        if not self.initialized:
+            raise Exception("Dataset is not initialized")
+        assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to True here.'
+        kwargs.update({'from_overlay': True})
+        if 'datatype' not in kwargs:
+            kwargs.update({'datatype': np.uint64})
+        return self._load(**kwargs)
+
     def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
                              mirror_oob=True, hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
@@ -1342,7 +1366,8 @@ class KnossosDataset(object):
             True: progress is printed to the terminal
         :return: 3D numpy array or nothing
             if a path is given no data is returned
-        """
+         """
+        print('from_raw_cubes_to_matrix is DEPRECATED.\nPlease use load_raw, this function will not be updated with from_cubes_to_matrix anymore.')
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
@@ -1399,7 +1424,8 @@ class KnossosDataset(object):
             True: progress is printed to the terminal
         :return: 3D numpy array or nothing
             if a path is given no data is returned
-        """
+         """
+        print('from_overlaycubes_to_matrix is DEPRECATED.\nPlease use load_seg, this function will not be updated with from_cubes_to_matrix anymore.')
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
