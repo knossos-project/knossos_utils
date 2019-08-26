@@ -2103,9 +2103,6 @@ class KnossosDataset(object):
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
 
-        if not as_raw: # overlay cube ids shall not be interpolated
-            fast_downsampling = True
-
         if kzip_path is not None:
             if as_raw:
                 raise Exception("You have to choose between kzip and raw cubes")
@@ -2159,26 +2156,24 @@ class KnossosDataset(object):
         for mag in mags:
             ratio = self.scale_ratio(mag, data_mag)
             inv_mag_ratio = 1.0/np.array(ratio)
-            if fast_downsampling and all(mag_ratio.is_integer() for mag_ratio in ratio):
+            fast = fast_downsampling or (not as_raw and mag > data_mag)
+            if fast and all(mag_ratio.is_integer() for mag_ratio in ratio):
                 data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])], dtype=datatype)
             elif all(mag_ratio == 1 for mag_ratio in ratio):
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
-            elif fast_downsampling:
-                #data_inter = np.zeros(
-                #    np.array(data.shape) * inv_mag_ratio,
-                #    dtype=data.dtype)
-
-                #for i_step in range(inv_mag_ratio):
-                #    data_inter[i_step:: inv_mag_ratio,
-                #               i_step:: inv_mag_ratio,
-                #               i_step:: inv_mag_ratio] = data
-
-                #data_inter = data_inter.astype(dtype=datatype, copy=False)
+            elif fast:
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
-            else:
-                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=1).astype(datatype, copy=False)
+            elif as_raw:
+                quality = 3 if mag > data_mag else 1
+                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=quality).astype(datatype, copy=False)
+            else: # fancy seg upsampling
+                data_inter = np.zeros(shape=(inv_mag_ratio * np.array(data.shape)).astype(np.int), dtype=datatype)
+                for value in np.unique(data):
+                    if value == 0: continue # no 0 upsampling
+                    up_chunk_channel = scipy.ndimage.zoom((data == value).astype(np.uint8), inv_mag_ratio, order=1)
+                    data_inter += (up_chunk_channel * value).astype(datatype, copy=False)
 
             offset_mag = np.array(offset, dtype=np.int) // self.scale_ratio(mag, 1)
             size_mag = np.array(data_inter.shape, dtype=np.int)
