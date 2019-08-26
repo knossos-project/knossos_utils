@@ -299,33 +299,40 @@ class KnossosDataset(object):
         self._raw_ext = 'raw'
         self._initialized = False
         self._channel_selected = 'implicit'
+        self._mags = None
 
     @property
     def mag(self):
-        found_mags = []
-        if self.in_http_mode:
-            for mag_test_nb in range(10):
-                mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
-                mag_folder = "{}/{}{}".format(self.http_url, self.name_mag_folder, mag_num)
-                for tries in range(10):
-                    try:
-                        request = requests.get(mag_folder,
-                                               auth=self.http_auth,
-                                               timeout=10)
-                        request.raise_for_status()
-                        found_mags.append(mag_num)
-                        break
-                    except:
-                        if request.status_code < requests.codes.server_error:
-                            break # no use retrying if client error (e.g. 404)
-                        continue
-        else:
-            regex = re.compile("mag[1-9][0-9]*$")
-            for mag_folder in glob.glob(os.path.join(self._knossos_path, "*mag*")):
-                match = regex.search(mag_folder)
-                if match is not None:
-                    found_mags.append(int(mag_folder[match.start() + 3:])) # mag number
-        return found_mags
+        print('mag is DEPRECATED\nPlease use available_mags')
+        return self.available_mags
+
+    @property
+    def available_mags(self):
+        if self._mags is None:
+            self._mags = []
+            if self.in_http_mode:
+                for mag_test_nb in range(10):
+                    mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
+                    mag_folder = "{}/{}{}".format(self.http_url, self.name_mag_folder, mag_num)
+                    for tries in range(10):
+                        try:
+                            request = requests.get(mag_folder,
+                                                   auth=self.http_auth,
+                                                   timeout=10)
+                            request.raise_for_status()
+                            self._mags.append(mag_num)
+                            break
+                        except:
+                            if request.status_code < requests.codes.server_error:
+                                break # no use retrying if client error (e.g. 404)
+                            continue
+            else:
+                regex = re.compile("mag[1-9][0-9]*$")
+                for mag_folder in glob.glob(os.path.join(self._knossos_path, "*mag*")):
+                    match = regex.search(mag_folder)
+                    if match is not None:
+                        self._mags.append(int(mag_folder[match.start() + 3:])) # mag number
+        return self._mags
 
     @property
     def name_mag_folder(self):
@@ -955,7 +962,7 @@ class KnossosDataset(object):
             data_range = [[0, 0, 0], self.boundary]
 
         if mags is None:
-            mags = self.mag
+            mags = self.available_mags
 
         if isinstance(mags, int):
             mags = [mags]
@@ -1296,10 +1303,9 @@ class KnossosDataset(object):
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
-        available_mags = self.mag
-        if mag not in available_mags:
+        if mag not in self.available_mags:
             raise Exception("Requested mag {0} not available, only mags {1} are "
-                            "available.".format(mag, available_mags))
+                            "available.".format(mag, self.available_mags))
 
         if 0 in size:
             raise Exception("The first parameter is size! - "
