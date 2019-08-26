@@ -1356,9 +1356,7 @@ class KnossosDataset(object):
         offset_end = (self.cube_shape - (offset + size)
                       % self.cube_shape) % self.cube_shape
 
-        cnt = 0
         nb_cubes_to_process = int(np.prod(end - start))
-
         if nb_cubes_to_process == 0:
             return np.zeros(orig_size, dtype=datatype)
 
@@ -1412,9 +1410,6 @@ class KnossosDataset(object):
             output = output.astype(datatype, copy=True)
 
         if show_progress:
-            progress = 100.0 * cnt / nb_cubes_to_process
-            _stdout('\rProgress: %.2f%%' % progress)
-            _stdout('\rProgress: finished\n')
             dt = time.time()-t0
             speed = np.product(output.shape) * 1.0/1000000/dt
             if mode == "raw":
@@ -1654,13 +1649,11 @@ class KnossosDataset(object):
                 while current[0] < end[0]:
                     if show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
-                        _stdout('\rProgress: %.2f%%' % progress)
-                    this_path = "{}_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
-                                                                  current[0], current[1], current[2])
+                        _stdout(f'\rProgress: {progress:.2f}% ') # 
+                    this_path = f'{self._experiment_name}_mag{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
                     try:
-                        values = np.fromstring(
-                            module_wide["snappy"].decompress(
-                                archive.read(this_path)), dtype=np.uint64)
+                        scube = archive.read(this_path)
+                        values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
                     except KeyError:
                         if verbose:
                             _print("Cube {0} does not exist, trying legacy format".format(this_path))
