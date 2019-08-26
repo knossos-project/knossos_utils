@@ -2086,13 +2086,11 @@ class KnossosDataset(object):
 
         if not mags:
             start_mag = 1 if upsample else data_mag
-            if downsample:
-                if self._ordinal_mags:
-                    mags = np.arange(start_mag, self.highest_mag, dtype=np.int)
-                else: # power of 2 mags (KNOSSOS style)
-                    mags = np.power(2, np.arange(start_mag - 1, self.highest_mag, dtype=np.int))
-            else:
-                mags = [data_mag]
+            end_mag = self.highest_mag if downsample else data_mag
+            if self._ordinal_mags:
+                mags = np.arange(start_mag, end_mag, dtype=np.int)
+            else: # power of 2 mags (KNOSSOS style)
+                mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=np.int))
         _print("mags to write: {}".format(mags))
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
