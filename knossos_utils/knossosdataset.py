@@ -305,7 +305,7 @@ class KnossosDataset(object):
         found_mags = []
         if self.in_http_mode:
             for mag_test_nb in range(10):
-                mag_num = 2 ** mag_test_nb
+                mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
                 mag_folder = "{}/{}{}".format(self.http_url, self.name_mag_folder, mag_num)
                 for tries in range(10):
                     try:
