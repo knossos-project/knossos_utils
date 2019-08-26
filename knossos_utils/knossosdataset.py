@@ -389,14 +389,11 @@ class KnossosDataset(object):
 
     @property
     def in_http_mode(self):
-        if self.http_url and self.http_user and self.http_passwd:
-            return True
-        else:
-            return False
+        return bool(self.http_url)
 
     @property
-    def http_auth(self):
-        if self.in_http_mode:
+    def http_auth(self):# when auth is contained in URL we can return None here
+        if self.http_user and self.http_passwd:
             return (self.http_user, self.http_passwd)
         else:
             return None
