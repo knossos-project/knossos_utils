@@ -2058,19 +2058,24 @@ class KnossosDataset(object):
                     try:
                         os.makedirs(folder_path+"block")    # Semaphore --------
                         break
-                    except FileExistsError:
-                        if time.time() - os.stat(folder_path+"block").st_mtime <= 5:
-                            time.sleep(1)
-                        else:
-                            try:
+                    except (FileExistsError, PermissionError):
+                        try:
+                            if time.time() - os.stat(folder_path+"block").st_mtime <= 30:
+                                time.sleep(1) # wait for other workers to finish
+                            else:
+                                print(f'had to remove block folder {folder_path+"block"} that wasn’t accessed recently {os.stat(folder_path+"block").st_mtime}')
                                 os.rmdir(folder_path+"block")
-                            except FileNotFoundError:
-                                pass
+                        except FileNotFoundError:
+                            pass # folder was removed by another worker in the meantime
+
                 self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube,
                                 overwrite_offset=cube_offset if overwrite else None,
                                 overwrite_limit=cube_limit if overwrite else None)
-                os.rmdir(folder_path+"block")   # ------------------------------
-
+                try:
+                    os.rmdir(folder_path+"block")   # ------------------------------
+                except FileNotFoundError:
+                    print(f'another worker removed our semaphore {folder_path+"block"}')
+                    pass
             else:
                 self.save_cube(cube_path=path, data=cube,
                                 overwrite_offset=cube_offset if overwrite else None,
