@@ -1326,19 +1326,19 @@ class KnossosDataset(object):
         size = (np.array(size, dtype=np.int)//ratio).astype(int)
         orig_size = np.copy(size)
         offset = (np.array(offset, dtype=np.int)//ratio).astype(int)
+        boundary = (np.array(self.boundary, dtype=np.int)//ratio).astype(int)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
 
         for dim in range(3):
             if offset[dim] < 0:
                 size[dim] += offset[dim]
-                mirror_overlap[dim][0] = - offset[dim]
+                mirror_overlap[dim][0] = -offset[dim]
                 offset[dim] = 0
 
-            if offset[dim]+size[dim] > self.boundary[dim]:
-                mirror_overlap[dim][1] = offset[dim] + size[dim] - \
-                                         self.boundary[dim]
-                size[dim] -= offset[dim] + size[dim] - self.boundary[dim]
+            if offset[dim] + size[dim] > boundary[dim]:
+                mirror_overlap[dim][1] = offset[dim] + size[dim] - boundary[dim]
+                size[dim] = boundary[dim] - offset[dim]
 
             if size[dim] < 0:
                 raise Exception("Given block is totally out ouf bounds with "
