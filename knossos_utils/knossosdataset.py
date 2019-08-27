@@ -1415,9 +1415,9 @@ class KnossosDataset(object):
             dt = time.time()-t0
             speed = np.product(output.shape) * 1.0/1000000/dt
             if mode == "raw":
-                _stdout('\rSpeed: %.3f MB or MPix /s, time %s\n' % (speed, dt))
+                _stdout('\rSpeed: %.3f MB or Mpx/s, time %s\n' % (speed, dt))
             else:
-                _stdout('\rSpeed: %.3f MPix /s, time %s\n' % (speed, dt))
+                _stdout('\rSpeed: %.3f Mpx/s, time %s\n' % (speed, dt))
 
         ref_size = size[::-1] if zyx_mode else size
         if not np.all(output.shape == ref_size):
