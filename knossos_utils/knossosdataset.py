@@ -1324,6 +1324,7 @@ class KnossosDataset(object):
 
         ratio = self.scale_ratio(mag, 1)
         size = (np.array(size, dtype=np.int)//ratio).astype(int)
+        orig_size = np.copy(size)
         offset = (np.array(offset, dtype=np.int)//ratio).astype(int)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
@@ -1358,6 +1359,9 @@ class KnossosDataset(object):
 
         cnt = 0
         nb_cubes_to_process = int(np.prod(end - start))
+
+        if nb_cubes_to_process == 0:
+            return np.zeros(orig_size, dtype=datatype)
 
         cube_coordinates = []
 
