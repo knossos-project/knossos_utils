@@ -1586,9 +1586,7 @@ class KnossosDataset(object):
 
     def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True, return_area=False):
         area_min, area_max = self.get_movement_area(path)
-        print(area_min, area_max)
         size = area_max - area_min
-        print(size)
         matrix = self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag, apply_mergelist=apply_mergelist)
         return (matrix, area_min, size) if return_area else matrix
 
@@ -1706,19 +1704,18 @@ class KnossosDataset(object):
                 current[1] += 1
             current[2] += 1
         if show_progress: print("\n") # newline after sys.stdout.writes inside loop
-        output = cut_matrix(output, offset_start, offset_end, self.cube_shape,
-                            start, end)
+        output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
         if apply_mergelist:
             if "mergelist.txt" not in archive.namelist():
-                _print("no mergelist to apply")
+                if verbose:
+                    _print("no mergelist to apply")
             else:
                 if verbose:
                     _print("applying mergelist now")
                 mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
 
         if False in [output.shape[dim] == size[dim] for dim in range(3)]:
-            raise Exception("Incorrect shape! Should be", size, "; got:",
-                            output.shape)
+            raise Exception("Incorrect shape! Should be", size, "; got:", output.shape)
         else:
             if verbose:
                 _print("Correct shape")
