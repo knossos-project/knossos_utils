@@ -322,7 +322,7 @@ class KnossosDataset(object):
                             request.raise_for_status()
                             self._mags.append(mag_num)
                             break
-                        except:
+                        except requests.exceptions.HTTPError:
                             if request.status_code < requests.codes.server_error:
                                 break # no use retrying if client error (e.g. 404)
                             continue
@@ -595,7 +595,7 @@ class KnossosDataset(object):
             f = open(path_to_knossos_conf)
             lines = f.readlines()
             f.close()
-        except:
+        except FileNotFoundError:
             raise NotImplementedError("Could not find/read *mag1/knossos.conf")
 
         self._conf_path = path_to_knossos_conf
@@ -608,13 +608,13 @@ class KnossosDataset(object):
                 self._http_user = line_s[3]
                 self._http_passwd = line_s[4]
             else:
-                try:
-                    match = re.search(r'(?P<key>[A-Za-z _]+)'
-                                      r'((((?P<numeric_value>[0-9\.]+)'
-                                      r'|"(?P<string_value>[A-Za-z0-9._/-]+)");)'
-                                      r'|(?P<empty_value>;))',
-                                      line).groupdict()
-
+                match = re.search(r'(?P<key>[A-Za-z _]+)'
+                                  r'((((?P<numeric_value>[0-9\.]+)'
+                                  r'|"(?P<string_value>[A-Za-z0-9._/-]+)");)'
+                                  r'|(?P<empty_value>;))',
+                                  line)
+                if match:
+                    match = match.groupdict()
                     if match['empty_value']:
                         val = True
                     elif match['string_value']:
@@ -627,9 +627,8 @@ class KnossosDataset(object):
                         raise Exception('Malformed knossos.conf')
 
                     parsed_dict[match["key"]] = val
-                except:
-                    if verbose:
-                        _print("Unreadable line in knossos.conf - ignored.")
+                elif verbose:
+                        _print(f"Unreadable line in knossos.conf - ignored: {line}")
 
         self._boundary[0] = parsed_dict['boundary x ']
         self._boundary[1] = parsed_dict['boundary y ']
@@ -2108,11 +2107,9 @@ class KnossosDataset(object):
         if kzip_path is not None:
             if as_raw:
                 raise Exception("You have to choose between kzip and raw cubes")
-            try:
-                if ".k.zip" == kzip_path[-6:]:
-                    kzip_path = kzip_path[:-6]
-            except:
-                pass
+
+            if kzip_path.endswith(".k.zip"):
+                kzip_path = kzip_path[:-6]
 
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
