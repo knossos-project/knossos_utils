@@ -1703,7 +1703,8 @@ class KnossosDataset(object):
                     current[0] += 1
                 current[1] += 1
             current[2] += 1
-        if show_progress: print("\n") # newline after sys.stdout.writes inside loop
+        if show_progress:
+            print() # newline after sys.stdout.writes inside loop
         output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
         if apply_mergelist:
             if "mergelist.txt" not in archive.namelist():
