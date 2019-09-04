@@ -44,6 +44,7 @@ import tempfile
 import time
 import warnings
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from enum import Enum
 from io import BytesIO
@@ -1241,15 +1242,8 @@ class KnossosDataset(object):
                 for x in range(start[0], end[0]):
                     cube_coordinates.append([x, y, z])
 
-        if nb_threads > 1 and not self._test_all_cache_satisfied(cube_coordinates, mode) and len(cube_coordinates) > 1:
-            pool = ThreadPool(nb_threads)
-            results = pool.map(_read_cube, cube_coordinates)
-            pool.close()
-            pool.join()
-        else:
-            results = []
-            for c in cube_coordinates:
-                results.append(_read_cube(c))
+        with ThreadPoolExecutor() as pool:
+            results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
 
         if http_verbose and self.in_http_mode and results.count(None) < len(results):
             errors = defaultdict(int)
