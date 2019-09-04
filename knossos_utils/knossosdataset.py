@@ -1102,10 +1102,6 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
-        verbose = True
-        show_progress = True
-        http_verbose = False
-        http_max_tries = 5
         def _read_cube(c):
             local_offset = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
             valid_values = False
@@ -1119,7 +1115,7 @@ class KnossosDataset(object):
                 path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{c[0]:04d}/y{c[1]:04d}/z{c[2]:04d}/{filename}'
 
                 if self.in_http_mode:
-                    for tries in range(1, http_max_tries + 1):
+                    for tries in range(1, self.http_max_tries + 1):
                         try:
                             request = requests.get(path, auth=self.http_auth, timeout=60)
                             request.raise_for_status()
@@ -1138,20 +1134,18 @@ class KnossosDataset(object):
                                 valid_values = True
                                 break
                             except ValueError:
-                                if http_verbose:
-                                    _print(f'Reshape error encountered for {1 + tries} time. ({path}). Content length: {len(request.content)}')
+                                self._print(f'Reshape error encountered for {1 + tries} time. ({path}). Content length: {len(request.content)}')
                                 time.sleep(random.uniform(0.1, 1.0))
-                                if tries == http_max_tries:
-                                    raise Exception(f'Reshape errors exceed http_max_tries ({http_max_tries}).')
+                                if tries == self.http_max_tries:
+                                    raise Exception(f'Reshape errors exceed http_max_tries ({self.http_max_tries}).')
                         except requests.exceptions.RequestException as e:
-                            if isinstance(e, requests.exceptions.ConnectionError) and tries < http_max_tries:
+                            if isinstance(e, requests.exceptions.ConnectionError) and tries < self.http_max_tries:
                                 time.sleep(random.uniform(0.1, 1.0))
                                 continue
                             return e
-                        if http_verbose:
-                            _print(f'[{path}] Error occured ({tries}/{http_max_tries})')
+                        self._print(f'[{path}] Error occured ({tries}/{self.http_max_tries})')
                     if not valid_values:
-                        raise Exception(f'Max. #tries reached. ({http_max_tries})')
+                        raise Exception(f'Max. #tries reached. ({self.http_max_tries})')
                 else:
                     if os.path.exists(path):
                         if from_overlay:
@@ -1165,16 +1159,13 @@ class KnossosDataset(object):
                         else: # compressed
                             values = imageio.imread(path)
                         valid_values = True
-                    elif verbose:
-                        _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
+                    self. _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
 
             if valid_values:
                 values = values.reshape(self.cube_shape)
                 if not from_cache:
                     self._add_to_cube_cache(c, from_overlay, values)
-                cube_shape = self.cube_shape
-
-                local_end = local_offset + cube_shape
+                local_end = local_offset + self.cube_shape
                 output[local_offset[2]:local_end[2], local_offset[1]:local_end[1], local_offset[0]:local_end[0]] = values
 
         t0 = time.time()
@@ -1245,21 +1236,21 @@ class KnossosDataset(object):
         with ThreadPoolExecutor() as pool:
             results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
 
-        if http_verbose and self.in_http_mode and results.count(None) < len(results):
+        if results.count(None) < len(results):
             errors = defaultdict(int)
             for result in results: # None results are no error
                 if result is not None and result.response is not None: # errors with server response
                     errors[result.response.status_code] += 1
                 elif result is not None: # errors without server response
                     errors[result.__class__.__name__] += 1
-            _print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
+            self._print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
 
         output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
 
         if (uncut_matrix_size / output.shape).prod() > 1.5: # shrink allocation
             output = output.astype(datatype, copy=True)
 
-        if show_progress:
+        if self.show_progress:
             dt = time.time()-t0
             speed = np.product(output.shape) * 1.0/1000000/dt
             if not from_overlay:
