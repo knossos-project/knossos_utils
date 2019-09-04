@@ -137,7 +137,7 @@ def moduleInit():
             "Snappy does not contain method 'decompress'. You probably have " \
             "to install 'python-snappy', instead of 'snappy'."
     except ImportError:
-        _print("snappy is not available - you won't be able to write/read "
+        print("snappy is not available - you won't be able to write/read "
                "overlaycubes and k.zips. Reference for snappy: "
                "https://pypi.python.org/pypi/python-snappy/")
     try:
