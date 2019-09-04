@@ -1869,8 +1869,7 @@ class KnossosDataset(object):
             True: uses order 1 downsampling (striding)
             False: uses order 3 downsampling
         :param force_unique_labels: bool
-            True and len(data) > 0: Assures unique data before combining all
-            list entries
+            unsupported
         :param verbose: bool
             True: prints several information
         :param overwrite: True (overwrites all values within offset and offset+data.shape)
@@ -1888,6 +1887,34 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+        if data_path is not None:
+            if '.h5' in data_path:
+                assert hdf5_names is not None, 'No hdf5 names given to read hdf5 file.'
+                data = load_from_h5py(data_path, list(hdf5_names))
+            elif '.pkl' in data_path:
+                data = load_from_pickle(data_path)
+            else:
+                raise Exception("File has to be .h5 pr .pkl")
+
+        assert data is not None
+        if len(data) == 0:
+            raise Exception("No data or path given!")
+
+        data = np.array(data)
+        data = np.swapaxes(data, 0, 2)
+        assert not force_unique_labels, 'force_unique_labels unsupported'
+
+        if kzip_path:
+            if compress_kzip:
+                self.save_to_kzip(data, data_mag, kzip_path, offset, mags, gen_mergelist, annotation_str)
+            else:
+                self.save_to_kzip_path_only(data, data_mag, kzip_path, offset, mags, gen_mergelist, annotation_str)
+        else:
+            self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
+
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_downsampling):
+        datatype=np.uint8 if as_raw else np.uint64
+        overwrite=True
         def _write_cubes(args):
             """ Helper function for multithreading """
             folder_path, path, cube_offset, cube_limit, start, end = args
@@ -1955,8 +1982,6 @@ class KnossosDataset(object):
             else: # power of 2 mags (KNOSSOS style)
                 mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=np.int))
         self._print(f'mags to write: {mags}')
-        if (data is None) and (data_path is None or hdf5_names is None):
-            raise Exception("No data given")
 
         if kzip_path is not None:
             assert not as_raw, 'You have to choose between kzip and raw cubes'
@@ -1964,44 +1989,6 @@ class KnossosDataset(object):
                 kzip_path = kzip_path[:-6]
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
-                #if verbose:
-                #    _print("kzip path created, notice that kzips can only be "
-                #           "created in mag1")
-
-        if data_path is not None:
-            if '.h5' in data_path:
-                if hdf5_names is not None:
-                    if not isinstance(hdf5_names, list):
-                        hdf5_names = [hdf5_names]
-                else:
-                    raise Exception("No hdf5 names given to read hdf5 file.")
-
-                data = load_from_h5py(data_path, hdf5_names)
-
-            elif '.pkl' in data_path:
-                data = load_from_pickle(data_path)
-            else:
-                raise Exception("File has to be of type hdf5 or pickle.")
-
-        elif len(data) > 0:
-            pass
-        else:
-            raise Exception("No data or path given!")
-
-        if (not isinstance(data, list)) and \
-                (not data is None):
-            data = np.array(data, copy=False)
-        else:
-            for ii in range(len(data)):
-                data[ii] = np.array(data[ii])
-
-            if force_unique_labels:
-                max_label_so_far = np.max(data[0])
-                for ii in range(1, len(data)):
-                    data[ii][data[ii] > 0] += max_label_so_far
-                    max_label_so_far = np.max(data[ii])
-
-            data = np.max(np.array(data), axis=0)
 
         for mag in mags:
             ratio = self.scale_ratio(mag, data_mag)[::-1]
@@ -2078,21 +2065,35 @@ class KnossosDataset(object):
             with ThreadPoolExecutor() as pool:
                 list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
-        if kzip_path is not None:
-            if compress_kzip:
-                with zipfile.ZipFile(kzip_path+".k.zip", "w",
-                                     zipfile.ZIP_DEFLATED) as zf:
-                    for root, dirs, files in os.walk(kzip_path):
-                        for file in files:
-                            zf.write(os.path.join(root, file), file)
-                    if gen_mergelist:
-                        zf.writestr("mergelist.txt",
-                                    mergelist_tools.gen_mergelist_from_segmentation(
-                                        data.astype(datatype, copy=False),
-                                        offsets=np.array(offset, dtype=np.uint64)))
-                    if annotation_str is not None:
-                        zf.writestr("annotation.xml", annotation_str)
-                shutil.rmtree(kzip_path)
+    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_downsampling=True):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+
+    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_downsampling=True):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+
+    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_downsampling=True):
+        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=[], gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+        self.compress_kzip(kzip_path=kzip_path)
+
+    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_downsampling=True):
+        if kzip_path.endswith('.k.zip'):
+            kzip_path = kzip_path[:-6]
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+        if gen_mergelist:
+            with open(os.path.join(kzip_path, 'mergelist.txt'), 'w') as mergelist:
+                mergelist.write(mergelist_tools.gen_mergelist_from_segmentation(data, offsets=np.array(offset, dtype=np.uint64)))
+        if annotation_str is not None:
+            with open(os.path.join(kzip_path, 'annotation.xml'), 'w') as annotation:
+                annotation.write(annotation_str)
+
+    def compress_kzip(self, kzip_path):
+        if kzip_path.endswith('.k.zip'):
+            kzip_path = kzip_path[:-6]
+        with zipfile.ZipFile(kzip_path + '.k.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(kzip_path):
+                for file in files:
+                    zf.write(os.path.join(root, file), file)
+        shutil.rmtree(kzip_path)
 
     def from_overlaycubes_to_kzip(self, size, offset, output_path,
                                   src_mag=1, trg_mags=[1,2,4,8],
