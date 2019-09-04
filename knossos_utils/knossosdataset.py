@@ -1782,7 +1782,6 @@ class KnossosDataset(object):
         :param overwrite_limit: overwrite area offset. Defaults to self.cube_shape if overwrite_offset is set.
         """
         assert np.array_equal(data.shape, self.cube_shape), 'Can only save cubes of shape self.cube_shape ({}). found shape {}'.format(self.cube_shape, data.shape)
-        data = np.swapaxes(data, 0, 2)
         data = data.reshape(np.prod(self.cube_shape))
         dest_cube = data
         if os.path.isfile(cube_path):
@@ -1808,13 +1807,13 @@ class KnossosDataset(object):
             data = data.reshape(self.cube_shape)
 
             if overwrite_offset is not None or overwrite_limit is not None:
-                overwrite_offset = (overwrite_offset if overwrite_offset is not None else (0, 0, 0))[::-1]
-                overwrite_limit = (overwrite_limit if overwrite_offset is not None else self.cube_shape)[::-1]
-                dest_cube[overwrite_offset[0]: overwrite_limit[0],
+                overwrite_offset = overwrite_offset if overwrite_offset is not None else (0, 0, 0)
+                overwrite_limit = overwrite_limit if overwrite_offset is not None else self.cube_shape
+                dest_cube[overwrite_offset[2]: overwrite_limit[2],
                           overwrite_offset[1]: overwrite_limit[1],
-                          overwrite_offset[2]: overwrite_limit[2]] = data[overwrite_offset[0]: overwrite_limit[0],
+                          overwrite_offset[0]: overwrite_limit[0]] = data[overwrite_offset[2]: overwrite_limit[2],
                                                                           overwrite_offset[1]: overwrite_limit[1],
-                                                                          overwrite_offset[2]: overwrite_limit[2]]
+                                                                          overwrite_offset[0]: overwrite_limit[0]]
             else:
                 indices = np.where(data != 0)
                 dest_cube[indices] = data[indices]
@@ -1894,11 +1893,13 @@ class KnossosDataset(object):
             folder_path, path, cube_offset, cube_limit, start, end = args
 
             cube = np.zeros(self.cube_shape, dtype=datatype)
-            cube[cube_offset[0]: cube_limit[0],
+            cube[cube_offset[2]: cube_limit[2],
                  cube_offset[1]: cube_limit[1],
-                 cube_offset[2]: cube_limit[2]] = data_inter[start[0]: start[0] + end[0],
+                 cube_offset[0]: cube_limit[0]] = data_inter[start[2]: start[2] + end[2],
                                                              start[1]: start[1] + end[1],
-                                                             start[2]: start[2] + end[2]]
+                                                             start[0]: start[0] + end[0]]
+
+
             if not np.any(cube):
                self._print(path, 'no data to write, cube will be removed if present')
 
@@ -2003,7 +2004,7 @@ class KnossosDataset(object):
             data = np.max(np.array(data), axis=0)
 
         for mag in mags:
-            ratio = self.scale_ratio(mag, data_mag)
+            ratio = self.scale_ratio(mag, data_mag)[::-1]
             inv_mag_ratio = 1.0/np.array(ratio)
             fast = fast_downsampling or (not as_raw and mag > data_mag)
             if fast and all(mag_ratio.is_integer() for mag_ratio in ratio):
@@ -2037,14 +2038,13 @@ class KnossosDataset(object):
             self._print(f'start_cube: {start}')
             self._print(f'end_cube: {end}')
 
-            current = np.array([start[dim] for dim in range(3)])
             multithreading_params = []
 
-            while current[2] < end[2]:
-                current[1] = start[1]
-                while current[1] < end[1]:
-                    current[0] = start[0]
-                    while current[0] < end[0]:
+            for z in range(start[2], end[2]):
+                for y in range(start[1], end[1]):
+                    for x in range(start[0], end[0]):
+                        current = np.array([x, y, z])
+
                         this_cube_info = []
                         path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
                         this_cube_info.append(path)
@@ -2074,9 +2074,6 @@ class KnossosDataset(object):
                         this_cube_info.append(end_coord.astype(np.int))
 
                         multithreading_params.append(this_cube_info)
-                        current[0] += 1
-                    current[1] += 1
-                current[2] += 1
 
             with ThreadPoolExecutor() as pool:
                 list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
