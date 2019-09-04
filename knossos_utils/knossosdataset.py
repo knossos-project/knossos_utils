@@ -1613,11 +1613,7 @@ class KnossosDataset(object):
                     _print("applying mergelist now")
                 mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
 
-        if False in [output.shape[dim] == size[dim] for dim in range(3)]:
-            raise Exception("Incorrect shape! Should be", size, "; got:", output.shape)
-        else:
-            if verbose:
-                _print("Correct shape")
+        assert np.array_equal(output.shape, size), f'Incorrect shape! Should be {size}; got {output.shape}'
 
         return output
 
