@@ -289,7 +289,7 @@ class ChunkDataset(object):
                 raise Exception("box_size has to be multiple of chunk_size")
             if box_coords is None:
                 raise Exception("No box coords given")
-            multiple = np.divide(box_size, chunk_size).astype(np.int)
+            multiple = box_size // chunk_size
             for x in range(multiple[0]):
                 for y in range(multiple[1]):
                     for z in range(multiple[2]):
