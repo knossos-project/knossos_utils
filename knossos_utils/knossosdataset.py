@@ -1079,10 +1079,8 @@ class KnossosDataset(object):
 
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
-    def from_cubes_to_matrix(self, size, offset, mode, mag=1, padding=0, datatype=np.uint8,
-                             hdf5_path=None,
-                             hdf5_name="raw", pickle_path=None,
-                             invert_data=False, zyx_mode=False,
+    def _load(self, size, offset, mode, mag=1, padding=0, datatype=np.uint8,
+                             zyx_mode=False,
                              nb_threads=40, verbose=False, show_progress=True,
                              http_max_tries=2000, http_verbose=False, expand_area_to_mag=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset
@@ -1102,14 +1100,6 @@ class KnossosDataset(object):
         :param datatype: numpy datatype
             typically:  'raw' = np.uint8
                         'overlay' = np.uint64
-        :param hdf5_path: str
-            if given the output is written as hdf5 file
-        :param hdf5_name: str
-            name of hdf5-set
-        :param pickle_path: str
-            if given the output is written as (c)Pickle file
-        :param invert_data: bool
-            True: inverts the output
         :param zyx_mode: bool
             activates zyx-order, size and offset have to in zyx if activated
         :param nb_threads: int
@@ -1333,16 +1323,43 @@ class KnossosDataset(object):
             else:
                 output = np.pad(output, mirror_overlap[::-1], mode=padding)
 
+        return output
+
+    def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
+                             mirror_oob=True, hdf5_path=None,
+                             hdf5_name="raw", pickle_path=None,
+                             invert_data=False, zyx_mode=False,
+                             nb_threads=40, verbose=False, show_progress=True,
+                             http_max_tries=2000, http_verbose=False):
+        self.verbose = verbose or http_verbose
+        self.show_progress = show_progress
+        self.http_max_tries = http_max_tries
+
+        if zyx_mode:
+            offset = offset[::-1]
+            size = size[::-1]
+        ratio = self.scale_ratio(mag, 1)
+        size = (np.array(size) * ratio).astype(np.int)
+        offset = (np.array(offset) * ratio).astype(np.int)
+
+        from_overlay = mode == 'overlay'
+        padding = 'symmetric' if mirror_oob else 0
+
+        data = self._load(offset=offset, size=size, from_overlay=from_overlay, mag=mag, padding=padding, datatype=datatype)
+
         if invert_data:
-            output = np.invert(output)
+            data = np.invert(data)
+
+        if not zyx_mode:
+            data = data.swapaxes(0, 2)
 
         if hdf5_path and hdf5_name:
-            save_to_h5py(output, hdf5_path, hdf5_names=[hdf5_name])
+            save_to_h5py(data, hdf5_path, hdf5_names=[hdf5_name])
 
         if pickle_path:
-            save_to_pickle(output, pickle_path)
+            save_to_pickle(data, pickle_path)
 
-        return output
+        return data
 
     def from_raw_cubes_to_matrix(self, size, offset, mag=1,
                                  datatype=np.uint8, mirror_oob=False,
