@@ -1302,6 +1302,7 @@ class KnossosDataset(object):
                              invert_data=False, zyx_mode=False,
                              nb_threads=40, verbose=False, show_progress=True,
                              http_max_tries=2000, http_verbose=False):
+        print('from_*cubes_to_matrix is DEPRECATED.\n Please use load_raw or load_seg.')
         self.verbose = verbose or http_verbose
         self.show_progress = show_progress
         self.http_max_tries = http_max_tries
@@ -1370,7 +1371,6 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
          """
-        print('from_raw_cubes_to_matrix is DEPRECATED.\nPlease use load_raw, this function will not be updated with from_cubes_to_matrix anymore.')
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
@@ -1428,7 +1428,6 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
          """
-        print('from_overlaycubes_to_matrix is DEPRECATED.\nPlease use load_seg, this function will not be updated with from_cubes_to_matrix anymore.')
         if not self.initialized:
             raise Exception("Dataset is not initialized")
 
@@ -1475,6 +1474,7 @@ class KnossosDataset(object):
                             binarize_overlay=False,
                             return_dataset_cube_if_nonexistent=False,
                             expand_area_to_mag=False):
+        print('from_kzip_to_matrix is DEPRECATED.\n Please use load_kzip_seg.')
         self.verbose = verbose
         self.show_progress = show_progress
         self.background_label = empty_cube_label
@@ -1890,6 +1890,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+        print('from_matrix_to_cubes is DEPRECATED.\n Please use save_raw or save_seg instead.')
         if data_path is not None:
             if '.h5' in data_path:
                 assert hdf5_names is not None, 'No hdf5 names given to read hdf5 file.'
