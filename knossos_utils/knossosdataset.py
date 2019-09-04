@@ -168,9 +168,9 @@ def cut_matrix(data, offset_start, offset_end, cube_shape, start, end):
     number_cubes = np.array(end) - np.array(start)
     cut_end = np.array(number_cubes * cube_shape - offset_end, dtype=np.int)
 
-    return data[cut_start[0]: cut_end[0],
+    return data[cut_start[2]: cut_end[2],
                 cut_start[1]: cut_end[1],
-                cut_start[2]: cut_end[2]]
+                cut_start[0]: cut_end[0]]
 
 
 def load_from_h5py(path, hdf5_names, as_dict=False):
@@ -1079,50 +1079,42 @@ class KnossosDataset(object):
 
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
-    def _load(self, size, offset, mode, mag=1, padding=0, datatype=np.uint8,
-                             zyx_mode=False,
-                             nb_threads=40, verbose=False, show_progress=True,
-                             http_max_tries=2000, http_verbose=False, expand_area_to_mag=False):
-        """ Extracts a 3D matrix from the KNOSSOS-dataset
-            NOTE: You should use one of the two wrappers below
 
-        :param size: 3 sequence of ints
-            size of requested data block
+    def _load(self, offset, size, from_overlay, mag, expand_area_to_mag=False, padding=0, datatype=None):
+        """ Extracts a 3D matrix from the KNOSSOS-dataset NOTE: You should use one of the two wrappers below
+
         :param offset: 3 sequence of ints
             mag 1 coordinate of the corner closest to (0, 0, 0)
-        :param mode: str
-            either 'raw' or 'overlay'
+        :param size: 3 sequence of ints
+            mag 1 size of requested data block
+        :param from_overlay: bool
+            loads overlay instead of raw cubes
         :param mag: int
             magnification of the requested data block
+            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
+        :param expand_area_to_mag: bool
         :param padding: str or int
             Pad mode for matrix parts outside the dataset. See https://www.pydoc.io/pypi/numpy-1.9.3/autoapi/numpy/lib/arraypad/index.html?highlight=pad#numpy.lib.arraypad.pad
             When passing an it, will pad with that int in 'constant' mode
         :param datatype: numpy datatype
-            typically:  'raw' = np.uint8
-                        'overlay' = np.uint64
-        :param zyx_mode: bool
-            activates zyx-order, size and offset have to in zyx if activated
-        :param nb_threads: int
-            number of threads - twice the number of cores is recommended
-        :param verbose: bool
-            True: prints several information
-        :param show_progress: bool
-            True: progress is printed to the terminal
-        :param expand_area_to_mag: bool
-            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
+            typically: for mode 'raw' this is np.uint8, and for 'overlay' np.uint64
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
+        verbose = True
+        show_progress = True
+        http_verbose = False
+        http_max_tries = 5
         def _read_cube(c):
-            pos = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
+            local_offset = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
             valid_values = False
 
             # check cache first
-            values = self._cube_from_cache(c, mode)
+            values = self._cube_from_cache(c, from_overlay)
             from_cache = values is not None
 
             if not from_cache:
-                filename = f'{self.experiment_name}_mag{mag}_x{c[0]:04d}_y{c[1]:04d}_z{c[2]:04d}.{self._raw_ext if from_raw else "seg.sz.zip"}'
+                filename = f'{self.experiment_name}_mag{mag}_x{c[0]:04d}_y{c[1]:04d}_z{c[2]:04d}.{"seg.sz.zip" if from_overlay else self._raw_ext}'
                 path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{c[0]:04d}/y{c[1]:04d}/z{c[2]:04d}/{filename}'
 
                 if self.in_http_mode:
@@ -1130,7 +1122,7 @@ class KnossosDataset(object):
                         try:
                             request = requests.get(path, auth=self.http_auth, timeout=60)
                             request.raise_for_status()
-                            if from_raw:
+                            if not from_overlay:
                                 if self._raw_ext == 'raw':
                                     values = np.fromstring(request.content, dtype=np.uint8).astype(datatype)
                                 else:
@@ -1161,7 +1153,7 @@ class KnossosDataset(object):
                         raise Exception(f'Max. #tries reached. ({http_max_tries})')
                 else:
                     if os.path.exists(path):
-                        if not from_raw:
+                        if from_overlay:
                             with zipfile.ZipFile(path, 'r') as zf:
                                 snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
                             raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
@@ -1178,59 +1170,37 @@ class KnossosDataset(object):
             if valid_values:
                 values = values.reshape(self.cube_shape)
                 if not from_cache:
-                    self._add_to_cube_cache(c, mode, values)
+                    self._add_to_cube_cache(c, from_overlay, values)
                 cube_shape = self.cube_shape
-                if zyx_mode:
-                    pos = pos[::-1]
-                    cube_shape = cube_shape[::-1]
-                else:
-                    values = values.T
 
-                output[pos[0]: pos[0] + cube_shape[0],
-                       pos[1]: pos[1] + cube_shape[1],
-                       pos[2]: pos[2] + cube_shape[2]] = values
+                local_end = local_offset + cube_shape
+                output[local_offset[2]:local_end[2], local_offset[1]:local_end[1], local_offset[0]:local_end[0]] = values
 
         t0 = time.time()
 
         if not self.initialized:
-            raise Exception("Dataset is not initialized")
+            raise Exception('Dataset is not initialized')
 
         if mag not in self.available_mags:
-            raise Exception("Requested mag {0} not available, only mags {1} are "
-                            "available.".format(mag, self.available_mags))
+            raise Exception(f'Requested mag {mag} not available, only mags {self.available_mags} are available.')
 
         if 0 in size:
-            raise Exception("The first parameter is size! - "
-                            "at least one dimension was set to 0 ...")
-
-        if verbose and show_progress:
-            show_progress = False
-
-        if mode == 'raw':
-            from_raw = True
-        elif mode == 'overlay':
-            from_raw = False
-        else:
-            raise NotImplementedError("mode has to be 'raw' or 'overlay'")
-
-        if zyx_mode:
-            size = size[::-1]
-            offset = offset[::-1]
+            raise Exception(f'The second parameter is size! - at least one dimension was set to 0 ({size})')
 
         ratio = self.scale_ratio(mag, 1)
         if expand_area_to_mag:
             # mag1 coords rounded such that when converting back from target mag to mag1 the specified offset and size can be extracted.
             # i.e. for higher mags the matrix will be larger rather than smaller
-            boundary = np.ceil(np.array(self.boundary, dtype=np.int)/ratio).astype(int)
+            boundary = np.ceil(np.array(self.boundary, dtype=np.int) / ratio).astype(int)
             end = np.ceil(np.add(offset, size) / ratio) * ratio
             offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
             # offset and size in target mag
             size = ((end - offset) // ratio).astype(int)
             offset = (offset // ratio).astype(int)
         else:
-            size = (np.array(size, dtype=np.int)//ratio).astype(int)
-            offset = (np.array(offset, dtype=np.int)//ratio).astype(int)
-            boundary = (np.array(self.boundary, dtype=np.int)//ratio).astype(int)
+            size = (np.array(size, dtype=np.int) // ratio).astype(int)
+            offset = (np.array(offset, dtype=np.int) // ratio).astype(int)
+            boundary = (np.array(self.boundary, dtype=np.int) // ratio).astype(int)
         orig_size = np.copy(size)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
@@ -1253,10 +1223,8 @@ class KnossosDataset(object):
         start = self.get_first_blocks(offset).astype(int)
         end = self.get_last_blocks(offset, size).astype(int)
         uncut_matrix_size = (end - start) * self.cube_shape
-        if zyx_mode:
-            uncut_matrix_size = uncut_matrix_size[::-1]
 
-        output = np.zeros(uncut_matrix_size, dtype=datatype)
+        output = np.zeros(uncut_matrix_size[::-1], dtype=datatype)
 
         offset_start = offset % self.cube_shape
         offset_end = (self.cube_shape - (offset + size)
@@ -1264,7 +1232,7 @@ class KnossosDataset(object):
 
         nb_cubes_to_process = int(np.prod(end - start))
         if nb_cubes_to_process == 0:
-            return np.zeros(orig_size, dtype=datatype)
+            return np.zeros(orig_size[::-1], dtype=datatype)
 
         cube_coordinates = []
 
@@ -1292,12 +1260,7 @@ class KnossosDataset(object):
                     errors[result.__class__.__name__] += 1
             _print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
 
-        if zyx_mode:
-            output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
-                                self.cube_shape[::-1], start[::-1], end[::-1])
-        else:
-            output = cut_matrix(output, offset_start, offset_end,
-                                self.cube_shape, start, end)
+        output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
 
         if (uncut_matrix_size / output.shape).prod() > 1.5: # shrink allocation
             output = output.astype(datatype, copy=True)
@@ -1305,19 +1268,15 @@ class KnossosDataset(object):
         if show_progress:
             dt = time.time()-t0
             speed = np.product(output.shape) * 1.0/1000000/dt
-            if mode == "raw":
+            if not from_overlay:
                 _stdout('\rSpeed: %.3f MB or Mpx/s, time %s\n' % (speed, dt))
             else:
                 _stdout('\rSpeed: %.3f Mpx/s, time %s\n' % (speed, dt))
 
-        ref_size = size[::-1] if zyx_mode else size
-        if not np.all(output.shape == ref_size):
-            raise Exception("Incorrect shape! Should be", ref_size, "; got:",
-                            output.shape)
+        if not np.all(output.shape == size[::-1]):
+            raise Exception("Incorrect shape! Should be", size[::-1], "; got:", output.shape)
 
         if np.any(mirror_overlap):
-            if zyx_mode:
-                mirror_overlap = mirror_overlap[::-1]
             if isinstance(padding, int):
                 output = np.pad(output, mirror_overlap[::-1], 'constant', constant_values=padding)
             else:
