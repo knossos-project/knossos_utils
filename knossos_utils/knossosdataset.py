@@ -279,7 +279,7 @@ class KnossosDataset(object):
         RAW = 0,
         COMPRESSED = 1
 
-    def __init__(self):
+    def __init__(self, path=None):
         moduleInit()
         global module_wide
         self.module_wide = module_wide
@@ -300,6 +300,9 @@ class KnossosDataset(object):
         self._raw_ext = 'raw'
         self._initialized = False
         self._mags = None
+
+        if path is not None:
+            self.initialize_from_conf(path)
 
     @property
     def mag(self):
