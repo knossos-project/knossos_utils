@@ -2083,14 +2083,8 @@ class KnossosDataset(object):
                     current[1] += 1
                 current[2] += 1
 
-            if nb_threads > 1:
-                pool = ThreadPool(nb_threads)
-                pool.map(_write_cubes, multithreading_params)
-                pool.close()
-                pool.join()
-            else:
-                for params in multithreading_params:
-                    _write_cubes(params)
+            with ThreadPoolExecutor() as pool:
+                list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
         if kzip_path is not None:
             if compress_kzip:
