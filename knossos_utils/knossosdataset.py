@@ -1912,27 +1912,29 @@ class KnossosDataset(object):
                         time.sleep(random.uniform(0.1, 1.0))
                         pass
 
+                block_path = os.path.join(folder_path, 'block')
                 while True:
                     try:
-                        os.makedirs(folder_path+"block")    # Semaphore --------
+                        os.makedirs(block_path)    # Semaphore --------
                         break
                     except (FileExistsError, PermissionError):
                         try:
-                            if time.time() - os.stat(folder_path+"block").st_mtime <= 30:
+                            if time.time() - os.stat(block_path).st_mtime <= 30:
                                 time.sleep(random.uniform(0.1, 1.0)) # wait for other workers to finish
                             else:
-                                print(f'had to remove block folder {folder_path+"block"} that wasn’t accessed recently {os.stat(folder_path+"block").st_mtime}')
-                                os.rmdir(folder_path+"block")
+                                print(f'had to remove block folder {block_path} that wasn’t accessed recently {os.stat(block_path).st_mtime}')
+                                os.rmdir(block_path)
                         except FileNotFoundError:
                             pass # folder was removed by another worker in the meantime
 
                 self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube,
-                                overwrite_offset=cube_offset if overwrite else None,
-                                overwrite_limit=cube_limit if overwrite else None)
+                               overwrite_offset=cube_offset if overwrite else None,
+                               overwrite_limit=cube_limit if overwrite else None)
+
                 try:
-                    os.rmdir(folder_path+"block")   # ------------------------------
+                    os.rmdir(block_path)   # ------------------------------
                 except FileNotFoundError:
-                    print(f'another worker removed our semaphore {folder_path+"block"}')
+                    print(f'another worker removed our semaphore {block_path}')
                     pass
             else:
                 self.save_cube(cube_path=path, data=cube,
