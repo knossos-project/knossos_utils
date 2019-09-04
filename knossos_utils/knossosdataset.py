@@ -275,11 +275,15 @@ def _find_and_delete_cubes_process(args):
 class KnossosDataset(object):
     """ Class that contains information and operations for a Knossos-Dataset
     """
+    def _print(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
+
     class CubeType(Enum):
         RAW = 0,
         COMPRESSED = 1
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, show_progress=True):
         moduleInit()
         global module_wide
         self.module_wide = module_wide
@@ -300,6 +304,10 @@ class KnossosDataset(object):
         self._raw_ext = 'raw'
         self._initialized = False
         self._mags = None
+        self.verbose = False
+        self.show_progress = show_progress
+        self.background_label = 0
+        self.http_max_tries = 5
 
         if path is not None:
             self.initialize_from_conf(path)
