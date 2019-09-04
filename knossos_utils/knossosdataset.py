@@ -1336,9 +1336,6 @@ class KnossosDataset(object):
                 else:
                     output = np.lib.pad(output, mirror_overlap[::-1], 'constant')
 
-        if output.dtype != datatype:
-            raise Exception("Wrong datatype! - for unknown reasons...")
-
         if invert_data:
             output = np.invert(output)
 
