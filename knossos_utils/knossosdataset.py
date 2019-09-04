@@ -1472,20 +1472,32 @@ class KnossosDataset(object):
                             binarize_overlay=False,
                             return_dataset_cube_if_nonexistent=False,
                             expand_area_to_mag=False):
+        self.verbose = verbose
+        self.show_progress = show_progress
+        self.background_label = empty_cube_label
+
+        ratio = self.scale_ratio(mag, 1)
+        size = (np.array(size) * ratio).astype(np.int)
+        offset = (np.array(offset) * ratio).astype(np.int)
+
+        data = self.load_kzip_seg(path, offset, size, mag, datatype, apply_mergelist, return_dataset_cube_if_nonexistent, expand_area_to_mag)
+
+        if binarize_overlay:
+            data[data > 1] = 1
+
+        return data.swapaxes(0, 2)
+
+    def load_kzip_seg(self, path, offset, size, mag, datatype=np.uint64, padding=0, apply_mergelist=True, return_dataset_cube_if_nonexistent=False, expand_area_to_mag=False):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
             forward-slash separated path to kzip file
-        :param size: 3 sequence of ints
-            size of requested data block
         :param offset: 3 sequence of ints
             mag 1 coordinate of the corner closest to (0, 0, 0)
-        :param empty_cube_label: int
-            label for empty cubes
+        :param size: 3 sequence of ints
+            size of requested data block
         :param datatype: numpy datatype
             typically np.uint8
-        :param verbose: bool
-            True: prints several information
         :param apply_mergelist: bool
             True: Merges IDs based on the kzip mergelist
         :param expand_area_to_mag: bool
@@ -1520,84 +1532,54 @@ class KnossosDataset(object):
         end = np.array([get_last_block(dim, size, offset, self._cube_shape) + 1
                         for dim in range(3)])
 
-        matrix_size = (end - start)*self.cube_shape
-        output = np.zeros(matrix_size, dtype=datatype)
+        matrix_size = (end - start) * self.cube_shape
+        output = np.zeros(matrix_size[::-1], dtype=datatype)
 
         offset_start = offset % self.cube_shape
-        offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % \
-                     self.cube_shape
+        offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % self.cube_shape
 
         current = np.array([start[dim] for dim in range(3)])
         cnt = 1
-        nb_cubes_to_process = \
-            (end[2]-start[2]) * (end[1] - start[1]) * (end[0] - start[0])
+        nb_cubes_to_process = (end - start).prod()
 
-        while current[2] < end[2]:
-            current[1] = start[1]
-            while current[1] < end[1]:
-                current[0] = start[0]
-                while current[0] < end[0]:
-                    if show_progress:
+        for z in range(start[2], end[2]):
+            for y in range(start[1], end[1]):
+                for x in range(start[0], end[0]):
+                    current = [x, y, z]
+                    if self.show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout(f'\rProgress: {progress:.2f}% ') # 
-                    this_path = f'{self._experiment_name}_mag{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
+                    this_path = f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
                     try:
                         scube = archive.read(this_path)
                         values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
+                        self._print(f'{current}: loaded from .k.zip')
                     except KeyError:
-                        if verbose:
-                            _print("Cube {0} does not exist, trying legacy format".format(this_path))
-                        try: # legacy path
-                            this_path = "{}_mag1_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
-                                                                               current[0], current[1], current[2])
-                            values = np.fromstring(
-                                module_wide["snappy"].decompress(
-                                    archive.read(this_path)), dtype=np.uint64)
-                        except KeyError:
-                            if verbose:
-                                _print('Cube does not exist, {} cube assigned'.format('dataset' if return_dataset_cube_if_nonexistent else empty_cube_label))
-                            if return_dataset_cube_if_nonexistent:
-                                values = self.from_cubes_to_matrix(offset=current * ratio * self.cube_shape, datatype=datatype,
-                                                                   size=ratio * self.cube_shape, mag=mag, mode='overlay', verbose=verbose, show_progress=show_progress)
-                                values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
-                            else:
-                                values = np.full(self.cube_shape, empty_cube_label, dtype=datatype)
+                        self._print(f'{current}: {"dataset" if return_dataset_cube_if_nonexistent else self.background_label} cube assigned')
+                        if return_dataset_cube_if_nonexistent:
+                            values = self.load_seg(offset=current * ratio * self.cube_shape, size=ratio * self.cube_shape, mag=mag, 
+                                                   datatype=datatype, padding=padding, expand_area_to_mag=expand_area_to_mag)
+                        else:
+                            values = np.full(self.cube_shape, self.background_label, dtype=datatype)
 
-                    if verbose:
-                        print(this_path)
-                    if binarize_overlay:
-                        values[values > 1] = 1
-                    if datatype != values.dtype:
-                        # this conversion can go wrong and
-                        # it is the responsibility of the user to make
-                        # sure it makes sense
-                        values = values.astype(datatype)
-
-
-                    pos = (current-start)*self.cube_shape
-
-                    values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
-
-                    output[pos[0] : pos[0] + self.cube_shape[0],
-                           pos[1] : pos[1] + self.cube_shape[1],
-                           pos[2] : pos[2] + self.cube_shape[2]] = values
+                    local_offset = (current - start) * self.cube_shape
+                    local_end = local_offset + self.cube_shape
+                    output[local_offset[2]:local_end[2], 
+                           local_offset[1]:local_end[1], 
+                           local_offset[0]:local_end[0]] = values.reshape(self.cube_shape).astype(datatype, copy=False)
                     cnt += 1
-                    current[0] += 1
-                current[1] += 1
-            current[2] += 1
-        if show_progress:
+
+        if self.show_progress and not self.verbose:
             print() # newline after sys.stdout.writes inside loop
         output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
         if apply_mergelist:
             if "mergelist.txt" not in archive.namelist():
-                if verbose:
-                    _print("no mergelist to apply")
+                self._print("no mergelist to apply")
             else:
-                if verbose:
-                    _print("applying mergelist now")
+                self._print("applying mergelist now")
                 mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
 
-        assert np.array_equal(output.shape, size), f'Incorrect shape! Should be {size}; got {output.shape}'
+        assert np.array_equal(output.shape, size[::-1]), f'Incorrect shape! Should be {size[::-1]}; got {output.shape}'
 
         return output
 
