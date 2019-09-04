@@ -1079,8 +1079,8 @@ class KnossosDataset(object):
 
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
-    def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
-                             mirror_oob=True, hdf5_path=None,
+    def from_cubes_to_matrix(self, size, offset, mode, mag=1, padding=0, datatype=np.uint8,
+                             hdf5_path=None,
                              hdf5_name="raw", pickle_path=None,
                              invert_data=False, zyx_mode=False,
                              nb_threads=40, verbose=False, show_progress=True,
@@ -1096,11 +1096,12 @@ class KnossosDataset(object):
             either 'raw' or 'overlay'
         :param mag: int
             magnification of the requested data block
+        :param padding: str or int
+            Pad mode for matrix parts outside the dataset. See https://www.pydoc.io/pypi/numpy-1.9.3/autoapi/numpy/lib/arraypad/index.html?highlight=pad#numpy.lib.arraypad.pad
+            When passing an it, will pad with that int in 'constant' mode
         :param datatype: numpy datatype
             typically:  'raw' = np.uint8
                         'overlay' = np.uint64
-        :param mirror_oob: bool
-            pads the raw data with mirrored data if given box is out of bounce
         :param hdf5_path: str
             if given the output is written as hdf5 file
         :param hdf5_name: str
@@ -1325,16 +1326,12 @@ class KnossosDataset(object):
                             output.shape)
 
         if np.any(mirror_overlap):
-            if not zyx_mode:
-                if mirror_oob:
-                    output = np.lib.pad(output, mirror_overlap, 'symmetric')
-                else:
-                    output = np.lib.pad(output, mirror_overlap, 'constant')
+            if zyx_mode:
+                mirror_overlap = mirror_overlap[::-1]
+            if isinstance(padding, int):
+                output = np.pad(output, mirror_overlap[::-1], 'constant', constant_values=padding)
             else:
-                if mirror_oob:
-                    output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
-                else:
-                    output = np.lib.pad(output, mirror_overlap[::-1], 'constant')
+                output = np.pad(output, mirror_overlap[::-1], mode=padding)
 
         if invert_data:
             output = np.invert(output)
