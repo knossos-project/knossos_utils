@@ -1942,15 +1942,9 @@ class KnossosDataset(object):
                                 overwrite_limit=cube_limit if overwrite else None)
 
         # Main Function
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
-
-        if not (as_raw or self.module_wide["snappy"]):
-            raise Exception("Snappy is not available - you cannot write "
-                            "overlaycubes or kzips.")
-
-        if not isinstance(mags, list):
-            mags = [mags]
+        assert self.initialized, 'Dataset is not initialized'
+        assert as_raw or self.module_wide["snappy"], 'Snappy is not available - you cannot write overlaycubes or kzips.'
+        mags = list(mags)
 
         if not mags:
             start_mag = 1 if upsample else data_mag
@@ -1964,12 +1958,9 @@ class KnossosDataset(object):
             raise Exception("No data given")
 
         if kzip_path is not None:
-            if as_raw:
-                raise Exception("You have to choose between kzip and raw cubes")
-
+            assert not as_raw, 'You have to choose between kzip and raw cubes'
             if kzip_path.endswith(".k.zip"):
                 kzip_path = kzip_path[:-6]
-
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
                 #if verbose:
@@ -2060,45 +2051,27 @@ class KnossosDataset(object):
                     current[0] = start[0]
                     while current[0] < end[0]:
                         this_cube_info = []
-                        path = self.knossos_path + self.name_mag_folder + \
-                               str(mag) + "/" + "x%04d/y%04d/z%04d/" \
-                                        % (current[0], current[1], current[2])
-
+                        path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
                         this_cube_info.append(path)
 
                         if kzip_path is None:
-                            if as_raw:
-                                path += self.experiment_name \
-                                        + "_mag"+str(mag)+\
-                                        "_x%04d_y%04d_z%04d.%s" \
-                                        % (current[0], current[1], current[2], self._raw_ext)
-                            else:
-                                path += self.experiment_name \
-                                        + "_mag"+str(mag) + \
-                                        "_x%04d_y%04d_z%04d.seg.sz" \
-                                        % (current[0], current[1], current[2])
+                            path += f'{self.experiment_name}_mag{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}.{self._raw_ext if as_raw else "seg.sz"}'
                         else:
-                            path = kzip_path+"/"+self._experiment_name + \
-                                   '_mag%dx%dy%dz%d.seg.sz' % \
-                                   (mag, current[0], current[1], current[2])
+                            path = f'{kzip_path}/{self._experiment_name}_mag{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
                         this_cube_info.append(path)
 
-                        cube_coords = current*self.cube_shape
+                        cube_coords = current * self.cube_shape
                         cube_offset = np.zeros(3)
-                        cube_limit = np.ones(3)*self.cube_shape
+                        cube_limit = np.ones(3) * self.cube_shape
 
                         for dim in range(3):
                             if cube_coords[dim] < offset_mag[dim]:
-                                cube_offset[dim] += offset_mag[dim] \
-                                                    - cube_coords[dim]
-                            if cube_coords[dim] + self.cube_shape[dim] > \
-                                            offset_mag[dim] + size_mag[dim]:
-                                cube_limit[dim] -= \
-                                    self.cube_shape[dim] + cube_coords[dim]\
-                                        - (offset_mag[dim] + size_mag[dim])
+                                cube_offset[dim] = offset_mag[dim] - cube_coords[dim]
+                            if cube_coords[dim] + cube_limit[dim] > offset_mag[dim] + size_mag[dim]:
+                                cube_limit[dim] = offset_mag[dim] + size_mag[dim] - cube_coords[dim]
 
-                        start_coord = cube_coords-offset_mag+cube_offset
-                        end_coord = cube_limit-cube_offset
+                        start_coord = cube_coords - offset_mag + cube_offset
+                        end_coord = cube_limit - cube_offset
 
                         this_cube_info.append(cube_offset.astype(np.int))
                         this_cube_info.append(cube_limit.astype(np.int))
