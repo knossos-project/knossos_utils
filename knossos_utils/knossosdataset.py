@@ -1899,8 +1899,8 @@ class KnossosDataset(object):
                  cube_offset[2]: cube_limit[2]] = data_inter[start[0]: start[0] + end[0],
                                                              start[1]: start[1] + end[1],
                                                              start[2]: start[2] + end[2]]
-            if verbose and not np.any(cube):
-               _print(path, 'no data to write, cube will be removed if present')
+            if not np.any(cube):
+               self._print(path, 'no data to write, cube will be removed if present')
 
             if kzip_path is None:
                 while True:
@@ -1953,7 +1953,7 @@ class KnossosDataset(object):
                 mags = np.arange(start_mag, end_mag, dtype=np.int)
             else: # power of 2 mags (KNOSSOS style)
                 mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=np.int))
-        _print("mags to write: {}".format(mags))
+        self._print(f'mags to write: {mags}')
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
 
@@ -2025,22 +2025,17 @@ class KnossosDataset(object):
                     data_inter += (up_chunk_channel * value).astype(datatype, copy=False)
 
             offset_mag = np.array(offset, dtype=np.int) // self.scale_ratio(mag, 1)
-            size_mag = np.array(data_inter.shape, dtype=np.int)
+            size_mag = np.array(data_inter.shape[::-1], dtype=np.int)
 
-            if verbose:
-                _print('mag: {}'.format(mag))
-                _print("box_offset: {0}".format(offset_mag))
-                _print("box_size: {0}".format(size_mag))
+            self._print(f'mag: {mag}')
+            self._print(f'box_offset: {offset_mag}')
+            self._print(f'box_size: {size_mag}')
 
-            start = np.array([get_first_block(dim, offset_mag, self._cube_shape)
-                              for dim in range(3)])
-            end = np.array([get_last_block(dim, size_mag, offset_mag,
-                                           self._cube_shape) + 1
-                            for dim in range(3)])
+            start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])
+            end = np.array([get_last_block(dim, size_mag, offset_mag, self._cube_shape) + 1 for dim in range(3)])
 
-            if verbose:
-                _print("start_cube: {0}".format(start))
-                _print("end_cube: {0}".format(end))
+            self._print(f'start_cube: {start}')
+            self._print(f'end_cube: {end}')
 
             current = np.array([start[dim] for dim in range(3)])
             multithreading_params = []
