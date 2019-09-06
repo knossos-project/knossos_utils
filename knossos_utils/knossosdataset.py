@@ -1919,7 +1919,7 @@ class KnossosDataset(object):
                 with open(cube_path, "wb") as dest_file:
                     dest_file.write(dest_cube)
             else:  # png or jpg
-                imageio.imwrite(cube_path, dest_cube.reshape(self._cube_shape[2], self._cube_shape[0] * self._cube_shape[1]))
+                imageio.imwrite(cube_path, dest_cube.reshape(self._cube_shape[2] * self._cube_shape[1], self._cube_shape[0]))
         elif (overwrite_offset or overwrite_limit) and os.path.exists(cube_path):
             os.remove(cube_path)
 
