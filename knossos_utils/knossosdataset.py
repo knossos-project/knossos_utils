@@ -539,6 +539,7 @@ class KnossosDataset(object):
         self._conf_path = path_to_pyknossos_conf
         self._ordinal_mags = True # pyk.conf is ordinal by default
         self._cube_shape = [128, 128, 128]  # default cube shape
+        exts = set()
 
         for line in lines:
             tokens = re.split(" = |,|\n", line)
@@ -559,14 +560,9 @@ class KnossosDataset(object):
                     self.scales.append(np.array([float(x), float(y), float(z)]))
                 self._scale = self.scales[0]
             elif key == "_FileType":
-                type_token = int(tokens[1])
-                self._cube_type = KnossosDataset.CubeType.RAW\
-                                  if type_token == 0\
-                                  else KnossosDataset.CubeType.COMPRESSED
-                # set extension automatically if not specified
-                self._raw_ext = "raw" if type_token == 0\
-                                else "jpg" if type_token == 3 \
-                                else "png" # type_token == 2 and default
+                type_map = {'0': 'raw', '2': 'png', '3': 'jpg'}
+                assert tokens[1] in type_map, f'unsupported _FileType ({tokens[1]})'
+                exts.add(type_map[tokens[1]])
             elif key == "_NumberofCubes":
                 self._number_of_cubes[0] = int(tokens[1])
                 self._number_of_cubes[1] = int(tokens[2])
@@ -578,8 +574,13 @@ class KnossosDataset(object):
             elif key == '_CubeSize':
                 self._cube_shape = [int(tokens[1]), int(tokens[2]), int(tokens[3])]
             elif key == "_BaseExt":
-                self._raw_ext = tokens[1].replace('.', '', 1)
-                self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == "raw" else KnossosDataset.CubeType.COMPRESSED
+                exts.add(tokens[1].replace('.', '', 1))
+        # prefer raw over png
+        if 'raw' in exts:
+            self._raw_ext = 'raw'
+        elif 'png' in exts:
+            self._raw_ext = 'png'
+        self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
 
     def initialize_from_pyknossos_path(self, path):
         self.parse_pyknossos_conf(path)
