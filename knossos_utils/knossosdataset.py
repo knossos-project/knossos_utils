@@ -2080,6 +2080,8 @@ class KnossosDataset(object):
                 annotation.write(annotation_str)
 
     def compress_kzip(self, kzip_path):
+        while kzip_path.endswith('/'):
+            kzip_path = kzip_path[:-1]
         if kzip_path.endswith('.k.zip'):
             kzip_path = kzip_path[:-6]
         with zipfile.ZipFile(kzip_path + '.k.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
