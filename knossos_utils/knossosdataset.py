@@ -1114,7 +1114,7 @@ class KnossosDataset(object):
             from_cache = values is not None
 
             if not from_cache:
-                filename = f'{self.experiment_name}_mag{mag}_x{c[0]:04d}_y{c[1]:04d}_z{c[2]:04d}.{"seg.sz.zip" if from_overlay else self._raw_ext}'
+                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{c[0]:04d}_y{c[1]:04d}_z{c[2]:04d}.{"seg.sz.zip" if from_overlay else self._raw_ext}'
                 path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{c[0]:04d}/y{c[1]:04d}/z{c[2]:04d}/{filename}'
 
                 if self.in_http_mode:
@@ -2030,9 +2030,9 @@ class KnossosDataset(object):
                         this_cube_info.append(path)
 
                         if kzip_path is None:
-                            path += f'{self.experiment_name}_mag{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}.{self._raw_ext if as_raw else "seg.sz"}'
+                            path += f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}.{self._raw_ext if as_raw else "seg.sz"}'
                         else:
-                            path = f'{kzip_path}/{self._experiment_name}_mag{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
+                            path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
                         this_cube_info.append(path)
 
                         cube_coords = current * self.cube_shape
