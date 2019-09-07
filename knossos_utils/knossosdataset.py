@@ -1173,8 +1173,7 @@ class KnossosDataset(object):
 
         t0 = time.time()
 
-        if not self.initialized:
-            raise Exception('Dataset is not initialized')
+        assert self.initialized, 'Dataset is not initialized'
 
         if mag not in self.available_mags:
             raise Exception(f'Requested mag {mag} not available, only mags {self.available_mags} are available.')
@@ -1276,8 +1275,6 @@ class KnossosDataset(object):
         """ from_cubes_to_matrix helper func with mode=raw.
         datatype default is np.uint8, but can be overriden.
         """
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
         assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to False here.'
         kwargs.update({'from_overlay': False})
         if 'datatype' not in kwargs:
@@ -1288,8 +1285,6 @@ class KnossosDataset(object):
         """ from_cubes_to_matrix helper func with mode=overlay.
         datatype default is np.uint64, but can be overriden.
         """
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
         assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to True here.'
         kwargs.update({'from_overlay': True})
         if 'datatype' not in kwargs:
@@ -1371,9 +1366,6 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
          """
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
-
         return self.from_cubes_to_matrix(size, offset,
                                          mode='raw',
                                          mag=mag,
@@ -1428,9 +1420,6 @@ class KnossosDataset(object):
         :return: 3D numpy array or nothing
             if a path is given no data is returned
          """
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
-
         return self.from_cubes_to_matrix(size, offset,
                                          mode='overlay',
                                          mag=mag,
