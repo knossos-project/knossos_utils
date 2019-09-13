@@ -1905,7 +1905,7 @@ class KnossosDataset(object):
         else:
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
-    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_downsampling):
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling):
         datatype=np.uint8 if as_raw else np.uint64
         overwrite=True
         def _write_cubes(args):
@@ -1986,7 +1986,7 @@ class KnossosDataset(object):
         for mag in mags:
             ratio = self.scale_ratio(mag, data_mag)[::-1]
             inv_mag_ratio = 1.0/np.array(ratio)
-            fast = fast_downsampling or (not as_raw and mag > data_mag)
+            fast = fast_resampling or (not as_raw and mag > data_mag)
             if fast and all(mag_ratio.is_integer() for mag_ratio in ratio):
                 data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])], dtype=datatype)
             elif all(mag_ratio == 1 for mag_ratio in ratio):
@@ -2058,20 +2058,20 @@ class KnossosDataset(object):
             with ThreadPoolExecutor() as pool:
                 list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
-    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_downsampling=True):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
 
-    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_downsampling=True):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
 
-    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_downsampling=True):
-        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=[], gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=[], gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
         self.compress_kzip(kzip_path=kzip_path)
 
-    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_downsampling=True):
+    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
         if kzip_path.endswith('.k.zip'):
             kzip_path = kzip_path[:-6]
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_downsampling=fast_downsampling)
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
         if gen_mergelist:
             with open(os.path.join(kzip_path, 'mergelist.txt'), 'w') as mergelist:
                 mergelist.write(mergelist_tools.gen_mergelist_from_segmentation(data, offsets=np.array(offset, dtype=np.uint64)))
