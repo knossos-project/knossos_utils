@@ -2084,6 +2084,7 @@ class KnossosDataset(object):
             kzip_path = kzip_path[:-1]
         if kzip_path.endswith('.k.zip'):
             kzip_path = kzip_path[:-6]
+        assert os.path.isdir(kzip_path), f"Could not find folder for compression to kzip: {kzip_path}"
         with zipfile.ZipFile(kzip_path + '.k.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
             for root, dirs, files in os.walk(kzip_path):
                 for file in files:
