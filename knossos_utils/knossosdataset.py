@@ -552,6 +552,44 @@ class KnossosDataset(object):
                 self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == "raw" else KnossosDataset.CubeType.COMPRESSED
         self._cube_shape = [128, 128, 128]  # hardcoded cube shape, others are not supported
 
+    def write_pyknossos_conf(self, path_to_pyknossos_conf):
+        """ Write a pyknossos conf
+
+        TODO: refactor '_BaseExt' settings.
+
+        :param path_to_pyknossos_conf: str
+        :param verbose: bool
+        :return:
+            nothing
+        """
+        if os.path.isfile(path_to_pyknossos_conf):
+            raise ValueError('Pyk conf file already exists at {}.'.format(path_to_pyknossos_conf))
+        if len(self.scales) <= 0:
+            raise ValueError('Cannot create pyk conf file without '
+                             'per-mag-level scale definitions.')
+            # TODO: work-in MAX_MAG
+            self.scales = [self.scale * i for i in range(1, np.max(MAX_MAG) + 1)]
+            for ii in range(1, np.max(MAX_MAG)):
+                adapted_scale = self.scales[ii]
+                adapted_scale[2] = self.scales[ii - 1][2]
+                if adapted_scale[2] < adapted_scale[1]:
+                    new_z_scale = adapted_scale[2] + self.scales[0][2]
+                else:
+                    new_z_scale = adapted_scale[2]
+                adapted_scale[2] = new_z_scale
+                self.scales[ii] = adapted_scale
+        scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
+        config_str = """[Dataset]
+_BaseName = {}
+_ServerFormat = pyknossos
+_DataScale = {}
+_Extent = {}
+_Description = "original quality"
+_BaseExt = .raw
+        """.format(self._experiment_name, scales, ','.join([str(int(el)) for el in self.boundary]))
+        with open(path_to_pyknossos_conf, "w") as f:
+            f.write(config_str)
+
     def initialize_from_pyknossos_path(self, path):
         self.parse_pyknossos_conf(path)
         self._knossos_path = os.path.dirname(path) + "/"
@@ -710,7 +748,7 @@ class KnossosDataset(object):
     def initialize_without_conf(self, path, boundary, scale, experiment_name,
                                 mags=None, make_mag_folders=True,
                                 create_knossos_conf=True, verbose=False, cache_size=0,
-                                raw_dtype=np.uint8):
+                                raw_dtype=np.uint8, create_pyk_conf=True):
         """ Initializes the dataset without a knossos.conf
 
             This function creates mag folders and knossos.conf's if requested.
@@ -734,6 +772,8 @@ class KnossosDataset(object):
             True: prints several information
         :param raw_dtype:
             datatype of raw data
+        :param create_pyk_conf:
+            True: creates pyk.conf file a target folder
         :return:
             nothing
         """
@@ -788,6 +828,8 @@ class KnossosDataset(object):
                     f.write('magnification %s;' % this_mag)
                     if self.raw_dtype == np.uint16:
                         f.write('16bit;\n')
+        if create_pyk_conf:
+            self.write_pyknossos_conf('{}/{}.pyk.conf'.format(path, experiment_name))
         if verbose:
             _print("Initialization finished successfully")
 
