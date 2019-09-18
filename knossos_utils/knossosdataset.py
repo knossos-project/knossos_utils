@@ -552,41 +552,60 @@ class KnossosDataset(object):
                 self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == "raw" else KnossosDataset.CubeType.COMPRESSED
         self._cube_shape = [128, 128, 128]  # hardcoded cube shape, others are not supported
 
-    def write_pyknossos_conf(self, path_to_pyknossos_conf):
+    def write_pyknossos_conf(self, path_to_pyknossos_conf,
+                             include_overlay=True, descriptions=None):
         """ Write a pyknossos conf
 
         TODO: refactor '_BaseExt' settings.
 
         :param path_to_pyknossos_conf: str
-        :param verbose: bool
+        :param include_overlay: bool
+        :param descriptions: Optional, dict with keys: 'raw' and 'overlay' and
+            description strings as values.
         :return:
             nothing
         """
         if os.path.isfile(path_to_pyknossos_conf):
             raise ValueError('Pyk conf file already exists at {}.'.format(path_to_pyknossos_conf))
+        if descriptions is None:
+            descriptions = {'raw': 'original quality', 'overlay': 'original quality'}
         if len(self.scales) <= 0:
             raise ValueError('Cannot create pyk conf file without '
                              'per-mag-level scale definitions.')
-            # TODO: work-in MAX_MAG
-            self.scales = [self.scale * i for i in range(1, np.max(MAX_MAG) + 1)]
-            for ii in range(1, np.max(MAX_MAG)):
-                adapted_scale = self.scales[ii]
-                adapted_scale[2] = self.scales[ii - 1][2]
+            # TODO: work-in target_mags
+            kd_dataset_atlas.scales = [(SCALING * 2 ** i).astype(float) for i in range(len(target_mags))]
+            for ii in range(1, len(target_mags)):
+                adapted_scale = kd_dataset_atlas.scales[ii]
+                adapted_scale[2] = kd_dataset_atlas.scales[ii - 1][2]
                 if adapted_scale[2] < adapted_scale[1]:
-                    new_z_scale = adapted_scale[2] + self.scales[0][2]
+                    new_z_scale = adapted_scale[2] * 2
                 else:
                     new_z_scale = adapted_scale[2]
                 adapted_scale[2] = new_z_scale
-                self.scales[ii] = adapted_scale
+                kd_dataset_atlas.scales[ii] = adapted_scale
         scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
         config_str = """[Dataset]
 _BaseName = {}
 _ServerFormat = pyknossos
 _DataScale = {}
 _Extent = {}
-_Description = "original quality"
+_Description = {}
 _BaseExt = .raw
-        """.format(self._experiment_name, scales, ','.join([str(int(el)) for el in self.boundary]))
+""".format(self._experiment_name, scales,
+           ','.join([str(int(el)) for el in self.boundary]),
+           descriptions['raw'])
+
+        if include_overlay:
+            config_str += """\n\n[Dataset]
+_BaseName = {}
+_ServerFormat = pyknossos
+_DataScale = {}
+_Extent = {}
+_Description = {}
+_BaseExt = .seg.sz.zip
+""".format(self._experiment_name, scales,
+           ','.join([str(int(el)) for el in self.boundary]),
+           descriptions['overlay'])
         with open(path_to_pyknossos_conf, "w") as f:
             f.write(config_str)
 
