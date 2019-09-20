@@ -108,9 +108,9 @@ def gen_mergelist_from_segmentation(np.ndarray[np.uint64_t, ndim=3] segmentation
     :offsets:
         the voxel coordinate closest to 0, 0, 0 of the whole dataset, used to give objects their correct coordinate
     """
-    cdef int width = segmentation.shape[0]
+    cdef int width = segmentation.shape[2]
     cdef int height = segmentation.shape[1]
-    cdef int depth = segmentation.shape[2]
+    cdef int depth = segmentation.shape[0]
     cdef Py_ssize_t x, y, z
     cdef np.uint64_t next_id
     cdef np.uint64_t so_cache = background_id
@@ -120,7 +120,7 @@ def gen_mergelist_from_segmentation(np.ndarray[np.uint64_t, ndim=3] segmentation
     for z in range(pad, depth - pad):
         for y in range(pad, height - pad):
             for x in range(pad, width - pad):
-                next_id = segmentation[x, y, z]
+                next_id = segmentation[z, y, x]
                 if next_id == background_id or next_id == so_cache or seen_subobjects.find(next_id) != seen_subobjects.end():
                     continue
                 so_cache = next_id

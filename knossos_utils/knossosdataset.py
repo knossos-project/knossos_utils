@@ -2074,7 +2074,9 @@ class KnossosDataset(object):
         self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
         if gen_mergelist:
             with open(os.path.join(kzip_path, 'mergelist.txt'), 'w') as mergelist:
+                start = time.time();
                 mergelist.write(mergelist_tools.gen_mergelist_from_segmentation(data, offsets=np.array(offset, dtype=np.uint64)))
+                print('gen mergelist', time.time() - start)
         if annotation_str is not None:
             with open(os.path.join(kzip_path, 'annotation.xml'), 'w') as annotation:
                 annotation.write(annotation_str)
