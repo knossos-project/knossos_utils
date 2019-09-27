@@ -61,35 +61,33 @@ def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_cont
         optional padding that is excluded from mergelist application
     """
     cdef unordered_map[np.uint64_t, np.uint64_t] subobject_map = subobject_map_from_mergelist(mergelist_content)
-    cdef int width = segmentation.shape[0]
+    cdef int width = segmentation.shape[2]
     cdef int height = segmentation.shape[1]
-    cdef int depth = segmentation.shape[2]
+    cdef int depth = segmentation.shape[0]
     cdef Py_ssize_t x, y, z
     cdef np.uint64_t subobject_id
     cdef np.uint64_t object_id
     cdef np.uint64_t new_subobject_id
 
     cdef unordered_map[np.uint64_t, np.uint64_t] object_map
+    for it in subobject_map:
+        if it.first != background_id:
+            object_map[it.second] = min(it.first, object_map[it.second])
 
     for z in range(pad, depth - pad):
         for y in range(pad, height - pad):
             for x in range(pad, width - pad):
-                subobject_id = segmentation[x, y, z]
-                if subobject_id == background_id:
+                subobject_id = segmentation[z, y, x]
+                if subobject_map.find(subobject_id) == subobject_map.end():
+                    if missing_subobjects_to_background and not subobject_id == background_id:
+                        segmentation[z, y, x] = background_id
                     continue
+
                 object_id = subobject_map[subobject_id]
-                if object_id == background_id and missing_subobjects_to_background:
-                    segmentation[x, y, z] = background_id
-                    continue
-                new_subobject_id = subobject_id
-
                 object_map_it = object_map.find(object_id)
-                if object_map_it != object_map.end():
-                    new_subobject_id =  dereference(object_map_it).second
-                else:
-                    object_map[object_id] = subobject_id
+                new_subobject_id =  dereference(object_map_it).second
 
-                segmentation[x, y, z] = new_subobject_id
+                segmentation[z, y, x] = new_subobject_id
 
     return segmentation
 
