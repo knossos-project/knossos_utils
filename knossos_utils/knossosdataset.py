@@ -1162,7 +1162,8 @@ class KnossosDataset(object):
                         else: # compressed
                             values = imageio.imread(path)
                         valid_values = True
-                    self. _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
+                    else:
+                        self. _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
 
             if valid_values:
                 values = values.reshape(self.cube_shape)
