@@ -1253,15 +1253,12 @@ class KnossosDataset(object):
             output = output.astype(datatype, copy=True)
 
         if self.show_progress:
-            dt = time.time()-t0
+            dt = time.time() - t0
             speed = np.product(output.shape) * 1.0/1000000/dt
-            if not from_overlay:
-                _stdout('\rSpeed: %.3f MB or Mpx/s, time %s\n' % (speed, dt))
-            else:
-                _stdout('\rSpeed: %.3f Mpx/s, time %s\n' % (speed, dt))
+            print(f'\rSpeed: {speed:.2f} Mvx/s, time {dt}')
 
         if not np.all(output.shape == size[::-1]):
-            raise Exception("Incorrect shape! Should be", size[::-1], "; got:", output.shape)
+            raise Exception(f'Incorrect shape! Should be {size[::-1]}; got {output.shape}')
 
         if np.any(mirror_overlap):
             if isinstance(padding, int):
