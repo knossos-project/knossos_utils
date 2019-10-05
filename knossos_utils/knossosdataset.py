@@ -1449,10 +1449,10 @@ class KnossosDataset(object):
                 int(area_elem.get("max.z")))
         return (np.array(area_min), np.array(area_max))
 
-    def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True, return_area=False):
+    def load_kzip_seg(self, path, mag, return_area=False):
         area_min, area_max = self.get_movement_area(path)
         size = area_max - area_min
-        matrix = self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag, apply_mergelist=apply_mergelist)
+        matrix = self._load_kzip_seg(path=path, offset=area_min, size=size, mag=mag)
         return (matrix, area_min, size) if return_area else matrix
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
@@ -1472,14 +1472,14 @@ class KnossosDataset(object):
         size = (np.array(size) * ratio).astype(np.int)
         offset = (np.array(offset) * ratio).astype(np.int)
 
-        data = self.load_kzip_seg(path, offset, size, mag, datatype, apply_mergelist, return_dataset_cube_if_nonexistent, expand_area_to_mag)
+        data = self._load_kzip_seg(path, offset, size, mag, datatype, apply_mergelist, return_dataset_cube_if_nonexistent, expand_area_to_mag)
 
         if binarize_overlay:
             data[data > 1] = 1
 
         return data.swapaxes(0, 2)
 
-    def load_kzip_seg(self, path, offset, size, mag, datatype=np.uint64, padding=0, apply_mergelist=True, return_dataset_cube_if_nonexistent=False, expand_area_to_mag=False):
+    def _load_kzip_seg(self, path, offset, size, mag, datatype=np.uint64, padding=0, apply_mergelist=True, return_dataset_cube_if_nonexistent=False, expand_area_to_mag=False):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
