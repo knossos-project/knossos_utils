@@ -74,7 +74,10 @@ def apply_mergelist(seg_dtype[:,:,:] segmentation, mergelist_content, seg_dtype 
     cdef unordered_map[seg_dtype, seg_dtype] object_map
     for it in subobject_map:
         if it.first != background_id:
-            object_map[it.second] = min(it.first, object_map[it.second])
+            if object_map.find(it.second) == subobject_map.end():
+                object_map[it.second] = it.first
+            else:
+                object_map[it.second] = min(it.first, object_map[it.second])
 
     for z in range(pad, depth - pad):
         for y in range(pad, height - pad):
