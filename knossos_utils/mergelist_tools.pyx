@@ -14,6 +14,8 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.unordered_set cimport unordered_set
 from libcpp.vector cimport vector
 
+seg_dtype = cython.fused_type(np.uint8_t, np.uint16_t, np.uint32_t, np.uint64_t)
+
 
 @cython.boundscheck(False)
 def objects_from_mergelist(mergelist_content):
@@ -49,7 +51,7 @@ def subobject_map_from_mergelist(mergelist_content):
 
 
 @cython.boundscheck(False)
-def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_content, np.uint64_t background_id=0, np.uint64_t pad=0, bool missing_subobjects_to_background=False):
+def apply_mergelist(seg_dtype[:,:,:] segmentation, mergelist_content, seg_dtype background_id=0, seg_dtype pad=0, bool missing_subobjects_to_background=False):
     """
     Merges subobjects using a dictionary of (subobject, object) pairs. So each subobject can only be member of one object.
     The resulting segmentation for each merged group contains only the first ID of that group
@@ -60,16 +62,16 @@ def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_cont
     :param pad:
         optional padding that is excluded from mergelist application
     """
-    cdef unordered_map[np.uint64_t, np.uint64_t] subobject_map = subobject_map_from_mergelist(mergelist_content)
+    cdef unordered_map[seg_dtype, seg_dtype] subobject_map = subobject_map_from_mergelist(mergelist_content)
     cdef int width = segmentation.shape[2]
     cdef int height = segmentation.shape[1]
     cdef int depth = segmentation.shape[0]
     cdef Py_ssize_t x, y, z
-    cdef np.uint64_t subobject_id
-    cdef np.uint64_t object_id
-    cdef np.uint64_t new_subobject_id
+    cdef seg_dtype subobject_id
+    cdef seg_dtype object_id
+    cdef seg_dtype new_subobject_id
 
-    cdef unordered_map[np.uint64_t, np.uint64_t] object_map
+    cdef unordered_map[seg_dtype, seg_dtype] object_map
     for it in subobject_map:
         if it.first != background_id:
             object_map[it.second] = min(it.first, object_map[it.second])
@@ -93,7 +95,7 @@ def apply_mergelist(np.ndarray[np.uint64_t, ndim=3] segmentation, mergelist_cont
 
 
 @cython.boundscheck(False)
-def gen_mergelist_from_segmentation(np.ndarray[np.uint64_t, ndim=3] segmentation, np.uint64_t background_id=0, np.uint64_t pad=0, np.ndarray[np.uint64_t, ndim=1] offsets=np.array([0, 0, 0])):
+def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype background_id=0, seg_dtype pad=0, np.ndarray[np.uint64_t, ndim=1] offsets=np.array([0, 0, 0])):
     """
     Generates a mergelist from a segmentation in which each subobject is contained in its own object.
     The object's coordinate is the first coordinate of the subobject.
@@ -110,10 +112,10 @@ def gen_mergelist_from_segmentation(np.ndarray[np.uint64_t, ndim=3] segmentation
     cdef int height = segmentation.shape[1]
     cdef int depth = segmentation.shape[0]
     cdef Py_ssize_t x, y, z
-    cdef np.uint64_t next_id
-    cdef np.uint64_t so_cache = background_id
+    cdef seg_dtype next_id
+    cdef seg_dtype so_cache = background_id
 
-    cdef unordered_set[np.uint64_t] seen_subobjects
+    cdef unordered_set[seg_dtype] seen_subobjects
     new_mergelist = ""
     for z in range(pad, depth - pad):
         for y in range(pad, height - pad):
@@ -128,7 +130,7 @@ def gen_mergelist_from_segmentation(np.ndarray[np.uint64_t, ndim=3] segmentation
 
 
 @cython.boundscheck(False)
-def gen_mergelist_from_objects(unordered_map[np.uint64_t, pair[unordered_set[np.uint64_t], vector[np.uint64_t]]] objects):
+def gen_mergelist_from_objects(unordered_map[seg_dtype, pair[unordered_set[seg_dtype], vector[seg_dtype]]] objects):
     new_mergelist = ""
     for obj in objects:
         sub_obj_str = ""
@@ -140,7 +142,7 @@ def gen_mergelist_from_objects(unordered_map[np.uint64_t, pair[unordered_set[np.
     return new_mergelist
 
 
-def merge_objects(vector[unordered_set[np.uint64_t]] objects):
+def merge_objects(vector[unordered_set[seg_dtype]] objects):
     G = nx.Graph()
     for obj in objects:
         first = dereference(obj.begin())
