@@ -95,7 +95,7 @@ def apply_mergelist(seg_dtype[:,:,:] segmentation, mergelist_content, seg_dtype 
 
 
 @cython.boundscheck(False)
-def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype background_id=0, seg_dtype pad=0, np.ndarray[np.uint64_t, ndim=1] offsets=np.array([0, 0, 0])):
+def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype background_id=0, seg_dtype pad=0, vector[Py_ssize_t] offsets=[0, 0, 0]):
     """
     Generates a mergelist from a segmentation in which each subobject is contained in its own object.
     The object's coordinate is the first coordinate of the subobject.
