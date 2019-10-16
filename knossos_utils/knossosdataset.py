@@ -305,7 +305,7 @@ class KnossosDataset(object):
         self._cube_shape = np.full(3, 128, dtype=np.int)
         self._cube_type = KnossosDataset.CubeType.RAW
         self._raw_ext = 'raw'
-        self.raw_dtype = None
+        self.raw_dtype = np.uint8  # changed from None to np.uint8 on 27Sep2019 PS
         self._initialized = False
         self._channel_selected = 'implicit'
 
@@ -767,7 +767,8 @@ _BaseExt = .seg.sz.zip
     def initialize_without_conf(self, path, boundary, scale, experiment_name,
                                 mags=None, make_mag_folders=True,
                                 create_knossos_conf=True, verbose=False, cache_size=0,
-                                raw_dtype=np.uint8, create_pyk_conf=True):
+                                raw_dtype=np.uint8, create_pyk_conf=True,
+                                descriptions=None):
         """ Initializes the dataset without a knossos.conf
 
             This function creates mag folders and knossos.conf's if requested.
@@ -793,6 +794,9 @@ _BaseExt = .seg.sz.zip
             datatype of raw data
         :param create_pyk_conf:
             True: creates pyk.conf file a target folder
+        :param descriptions:
+            Dict[str, str] with keys 'raw' and 'overlay' passed to
+            :func:`~write_pyknossos_conf`.
         :return:
             nothing
         """
@@ -848,7 +852,11 @@ _BaseExt = .seg.sz.zip
                     if self.raw_dtype == np.uint16:
                         f.write('16bit;\n')
         if create_pyk_conf:
-            self.write_pyknossos_conf('{}/{}.pyk.conf'.format(path, experiment_name))
+            self.write_pyknossos_conf('{}/{}.pyk.conf'.format(path, experiment_name),
+                                      include_overlay=True, descriptions=descriptions)
+        elif descriptions is not None:
+            print('WARNING: Descriptions was set but pyk conf generation was '
+                  'dsiabled.')
         if verbose:
             _print("Initialization finished successfully")
 
