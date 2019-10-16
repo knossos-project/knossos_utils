@@ -767,7 +767,7 @@ _BaseExt = .seg.sz.zip
     def initialize_without_conf(self, path, boundary, scale, experiment_name,
                                 mags=None, make_mag_folders=True,
                                 create_knossos_conf=True, verbose=False, cache_size=0,
-                                raw_dtype=np.uint8, create_pyk_conf=True,
+                                raw_dtype=np.uint8, create_pyk_conf=False,
                                 descriptions=None):
         """ Initializes the dataset without a knossos.conf
 
