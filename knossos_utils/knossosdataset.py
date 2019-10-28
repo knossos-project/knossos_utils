@@ -580,6 +580,8 @@ class KnossosDataset(object):
             self._raw_ext = 'raw'
         elif 'png' in exts:
             self._raw_ext = 'png'
+        else:
+            self._raw_ext = 'jpg'
         self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
 
     def initialize_from_pyknossos_path(self, path):
