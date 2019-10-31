@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.utils import COMMASPACE, formatdate   
- import email.encoders as Encoders
+import email.encoders as Encoders
 
 
 class Mailer():

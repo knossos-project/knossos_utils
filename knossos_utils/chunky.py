@@ -119,7 +119,6 @@ def _export_cset_as_kd_thread(args):
 def _export_cset_as_kd_control_thread(args):
     """ Helper function
     """
-    # TODO: Investigate existence
     coords = args[0]
     size = np.copy(args[1])
     cset_path = args[2]
@@ -188,7 +187,6 @@ def _switch_array_entries(this_array, entries):
 
 
 def save_dataset(chunk_dataset):
-    # TODO: store only meta data in dictionary or str and not entire object
     with open(chunk_dataset.path_head_folder + "/chunk_dataset.pkl", 'wb') \
             as output:
         pkl.dump(chunk_dataset, output, pkl.HIGHEST_PROTOCOL)
@@ -305,7 +303,7 @@ class ChunkDataset(object):
                 raise Exception("box_size has to be multiple of chunk_size")
             if box_coords is None:
                 raise Exception("No box coords given")
-            multiple = np.divide(box_size, chunk_size).astype(np.int)
+            multiple = box_size // chunk_size
             for x in range(multiple[0]):
                 for y in range(multiple[1]):
                     for z in range(multiple[2]):

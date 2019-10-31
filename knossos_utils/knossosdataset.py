@@ -26,11 +26,7 @@
 # KNOSSOS for writing or reading data.
 #
 ################################################################################
-# make it py2 comapt.
-try:
-     PermissionError
-except NameError:
-    PermissionError = OSError
+
 
 """This file provides a class representation of a KNOSSOS-dataset for
 reading and writing raw and overlay data."""
@@ -41,11 +37,34 @@ import collections
 from collections import defaultdict
 from enum import Enum
 import glob
-import h5py
-import imageio
+import os
+import pickle
+import random
+import re
+import shutil
+import sys
+import tempfile
+import time
+import warnings
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
+from enum import Enum
 from io import BytesIO
-from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool
+from pathlib import Path
+from threading import Lock
+from xml.etree import ElementTree as ET
+
+import imageio
+import h5py
+import numpy as np
+import requests
+import scipy.misc
+import scipy.ndimage
+from PIL import Image
+
 try:
     from . import mergelist_tools
 except (ImportError, ValueError) as e:  # repeated problems with ValueError: numpy.ufunc size changed, may indicate binary incompatibility. Expected 216 from C header, got 192 from PyObject
@@ -85,10 +104,10 @@ def our_glob(s):
     return l
 
 
-def _print(s):
+def _print(*args, **kwargs):
     global module_wide
     if not module_wide["noprint"]:
-        print(s)
+        print(*args, **kwargs)
     return
 
 
@@ -144,7 +163,7 @@ def moduleInit():
             "Snappy does not contain method 'decompress'. You probably have " \
             "to install 'python-snappy', instead of 'snappy'."
     except ImportError:
-        _print("snappy is not available - you won't be able to write/read "
+        print("snappy is not available - you won't be able to write/read "
                "overlaycubes and k.zips. Reference for snappy: "
                "https://pypi.python.org/pypi/python-snappy/")
     try:
@@ -175,9 +194,9 @@ def cut_matrix(data, offset_start, offset_end, cube_shape, start, end):
     number_cubes = np.array(end) - np.array(start)
     cut_end = np.array(number_cubes * cube_shape - offset_end, dtype=np.int)
 
-    return data[cut_start[0]: cut_end[0],
+    return data[cut_start[2]: cut_end[2],
                 cut_start[1]: cut_end[1],
-                cut_start[2]: cut_end[2]]
+                cut_start[0]: cut_end[0]]
 
 
 def load_from_h5py(path, hdf5_names, as_dict=False):
@@ -282,11 +301,15 @@ def _find_and_delete_cubes_process(args):
 class KnossosDataset(object):
     """ Class that contains information and operations for a Knossos-Dataset
     """
+    def _print(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
+
     class CubeType(Enum):
         RAW = 0,
         COMPRESSED = 1
 
-    def __init__(self):
+    def __init__(self, path=None, show_progress=True):
         moduleInit()
         global module_wide
         self.module_wide = module_wide
@@ -307,35 +330,47 @@ class KnossosDataset(object):
         self._raw_ext = 'raw'
         self.raw_dtype = np.uint8  # changed from None to np.uint8 on 27Sep2019 PS
         self._initialized = False
-        self._channel_selected = 'implicit'
+        self._mags = None
+        self.verbose = False
+        self.show_progress = show_progress
+        self.background_label = 0
+        self.http_max_tries = 5
+
+        if path is not None:
+            self.initialize_from_conf(path)
 
     @property
     def mag(self):
-        found_mags = []
-        if self.in_http_mode:
-            for mag_test_nb in range(10):
-                mag_num = 2 ** mag_test_nb
-                mag_folder = self.http_url + self.name_mag_folder + str(mag_num)
+        print('mag is DEPRECATED\nPlease use available_mags')
+        return self.available_mags
 
-                for tries in range(10):
-                    try:
-                        request = requests.get(mag_folder,
-                                               auth=self.http_auth,
-                                               timeout=10)
-                        request.raise_for_status()
-                        found_mags.append(mag_num)
-                        break
-                    except:
-                        if request.status_code < requests.codes.server_error:
-                            break # no use retrying if client error (e.g. 404)
-                        continue
-        else:
-            regex = re.compile("mag[1-9][0-9]*$")
-            for mag_folder in glob.glob(os.path.join(self._knossos_path, "*mag*")):
-                match = regex.search(mag_folder)
-                if match is not None:
-                    found_mags.append(int(mag_folder[match.start() + 3:])) # mag number
-        return found_mags
+    @property
+    def available_mags(self):
+        if self._mags is None:
+            self._mags = []
+            if self.in_http_mode:
+                for mag_test_nb in range(10):
+                    mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
+                    mag_folder = "{}/{}{}".format(self.http_url, self.name_mag_folder, mag_num)
+                    for tries in range(10):
+                        try:
+                            request = requests.get(mag_folder,
+                                                   auth=self.http_auth,
+                                                   timeout=10)
+                            request.raise_for_status()
+                            self._mags.append(mag_num)
+                            break
+                        except requests.exceptions.HTTPError:
+                            if request.status_code < requests.codes.server_error:
+                                break # no use retrying if client error (e.g. 404)
+                            continue
+            else:
+                regex = re.compile("mag[1-9][0-9]*$")
+                for mag_folder in glob.glob(os.path.join(self._knossos_path, "*mag*")):
+                    match = regex.search(mag_folder)
+                    if match is not None:
+                        self._mags.append(int(mag_folder[match.start() + 3:])) # mag number
+        return self._mags
 
     @property
     def name_mag_folder(self):
@@ -392,42 +427,53 @@ class KnossosDataset(object):
 
     @property
     def in_http_mode(self):
-        if self.http_url and self.http_user and self.http_passwd:
-            return True
-        else:
-            return False
+        return bool(self.http_url)
 
     @property
-    def http_auth(self):
-        if self.in_http_mode:
+    def http_auth(self):# when auth is contained in URL we can return None here
+        if self.http_user and self.http_passwd:
             return (self.http_user, self.http_passwd)
         else:
             return None
 
+    @property
+    def highest_mag(self):
+        return len(self.scales) + 1\
+               if self._ordinal_mags else\
+               np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
+
+    def mag_scale(self, mag): # get scale in specific mag
+        index = mag - 1 if self._ordinal_mags else int(np.log2(mag))
+        return self.scales[index]
+
+    def scale_ratio(self, mag, base_mag): # ratio between scale in mag and scale in base_mag
+        return (self.mag_scale(mag) / self.mag_scale(base_mag)) if self._ordinal_mags else np.array(3 * [float(mag) / base_mag])
+
+    def iter(self, offset=(0, 0, 0), end=None, step=(512, 512, 512)):
+        end = np.minimum(end or self.boundary, self.boundary)
+        step = np.minimum(step, end - offset)
+        return ((x, y, z) for x in range(offset[0], end[0], step[0])
+                          for y in range(offset[1], end[1], step[1])
+                          for z in range(offset[2], end[2], step[2]))
+
     def set_channel(self, channel):
-        if channel == 'implicit':
-            return
-
-        known_channels = [
-            ('raw', 'raw', KnossosDataset.CubeType.RAW),
-            ('png', 'png', KnossosDataset.CubeType.COMPRESSED),
-            ('jpg', 'jpg', KnossosDataset.CubeType.COMPRESSED),
-        ]
-
-        for ch, ext, cube_type in known_channels:
-            if channel == ch:
-                self._cube_type = cube_type
-                self._raw_ext = ext
-                self._channel_selected = ch
-                return
-
-        raise ValueError('channel must be one of %s' % ([xx[0] for xx in known_channels], ))
+        if channel == 'implicit': return
+        cube_types = {
+            'raw': KnossosDataset.CubeType.RAW,
+            'png': KnossosDataset.CubeType.COMPRESSED,
+            'jpg': KnossosDataset.CubeType.COMPRESSED
+        }
+        if channel in cube_types:
+            self._cube_type = cube_types[channel]
+            self._raw_ext = channel
+        else:
+            raise ValueError(f'channel must be one of {cube_types.keys()}')
 
     def get_first_blocks(self, offset):
         return offset // self.cube_shape
 
     def get_last_blocks(self, offset, size):
-        return ((offset+size-1) // self.cube_shape) + 1
+        return ((offset + size - 1) // self.cube_shape) + 1
 
     def get_cube_coordinates(self, cube_name):
         x_pos = cube_name.rfind("x")
@@ -517,28 +563,32 @@ class KnossosDataset(object):
             raise NotImplementedError("Could not read .conf: {}".format(e))
 
         self._conf_path = path_to_pyknossos_conf
+        self._ordinal_mags = True  # pyk.conf is ordinal by default
+        self._cube_shape = [128, 128, 128]  # default cube shape
+        exts = set()
 
         for line in lines:
             tokens = re.split(" = |,|\n", line)
             key = tokens[0]
             if key == "_BaseName":
                 self._experiment_name = tokens[1]
+            elif key == "_BaseURL":
+                self._http_url = tokens[1]
+            elif key == "_UserName":
+                self._http_user = tokens[1]
+            elif key == "_Password":
+                self._http_passwd = tokens[1]
             elif key == "_ServerFormat":
-                self._ordinal_mags = tokens[1] != "knossos";
+                self._ordinal_mags = tokens[1] != "knossos"
             elif key == "_DataScale":
                 self.scales = []
                 for x, y, z in zip(tokens[1::3], tokens[2::3], tokens[3::3]):
                     self.scales.append(np.array([float(x), float(y), float(z)]))
                 self._scale = self.scales[0]
             elif key == "_FileType":
-                type_token = int(tokens[1])
-                self._cube_type = KnossosDataset.CubeType.RAW\
-                                  if type_token == 0\
-                                  else KnossosDataset.CubeType.COMPRESSED
-                # set extension automatically if not specified
-                self._raw_ext = "raw" if type_token == 0\
-                                      else "png" if type_token == 2 \
-                                      else "jpg" # type_token == 3
+                type_map = {'0': 'raw', '2': 'png', '3': 'jpg'}
+                assert tokens[1] in type_map, f'unsupported _FileType ({tokens[1]})'
+                exts.add(type_map[tokens[1]])
             elif key == "_NumberofCubes":
                 self._number_of_cubes[0] = int(tokens[1])
                 self._number_of_cubes[1] = int(tokens[2])
@@ -547,67 +597,18 @@ class KnossosDataset(object):
                 self._boundary[0] = float(tokens[1])
                 self._boundary[1] = float(tokens[2])
                 self._boundary[2] = float(tokens[3])
+            elif key == '_CubeSize':
+                self._cube_shape = [int(tokens[1]), int(tokens[2]), int(tokens[3])]
             elif key == "_BaseExt":
-                self._raw_ext = tokens[1].replace('.', '')
-                self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == "raw" else KnossosDataset.CubeType.COMPRESSED
-        self._cube_shape = [128, 128, 128]  # hardcoded cube shape, others are not supported
-
-    def write_pyknossos_conf(self, path_to_pyknossos_conf,
-                             include_overlay=True, descriptions=None):
-        """ Write a pyknossos conf
-
-        TODO: refactor '_BaseExt' settings.
-
-        :param path_to_pyknossos_conf: str
-        :param include_overlay: bool
-        :param descriptions: Optional, dict with keys: 'raw' and 'overlay' and
-            description strings as values.
-        :return:
-            nothing
-        """
-        if os.path.isfile(path_to_pyknossos_conf):
-            raise ValueError('Pyk conf file already exists at {}.'.format(path_to_pyknossos_conf))
-        if descriptions is None:
-            descriptions = {'raw': 'original quality', 'overlay': 'original quality'}
-        if len(self.scales) <= 0:
-            raise ValueError('Cannot create pyk conf file without '
-                             'per-mag-level scale definitions.')
-            # TODO: work-in target_mags
-            kd_dataset_atlas.scales = [(SCALING * 2 ** i).astype(float) for i in range(len(target_mags))]
-            for ii in range(1, len(target_mags)):
-                adapted_scale = kd_dataset_atlas.scales[ii]
-                adapted_scale[2] = kd_dataset_atlas.scales[ii - 1][2]
-                if adapted_scale[2] < adapted_scale[1]:
-                    new_z_scale = adapted_scale[2] * 2
-                else:
-                    new_z_scale = adapted_scale[2]
-                adapted_scale[2] = new_z_scale
-                kd_dataset_atlas.scales[ii] = adapted_scale
-        scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
-        config_str = """[Dataset]
-_BaseName = {}
-_ServerFormat = pyknossos
-_DataScale = {}
-_Extent = {}
-_Description = {}
-_BaseExt = .raw
-""".format(self._experiment_name, scales,
-           ','.join([str(int(el)) for el in self.boundary]),
-           descriptions['raw'])
-
-        if include_overlay:
-            config_str += """\n\n[Dataset]
-_BaseName = {}
-_ServerFormat = pyknossos
-_DataScale = {}
-_Extent = {}
-_Description = {}
-_BaseExt = .seg.sz.zip
-""".format(self._experiment_name, scales,
-           ','.join([str(int(el)) for el in self.boundary]),
-           descriptions['overlay'])
-        with open(path_to_pyknossos_conf, "w") as f:
-            f.write(config_str)
+                exts.add(tokens[1].replace('.', '', 1))
+        # prefer raw over png
+        if 'raw' in exts:
+            self._raw_ext = 'raw'
+        elif 'png' in exts:
+            self._raw_ext = 'png'
+        else:
+            self._raw_ext = 'jpg'
+        self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
 
     def initialize_from_pyknossos_path(self, path):
         self.parse_pyknossos_conf(path)
@@ -626,11 +627,12 @@ _BaseExt = .seg.sz.zip
         :return:
             nothing
         """
+
         try:
             f = open(path_to_knossos_conf)
             lines = f.readlines()
             f.close()
-        except:
+        except FileNotFoundError:
             raise NotImplementedError("Could not find/read *mag1/knossos.conf")
 
         self._conf_path = path_to_knossos_conf
@@ -643,13 +645,13 @@ _BaseExt = .seg.sz.zip
                 self._http_user = line_s[3]
                 self._http_passwd = line_s[4]
             else:
-                try:
-                    match = re.search(r'(?P<key>[A-Za-z _]+)'
-                                      r'((((?P<numeric_value>[0-9\.]+)'
-                                      r'|"(?P<string_value>[A-Za-z0-9._/-]+)");)'
-                                      r'|(?P<empty_value>;))',
-                                      line).groupdict()
-
+                match = re.search(r'(?P<key>[A-Za-z _]+)'
+                                  r'((((?P<numeric_value>[0-9\.]+)'
+                                  r'|"(?P<string_value>[A-Za-z0-9._/-]+)");)'
+                                  r'|(?P<empty_value>;))',
+                                  line)
+                if match:
+                    match = match.groupdict()
                     if match['empty_value']:
                         val = True
                     elif match['string_value']:
@@ -662,9 +664,8 @@ _BaseExt = .seg.sz.zip
                         raise Exception('Malformed knossos.conf')
 
                     parsed_dict[match["key"]] = val
-                except:
-                    if verbose:
-                        _print("Unreadable line in knossos.conf - ignored.")
+                elif verbose:
+                        _print(f"Unreadable line in knossos.conf - ignored: {line}")
 
         self._boundary[0] = parsed_dict['boundary x ']
         self._boundary[1] = parsed_dict['boundary y ']
@@ -672,6 +673,7 @@ _BaseExt = .seg.sz.zip
         self._scale[0] = parsed_dict['scale x ']
         self._scale[1] = parsed_dict['scale y ']
         self._scale[2] = parsed_dict['scale z ']
+        self.scales = [np.multiply(2**i, self._scale) for i in range(0, int(np.ceil(np.log2(np.amax(self._boundary / self._cube_shape)))))]
         self._experiment_name = parsed_dict['experiment name ']
         if self._experiment_name.endswith("mag1"):
             self._experiment_name = self._experiment_name[:-5]
@@ -704,7 +706,6 @@ _BaseExt = .seg.sz.zip
         :return:
             nothing
         """
-
         while path.endswith("/"):
             path = path[:-1]
 
@@ -864,6 +865,63 @@ _BaseExt = .seg.sz.zip
 
         self._initialized = True
 
+    def write_pyknossos_conf(self, path_to_pyknossos_conf,
+                             include_overlay=True, descriptions=None):
+        """ Write a pyknossos conf
+
+        TODO: refactor '_BaseExt' settings.
+
+        :param path_to_pyknossos_conf: str
+        :param include_overlay: bool
+        :param descriptions: Optional, dict with keys: 'raw' and 'overlay' and
+            description strings as values.
+        :return:
+            nothing
+        """
+        if os.path.isfile(path_to_pyknossos_conf):
+            raise ValueError('Pyk conf file already exists at {}.'.format(path_to_pyknossos_conf))
+        if descriptions is None:
+            descriptions = {'raw': 'original quality', 'overlay': 'original quality'}
+        if len(self.scales) <= 0:
+            raise ValueError('Cannot create pyk conf file without '
+                             'per-mag-level scale definitions.')
+            # TODO: work-in target_mags
+            kd_dataset_atlas.scales = [(SCALING * 2 ** i).astype(float) for i in range(len(target_mags))]
+            for ii in range(1, len(target_mags)):
+                adapted_scale = kd_dataset_atlas.scales[ii]
+                adapted_scale[2] = kd_dataset_atlas.scales[ii - 1][2]
+                if adapted_scale[2] < adapted_scale[1]:
+                    new_z_scale = adapted_scale[2] * 2
+                else:
+                    new_z_scale = adapted_scale[2]
+                adapted_scale[2] = new_z_scale
+                kd_dataset_atlas.scales[ii] = adapted_scale
+        scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
+        config_str = """[Dataset]
+_BaseName = {}
+_ServerFormat = pyknossos
+_DataScale = {}
+_Extent = {}
+_Description = {}
+_BaseExt = .raw
+    """.format(self._experiment_name, scales,
+               ','.join([str(int(el)) for el in self.boundary]),
+               descriptions['raw'])
+
+        if include_overlay:
+            config_str += """\n\n[Dataset]
+_BaseName = {}
+_ServerFormat = pyknossos
+_DataScale = {}
+_Extent = {}
+_Description = {}
+_BaseExt = .seg.sz.zip
+    """.format(self._experiment_name, scales,
+               ','.join([str(int(el)) for el in self.boundary]),
+               descriptions['overlay'])
+        with open(path_to_pyknossos_conf, "w") as f:
+            f.write(config_str)
+
     def initialize_from_matrix(self, path, scale, experiment_name,
                                offset=None, boundary=None, fast_downsampling=True,
                                data=None, data_path=None, hdf5_names=None,
@@ -1020,7 +1078,7 @@ _BaseExt = .seg.sz.zip
             data_range = [[0, 0, 0], self.boundary]
 
         if mags is None:
-            mags = self.mag
+            mags = self.available_mags
 
         if isinstance(mags, int):
             mags = [mags]
@@ -1135,306 +1193,150 @@ _BaseExt = .seg.sz.zip
 
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
-    def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=None,
-                             mirror_oob=True, hdf5_path=None,
-                             hdf5_name="raw", pickle_path=None,
-                             invert_data=False, zyx_mode=False,
-                             nb_threads=40, verbose=True, show_progress=True,
-                             http_max_tries=2000, http_verbose=False, stored_datatype=None):
-        """ Extracts a 3D matrix from the KNOSSOS-dataset
-            NOTE: You should use one of the two wrappers below
+    def _load(self, offset, size, from_overlay, mag, expand_area_to_mag=False, padding=0, datatype=None):
+        """ Extracts a 3D matrix from the KNOSSOS-dataset NOTE: You should use one of the two wrappers below
 
-        :param size: 3 sequence of ints
-            size of requested data block
         :param offset: 3 sequence of ints
-            coordinate of the corner closest to (0, 0, 0)
-        :param mode: str
-            either 'raw' or 'overlay'
+            mag 1 coordinate of the corner closest to (0, 0, 0)
+        :param size: 3 sequence of ints
+            mag 1 size of requested data block
+        :param from_overlay: bool
+            loads overlay instead of raw cubes
         :param mag: int
             magnification of the requested data block
+            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
+        :param expand_area_to_mag: bool
+        :param padding: str or int
+            Pad mode for matrix parts outside the dataset. See https://www.pydoc.io/pypi/numpy-1.9.3/autoapi/numpy/lib/arraypad/index.html?highlight=pad#numpy.lib.arraypad.pad
+            When passing an it, will pad with that int in 'constant' mode
         :param datatype: numpy datatype
-            typically:  'raw' = np.uint8
-                        'overlay' = np.uint64
-        :param mirror_oob: bool
-            pads the raw data with mirrored data if given box is out of bounce
-        :param hdf5_path: str
-            if given the output is written as hdf5 file
-        :param hdf5_name: str
-            name of hdf5-set
-        :param pickle_path: str
-            if given the output is written as (c)Pickle file
-        :param invert_data: bool
-            True: inverts the output
-        :param zyx_mode: bool
-            activates zyx-order, size and offset have to in zyx if activated
-        :param nb_threads: int
-            number of threads - twice the number of cores is recommended
-        :param verbose: bool
-            True: prints several information
-        :param show_progress: bool
-            True: progress is printed to the terminal
+            typically: for mode 'raw' this is np.uint8, and for 'overlay' np.uint64
         :return: 3D numpy array or nothing
             if a path is given no data is returned
         """
-        assert datatype is not None, "Datatype has to be specified."
-        if stored_datatype is None:
-            stored_datatype = datatype
-
-        if self._channel_selected == 'implicit':
-            warnings.warn('You are using implicit channel selection. This possibility will soon be removed.'
-                    ' Please call set_channel() before reading or writing data using KnossosDataset.')
         def _read_cube(c):
-            pos = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
+            local_offset = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
             valid_values = False
 
             # check cache first
-            values = self._cube_from_cache(c, mode)
+            values = self._cube_from_cache(c, from_overlay)
+            from_cache = values is not None
 
-            if values is not None:
-                #print('Cache hit')
-                if zyx_mode:
-                    output[pos[2]: pos[2] + self.cube_shape[2],
-                           pos[1]: pos[1] + self.cube_shape[1],
-                           pos[0]: pos[0] + self.cube_shape[0]] = \
-                        values
-                else:
-                    output[pos[0]: pos[0] + self.cube_shape[0],
-                           pos[1]: pos[1] + self.cube_shape[1],
-                           pos[2]: pos[2] + self.cube_shape[2]] = \
-                        values
-            else:
-                if from_raw:
-                    path = self.knossos_path + \
-                           self.name_mag_folder + \
-                           "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                           self.experiment_name + \
-                           "_mag%d_x%04d_y%04d_z%04d.%s" % (mag, c[0], c[1], c[2], self._raw_ext)
+            if not from_cache:
+                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{c[0]:04d}_y{c[1]:04d}_z{c[2]:04d}.{"seg.sz.zip" if from_overlay else self._raw_ext}'
+                path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{c[0]:04d}/y{c[1]:04d}/z{c[2]:04d}/{filename}'
 
-                    if self.in_http_mode:
-                        tries = 0
-                        while True:
-                            try:
-                                request = requests.get(path,
-                                                       auth=self.http_auth,
-                                                       timeout=60)
-                                request.raise_for_status()
-                                values = np.fromstring(request.content,
-                                                       dtype=datatype)
-
-                                try:
-                                    values.reshape(self.cube_shape)
-                                    valid_values = True
-                                    break
-                                except ValueError:
-                                    if verbose:
-                                        _print("Reshape error("
-                                        "%d/%d) [%s]\n" % (1+tries, http_max_tries, path))
-                                        pass
-                            except requests.exceptions.Timeout as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.TooManyRedirects as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.RequestException as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.ConnectionError as e:
-                                if http_verbose:
-                                    _print(e)
-                            except requests.exceptions.HTTPError as e:
-                                if http_verbose:
-                                    _print(e)
-                            tries += 1
-                            if tries >= http_max_tries:
-                                _print("Max. #tries reached.")
-                                return "Max-try error"
-                            _print("[%s] Error occured (%d/%d)\n" %
-                                   (path, tries, http_max_tries))
-                            time.sleep(1)
-                    else:
-                        if os.path.exists(path):
-                            values = None
-                            if self._cube_type == KnossosDataset.CubeType.RAW:
-                                flat_shape = int(np.prod(self.cube_shape))
-                                values = np.fromfile(path, dtype=stored_datatype,
-                                                     count=flat_shape)
-                            else: # compressed
-                                values = imageio.imread(path)
-                            values = values.astype(datatype)
-                            valid_values = True
-                        else:
-                            if verbose:
-                                _print("Cube {} does not exist, cube with zeros "
-                                       "only assigned".format(path))
-                else:
-                    path = self.knossos_path + \
-                           self.name_mag_folder + \
-                           "%d/x%04d/y%04d/z%04d/" % (mag, c[0], c[1], c[2]) + \
-                           self.experiment_name + \
-                           "_mag%d_x%04d_y%04d_z%04d.seg.sz" % \
-                           (mag, c[0], c[1], c[2])
-
-                    if self.in_http_mode:
-                        tries = 0
-                        while tries < http_max_tries:
-                            try:
-                                request = requests.get(path + ".zip",
-                                                       auth=self.http_auth,
-                                                       timeout=60)
-                                request.raise_for_status()
-                                with zipfile.ZipFile(BytesIO(
-                                        request.content), "r") \
-                                        as zf:
-                                    values = np.fromstring(
-                                        self.module_wide["snappy"].decompress(
-                                            zf.read(os.path.basename(path))),
-                                        dtype=stored_datatype)
-                                    values = values.astype(datatype)
-                                # check if requested values match shape
-                                try:
-                                    values.reshape(self.cube_shape)
-                                except ValueError:
-                                    if verbose:
-                                        _print("\nReshape error encountered for"
-                                               " %d time. (%s)\n" %
-                                               (1 + tries, path))
-                                    tries += 1
-                                    time.sleep(0.1)
-                                    if tries == http_max_tries:
-                                        if verbose:
-                                            _print("Reshape error.")
-                                        return "Reshape error"
-                                    else:
-                                        continue
-                                valid_values = True
-                            except requests.exceptions.Timeout as e:
-                                return e
-                            except requests.exceptions.TooManyRedirects as e:
-                                return e
-                            except requests.exceptions.RequestException as e:
-                                return e
-                            except requests.exceptions.ConnectionError as e:
-                                tries += 1
-                                time.sleep(1)
-                                if tries == http_max_tries:
-                                    if verbose:
-                                        _print("Max. #tries reached.")
-                                else:
-                                    continue
-                            except requests.exceptions.HTTPError as e:
-                                return e
-                            break
-                    else:
-                        if os.path.isfile(path + ".zip"):
-                            with zipfile.ZipFile(path + ".zip", "r") as zf:
-                                values = np.fromstring(
-                                    self.module_wide["snappy"].decompress(
-                                        zf.read(os.path.basename(path))),
-                                    dtype=stored_datatype)
-                                values = values.astype(datatype)
-                                valid_values = True
-                        else:
-                            if verbose:
-                                _print("Cube does not exist, cube with zeros "
-                                       "only assigned")
-
-                if valid_values:
-                    if zyx_mode:
-                        values = values.reshape(self.cube_shape)
-                        self._add_to_cube_cache(c, mode, values)
-                        output[pos[2]: pos[2]+self.cube_shape[2],
-                               pos[1]: pos[1]+self.cube_shape[1],
-                               pos[0]: pos[0]+self.cube_shape[0]] = \
-                            values
-
-                    else:
+                if self.in_http_mode:
+                    for tries in range(1, self.http_max_tries + 1):
                         try:
-                            values = values.reshape(self.cube_shape).T
-                        except Exception as e:
-                            # _print('Exception in reshape: values.shape {0}'.
-                            #        format(values.shape))
-                            # _print('Exception in reshape:self.cube_shape {0}'.
-                            #        format(self.cube_shape))
-                            # if verbose:
-                            _print("Cube is invalid, cube with zeros "
-                                   "only assigned")
-                            _print(c)
-                            _print(e)
-                            values = np.zeros(self.cube_shape)
+                            request = requests.get(path, auth=self.http_auth, timeout=60)
+                            request.raise_for_status()
+                            if not from_overlay:
+                                if self._raw_ext == 'raw':
+                                    values = np.fromstring(request.content, dtype=np.uint8).astype(datatype)
+                                else:
+                                    values = imageio.imread(request.content)
+                            else:
+                                with zipfile.ZipFile(BytesIO(request.content), 'r') as zf:
+                                    snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
+                                    raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
+                                    values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                            try:# check if requested values match shape
+                                values.reshape(self.cube_shape)
+                                valid_values = True
+                                break
+                            except ValueError:
+                                self._print(f'Reshape error encountered for {1 + tries} time. ({path}). Content length: {len(request.content)}')
+                                time.sleep(random.uniform(0.1, 1.0))
+                                if tries == self.http_max_tries:
+                                    raise Exception(f'Reshape errors exceed http_max_tries ({self.http_max_tries}).')
+                        except requests.exceptions.RequestException as e:
+                            if isinstance(e, requests.exceptions.ConnectionError) and tries < self.http_max_tries:
+                                time.sleep(random.uniform(0.1, 1.0))
+                                continue
+                            return e
+                        self._print(f'[{path}] Error occured ({tries}/{self.http_max_tries})')
+                    if not valid_values:
+                        raise Exception(f'Max. #tries reached. ({self.http_max_tries})')
+                else:
+                    if os.path.exists(path):
+                        if from_overlay:
+                            with zipfile.ZipFile(path, 'r') as zf:
+                                snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
+                            raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
+                            values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                        elif self._cube_type == KnossosDataset.CubeType.RAW:
+                            flat_shape = int(np.prod(self.cube_shape))
+                            values = np.fromfile(path, dtype=np.uint8, count=flat_shape).astype(datatype)
+                        else: # compressed
+                            values = imageio.imread(path)
+                        valid_values = True
+                    else:
+                        self. _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
 
-                        self._add_to_cube_cache(c, mode, values)
-                        output[pos[0]: pos[0]+self.cube_shape[0],
-                               pos[1]: pos[1]+self.cube_shape[1],
-                               pos[2]: pos[2]+self.cube_shape[2]] = \
-                            values
+            if valid_values:
+                values = values.reshape(self.cube_shape)
+                if not from_cache:
+                    self._add_to_cube_cache(c, from_overlay, values)
+                local_end = local_offset + self.cube_shape
+                output[local_offset[2]:local_end[2], local_offset[1]:local_end[1], local_offset[0]:local_end[0]] = values
 
         t0 = time.time()
 
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
+        assert self.initialized, 'Dataset is not initialized'
 
-        available_mags = self.mag
-        if not mag in available_mags:
-            raise Exception("Requested mag {0} not available, only mags {1} are "
-                            "available.".format(mag, available_mags))
+        if mag not in self.available_mags:
+            raise Exception(f'Requested mag {mag} not available, only mags {self.available_mags} are available.')
 
         if 0 in size:
-            raise Exception("The first parameter is size! - "
-                            "at least one dimension was set to 0 ...")
+            raise Exception(f'The second parameter is size! - at least one dimension was set to 0 ({size})')
 
-        if verbose and show_progress:
-            show_progress = False
-            _print("when choosing verbose, show_progress is automatically "
-                   "disabled")
-
-        if mode == 'raw':
-            from_raw = True
-        elif mode == 'overlay':
-            from_raw = False
+        ratio = self.scale_ratio(mag, 1)
+        if expand_area_to_mag:
+            # mag1 coords rounded such that when converting back from target mag to mag1 the specified offset and size can be extracted.
+            # i.e. for higher mags the matrix will be larger rather than smaller
+            boundary = np.ceil(np.array(self.boundary, dtype=np.int) / ratio).astype(int)
+            end = np.ceil(np.add(offset, size) / ratio) * ratio
+            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            # offset and size in target mag
+            size = ((end - offset) // ratio).astype(int)
+            offset = (offset // ratio).astype(int)
         else:
-            raise NotImplementedError("mode has to be 'raw' or 'overlay'")
-
-        size = np.array(size, dtype=np.int)
-        offset = np.array(offset, dtype=np.int)
-
-        if zyx_mode:
-            size = size[::-1]
-            offset = offset[::-1]
+            size = (np.array(size, dtype=np.int) // ratio).astype(int)
+            offset = (np.array(offset, dtype=np.int) // ratio).astype(int)
+            boundary = (np.array(self.boundary, dtype=np.int) // ratio).astype(int)
+        orig_size = np.copy(size)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
 
         for dim in range(3):
             if offset[dim] < 0:
                 size[dim] += offset[dim]
-                mirror_overlap[dim][0] = - offset[dim]
+                mirror_overlap[dim][0] = -offset[dim]
                 offset[dim] = 0
 
-            if offset[dim]+size[dim] > self.boundary[dim]:
-                mirror_overlap[dim][1] = offset[dim] + size[dim] - \
-                                         self.boundary[dim]
-                size[dim] -= offset[dim] + size[dim] - self.boundary[dim]
+            if offset[dim] + size[dim] > boundary[dim]:
+                mirror_overlap[dim][1] = offset[dim] + size[dim] - boundary[dim]
+                size[dim] = boundary[dim] - offset[dim]
 
             if size[dim] < 0:
                 raise Exception("Given block is totally out ouf bounds with "
                                 "offset: [%d, %d, %d]!" %
                                 (offset[0], offset[1], offset[2]))
 
-        start = self.get_first_blocks(offset)
-        end = self.get_last_blocks(offset, size)
-
+        start = self.get_first_blocks(offset).astype(int)
+        end = self.get_last_blocks(offset, size).astype(int)
         uncut_matrix_size = (end - start) * self.cube_shape
-        if zyx_mode:
-            uncut_matrix_size = uncut_matrix_size[::-1]
 
-        output = np.zeros(uncut_matrix_size, dtype=datatype)
+        output = np.zeros(uncut_matrix_size[::-1], dtype=datatype)
 
         offset_start = offset % self.cube_shape
         offset_end = (self.cube_shape - (offset + size)
                       % self.cube_shape) % self.cube_shape
 
-        cnt = 0
         nb_cubes_to_process = int(np.prod(end - start))
+        if nb_cubes_to_process == 0:
+            return np.zeros(orig_size[::-1], dtype=datatype)
 
         cube_coordinates = []
 
@@ -1443,92 +1345,95 @@ _BaseExt = .seg.sz.zip
                 for x in range(start[0], end[0]):
                     cube_coordinates.append([x, y, z])
 
-        if nb_threads > 1:
-            if not self._test_all_cache_satisfied(cube_coordinates, mode)\
-                    and len(cube_coordinates) > 1:
-                pool = ThreadPool(nb_threads)
-                results = pool.map(_read_cube, cube_coordinates)
-                pool.close()
-                pool.join()
-            else:
-                results = []
-                for c in cube_coordinates:
-                    results.append(_read_cube(c))
-        else:
-            results = []
-            for c in cube_coordinates:
-                results.append(_read_cube(c))
+        with ThreadPoolExecutor() as pool:
+            results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
 
-        if (verbose or http_verbose) and self.in_http_mode:
-            errors = {}
-            for result in results:
-                if result:
-                    if result.response:
-                        errno = result.response.status_code
-                        if errno in errors:
-                            errors[errno] += 1
-                        else:
-                            errors[errno] = 1
-            if verbose and len(errors) > 0:
-                _print("%d errors appeared! Keep in mind that Error 404 might be "
-                       "totally fine. Overview:" %len(errors))
-                for errno in errors:
-                    _print("%d: %dx" % (errno, errors[errno]))
+        if results.count(None) < len(results):
+            errors = defaultdict(int)
+            for result in results: # None results are no error
+                if result is not None and result.response is not None: # errors with server response
+                    errors[result.response.status_code] += 1
+                elif result is not None: # errors without server response
+                    errors[result.__class__.__name__] += 1
+            self._print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
+
+        output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
+
+        if (uncut_matrix_size / output.shape).prod() > 1.5: # shrink allocation
+            output = output.astype(datatype, copy=True)
+
+        if self.show_progress:
+            dt = time.time() - t0
+            speed = np.product(output.shape) * 1.0/1000000/dt
+            print(f'\rSpeed: {speed:.2f} Mvx/s, time {dt}')
+
+        if not np.all(output.shape == size[::-1]):
+            raise Exception(f'Incorrect shape! Should be {size[::-1]}; got {output.shape}')
+
+        if np.any(mirror_overlap):
+            if isinstance(padding, int):
+                output = np.pad(output, mirror_overlap[::-1], 'constant', constant_values=padding)
+            else:
+                output = np.pad(output, mirror_overlap[::-1], mode=padding)
+
+        return output
+
+    def load_raw(self, **kwargs):
+        """ from_cubes_to_matrix helper func with mode=raw.
+        datatype default is np.uint8, but can be overriden.
+        """
+        assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to False here.'
+        kwargs.update({'from_overlay': False})
+        if 'datatype' not in kwargs:
+            kwargs.update({'datatype': np.uint8})
+        return self._load(**kwargs)
+
+    def load_seg(self, **kwargs):
+        """ from_cubes_to_matrix helper func with mode=overlay.
+        datatype default is np.uint64, but can be overriden.
+        """
+        assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to True here.'
+        kwargs.update({'from_overlay': True})
+        if 'datatype' not in kwargs:
+            kwargs.update({'datatype': np.uint64})
+        return self._load(**kwargs)
+
+    def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
+                             mirror_oob=True, hdf5_path=None,
+                             hdf5_name="raw", pickle_path=None,
+                             invert_data=False, zyx_mode=False,
+                             nb_threads=40, verbose=False, show_progress=True,
+                             http_max_tries=2000, http_verbose=False):
+        print('from_*cubes_to_matrix is DEPRECATED.\n Please use load_raw or load_seg.')
+        self.verbose = verbose or http_verbose
+        self.show_progress = show_progress
+        self.http_max_tries = http_max_tries
 
         if zyx_mode:
-            output = cut_matrix(output, offset_start[::-1], offset_end[::-1],
-                                self.cube_shape[::-1], start[::-1], end[::-1])
-        else:
-            output = cut_matrix(output, offset_start, offset_end,
-                                self.cube_shape, start, end)
+            offset = offset[::-1]
+            size = size[::-1]
+        ratio = self.scale_ratio(mag, 1)
+        size = (np.array(size) * ratio).astype(np.int)
+        offset = (np.array(offset) * ratio).astype(np.int)
 
-        if show_progress:
-            progress = 100.0 * cnt / nb_cubes_to_process
-            _stdout('\rProgress: %.2f%%' % progress)
-            _stdout('\rProgress: finished\n')
-            dt = time.time()-t0
-            speed = np.product(output.shape) * 1.0/1000000/dt
-            if mode == "raw":
-                _stdout('\rSpeed: %.3f MB or MPix /s, time %s\n' % (speed, dt))
-            else:
-                _stdout('\rSpeed: %.3f MPix /s, time %s\n' % (speed, dt))
+        from_overlay = mode == 'overlay'
+        padding = 'symmetric' if mirror_oob else 0
 
-        ref_size = size[::-1] if zyx_mode else size
-        if not np.all(output.shape == ref_size):
-            raise Exception("Incorrect shape! Should be", ref_size, "; got:",
-                            output.shape)
-        else:
-            if verbose:
-                _print("Shape was verified")
-
-        if np.any(mirror_overlap != 0):
-            if not zyx_mode:
-                if mirror_oob:
-                    output = np.lib.pad(output, mirror_overlap, 'symmetric')
-                else:
-                    output = np.lib.pad(output, mirror_overlap, 'constant')
-            else:
-                if mirror_oob:
-                    output = np.lib.pad(output, mirror_overlap[::-1], 'symmetric')
-                else:
-                    output = np.lib.pad(output, mirror_overlap[::-1], 'constant')
-
-        if output.dtype != datatype:
-            raise Exception("Wrong datatype! - for unknown reasons...")
+        data = self._load(offset=offset, size=size, from_overlay=from_overlay, mag=mag, padding=padding, datatype=datatype)
 
         if invert_data:
-            output = np.invert(output)
+            data = np.invert(data)
+
+        if not zyx_mode:
+            data = data.swapaxes(0, 2)
 
         if hdf5_path and hdf5_name:
-            save_to_h5py(output, hdf5_path, hdf5_names=[hdf5_name])
+            save_to_h5py(data, hdf5_path, hdf5_names=[hdf5_name])
 
         if pickle_path:
-            save_to_pickle(output, pickle_path)
+            save_to_pickle(data, pickle_path)
 
-        if http_verbose and self.in_http_mode:
-            return output, errors
-        else:
-            return output
+        return data
 
     def from_raw_cubes_to_matrix(self, size, offset, mag=1,
                                  datatype=None, mirror_oob=False,
@@ -1574,9 +1479,6 @@ _BaseExt = .seg.sz.zip
         else:
             if self.raw_dtype != datatype:
                 _print("Specified datatype differs from config datatype.")
-
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
 
         return self.from_cubes_to_matrix(size, offset,
                                          mode='raw',
@@ -1631,10 +1533,7 @@ _BaseExt = .seg.sz.zip
             True: progress is printed to the terminal
         :return: 3D numpy array or nothing
             if a path is given no data is returned
-        """
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
-
+         """
         return self.from_cubes_to_matrix(size, offset,
                                          mode='overlay',
                                          mag=mag,
@@ -1663,15 +1562,13 @@ _BaseExt = .seg.sz.zip
         area_max = (int(area_elem.get("max.x")),
                 int(area_elem.get("max.y")),
                 int(area_elem.get("max.z")))
-        return (area_min, area_max)
+        return (np.array(area_min), np.array(area_max))
 
-    def from_kzip_movement_area_to_matrix(self, path, mag=8, apply_mergelist=True):
+    def load_kzip_seg(self, path, mag, return_area=False):
         area_min, area_max = self.get_movement_area(path)
-        print(area_min, area_max)
-        size = (area_max[0] - area_min[0], area_max[1] - area_min[1], area_max[2] - area_min[2])
-        print(size)
-        return self.from_kzip_to_matrix(path, size=size, offset=area_min, mag=mag,
-                                        apply_mergelist=apply_mergelist)
+        size = area_max - area_min
+        matrix = self._load_kzip_seg(path=path, offset=area_min, size=size, mag=mag)
+        return (matrix, area_min, size) if return_area else matrix
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
@@ -1679,23 +1576,39 @@ _BaseExt = .seg.sz.zip
                             show_progress=True,
                             apply_mergelist=True,
                             binarize_overlay=False,
-                            return_empty_cube_if_nonexistent=True):
+                            return_dataset_cube_if_nonexistent=False,
+                            expand_area_to_mag=False):
+        print('from_kzip_to_matrix is DEPRECATED.\n Please use load_kzip_seg.')
+        self.verbose = verbose
+        self.show_progress = show_progress
+        self.background_label = empty_cube_label
+
+        ratio = self.scale_ratio(mag, 1)
+        size = (np.array(size) * ratio).astype(np.int)
+        offset = (np.array(offset) * ratio).astype(np.int)
+
+        data = self._load_kzip_seg(path, offset, size, mag, datatype, apply_mergelist, return_dataset_cube_if_nonexistent, expand_area_to_mag)
+
+        if binarize_overlay:
+            data[data > 1] = 1
+
+        return data.swapaxes(0, 2)
+
+    def _load_kzip_seg(self, path, offset, size, mag, datatype=np.uint64, padding=0, apply_mergelist=True, return_dataset_cube_if_nonexistent=False, expand_area_to_mag=False):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
             forward-slash separated path to kzip file
+        :param offset: 3 sequence of ints
+            mag 1 coordinate of the corner closest to (0, 0, 0)
         :param size: 3 sequence of ints
             size of requested data block
-        :param offset: 3 sequence of ints
-            coordinate of the corner closest to (0, 0, 0)
-        :param empty_cube_label: int
-            label for empty cubes
         :param datatype: numpy datatype
             typically np.uint8
-        :param verbose: bool
-            True: prints several information
         :param apply_mergelist: bool
             True: Merges IDs based on the kzip mergelist
+        :param expand_area_to_mag: bool
+            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
         :param return_empty_cube_if_nonexistent: bool
             True: if kzip doesn't contain specified cube,
             an empty cube (cube filled with empty_cube_label) is returned.
@@ -1710,99 +1623,120 @@ _BaseExt = .seg.sz.zip
                             "overlaycubes or kzips.")
         archive = zipfile.ZipFile(path, 'r')
 
-        size = np.array(size, dtype=np.int)
-        offset = np.array(offset, dtype=np.int)
+        ratio = self.scale_ratio(mag, 1)
+        if expand_area_to_mag:
+            end = np.ceil(np.add(offset, size) / ratio) * ratio
+            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            size = (end - offset) // ratio
+            offset = offset // ratio
+        else:
+            size = np.array(size, dtype=np.int)//ratio
+            offset = np.array(offset, dtype=np.int)//ratio
 
         start = np.array([get_first_block(dim, offset, self._cube_shape)
                           for dim in range(3)])
         end = np.array([get_last_block(dim, size, offset, self._cube_shape) + 1
                         for dim in range(3)])
 
-        matrix_size = (end - start)*self.cube_shape
-        output = np.zeros(matrix_size, dtype=datatype)
+        matrix_size = (end - start) * self.cube_shape
+        output = np.zeros(matrix_size[::-1], dtype=datatype)
 
         offset_start = offset % self.cube_shape
-        offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % \
-                     self.cube_shape
+        offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % self.cube_shape
 
         current = np.array([start[dim] for dim in range(3)])
         cnt = 1
-        nb_cubes_to_process = \
-            (end[2]-start[2]) * (end[1] - start[1]) * (end[0] - start[0])
+        nb_cubes_to_process = (end - start).prod()
 
-        while current[2] < end[2]:
-            current[1] = start[1]
-            while current[1] < end[1]:
-                current[0] = start[0]
-                while current[0] < end[0]:
-                    if show_progress:
+        for z in range(start[2], end[2]):
+            for y in range(start[1], end[1]):
+                for x in range(start[0], end[0]):
+                    current = [x, y, z]
+                    if self.show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
-                        _stdout('\rProgress: %.2f%%' % progress)
-                    this_path = "{}_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
-                                                                  current[0], current[1], current[2])
+                        _stdout(f'\rProgress: {progress:.2f}% ') #
+                    this_path = f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
                     try:
-                        values = np.fromstring(
-                            module_wide["snappy"].decompress(
-                                archive.read(this_path)), dtype=np.uint64)
+                        scube = archive.read(this_path)
+                        values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
+                        self._print(f'{current}: loaded from .k.zip')
                     except KeyError:
-                        if verbose:
-                            _print("Cube {0} does not exist, trying legacy format".format(this_path))
-                        try: # legacy path
-                            this_path = "{}_mag1_mag{}x{}y{}z{}.seg.sz".format(self._experiment_name, mag,
-                                                                               current[0], current[1], current[2])
-                            values = np.fromstring(
-                                module_wide["snappy"].decompress(
-                                    archive.read(this_path)), dtype=np.uint64)
-                        except KeyError:
-                            if return_empty_cube_if_nonexistent:
-                                if verbose:
-                                    _print("Cube does not exist, cube with {} only" \
-                                           " assigned".format(empty_cube_label))
-                                values = np.full(self.cube_shape, empty_cube_label,
-                                                 dtype=datatype)
-                            else:
-                                return None
-                    if verbose:
-                        print(this_path)
-                    if binarize_overlay:
-                        values[values > 1] = 1
-                    if datatype != values.dtype:
-                        # this conversion can go wrong and
-                        # it is the responsibility of the user to make
-                        # sure it makes sense
-                        values = values.astype(datatype)
+                        self._print(f'{current}: {"dataset" if return_dataset_cube_if_nonexistent else self.background_label} cube assigned')
+                        if return_dataset_cube_if_nonexistent:
+                            values = self.load_seg(offset=current * ratio * self.cube_shape, size=ratio * self.cube_shape, mag=mag,
+                                                   datatype=datatype, padding=padding, expand_area_to_mag=expand_area_to_mag)
+                        else:
+                            values = np.full(self.cube_shape, self.background_label, dtype=datatype)
 
-
-                    pos = (current-start)*self.cube_shape
-
-                    values = np.swapaxes(values.reshape(self.cube_shape), 0, 2)
-
-                    output[pos[0] : pos[0] + self.cube_shape[0],
-                           pos[1] : pos[1] + self.cube_shape[1],
-                           pos[2] : pos[2] + self.cube_shape[2]] = values
+                    local_offset = (current - start) * self.cube_shape
+                    local_end = local_offset + self.cube_shape
+                    output[local_offset[2]:local_end[2],
+                           local_offset[1]:local_end[1],
+                           local_offset[0]:local_end[0]] = values.reshape(self.cube_shape).astype(datatype, copy=False)
                     cnt += 1
-                    current[0] += 1
-                current[1] += 1
-            current[2] += 1
-        if show_progress: print("\n") # newline after sys.stdout.writes inside loop
-        output = cut_matrix(output, offset_start, offset_end, self.cube_shape,
-                            start, end)
+
+        if self.show_progress and not self.verbose:
+            print() # newline after sys.stdout.writes inside loop
+        output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
         if apply_mergelist:
             if "mergelist.txt" not in archive.namelist():
-                _print("no mergelist to apply")
+                self._print("no mergelist to apply")
             else:
-                if verbose:
-                    _print("applying mergelist now")
+                self._print("applying mergelist now")
                 mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
 
-        if False in [output.shape[dim] == size[dim] for dim in range(3)]:
-            raise Exception("Incorrect shape! Should be", size, "; got:",
-                            output.shape)
-        else:
-            if verbose:
-                _print("Correct shape")
+        assert np.array_equal(output.shape, size[::-1]), f'Incorrect shape! Should be {size[::-1]}; got {output.shape}'
 
         return output
+
+    def set_experiment_name_for_kzip(self, kzip_path):
+        with tempfile.TemporaryDirectory() as tempdir_path:
+            with zipfile.ZipFile(kzip_path, 'r') as original_kzip:
+                original_kzip.extractall(tempdir_path)
+            tempdir_path = Path(tempdir_path)
+            with zipfile.ZipFile(kzip_path, 'w', zipfile.ZIP_DEFLATED) as new_kzip:
+                for member in tempdir_path.iterdir():
+                    if member.name == 'annotation.xml':
+                        tree = ET.parse(member)
+                        experiment = tree.find('parameters/experiment')
+                        experiment.attrib['name'] = self.experiment_name
+                        tree.write(member)
+                    hit = re.search('_mag[0-9]+x[0-9]+y[0-9]+z[0-9]+.seg.sz', member.name)
+                    new_path = member
+                    if hit:
+                        new_path = member.parent / (self.experiment_name + member.name[hit.span()[0]:])
+                        member.rename(new_path)
+                    new_kzip.write(new_path, new_path.name)
+
+    def downsample_upsample_kzip_cubes(self, kzip_path, source_mag, out_mags=None, upsample=True, downsample=True, dest_path=None, chunk_size=None):
+        from knossos_utils import skeleton as k_skel
+        if dest_path is None:
+            dest_path = kzip_path
+        if out_mags is None:
+            out_mags = []
+        if chunk_size is None:
+            mat, area_min, size = self.from_kzip_movement_area_to_matrix(str(kzip_path), mag=source_mag, apply_mergelist=False, return_area=True)
+            area_max = np.array(area_min) + np.array(size) - 1
+        else:
+            area_min, area_max = self.get_movement_area(str(kzip_path))
+            for offset in self.iter(area_min, area_max, chunk_size):
+                mat = self.from_kzip_to_matrix(path=str(kzip_path), offset=offset, size=chunk_size, mag=source_mag, apply_mergelist=False)
+                self.from_matrix_to_cubes(offset=offset, data=mat, data_mag=source_mag, kzip_path=dest_path,
+                                          mags=out_mags, downsample=downsample, upsample=upsample, compress_kzip=False)
+            area_min = offset
+        skel = k_skel.Skeleton()
+        mag_limit = 1
+        if len(out_mags) > 0:
+            mag_limit = np.log2(max(out_mags)) if self._ordinal_mags else max(out_mags)
+        elif downsample:
+            mag_limit = self.highest_mag
+        skel.movement_area_min = np.array(area_min) + (mag_limit - np.array(area_min) % mag_limit)
+        skel.movement_area_max = np.maximum(area_max - np.array(area_max) % mag_limit, skel.movement_area_min + 1)
+        skel.set_scaling(self.scales[0])
+        skel.experiment_name = self.experiment_name
+        annotation_str = skel.to_xml_string()
+        self.from_matrix_to_cubes(offset=area_min, data=mat, data_mag=source_mag, kzip_path=dest_path, mags=out_mags,
+                                  downsample=downsample, upsample=upsample, annotation_str=annotation_str)
 
     def from_raw_cubes_to_image_stack(self, size, offset, output_path,
                                       name="img", output_format='png', mag=1,
@@ -2030,11 +1964,74 @@ _BaseExt = .seg.sz.zip
         pbar.close()
         return
 
+    def save_cube(self, cube_path, data, overwrite_offset=None, overwrite_limit=None):
+        """
+        Helper function for from_matrix_to_cubes. Can also be used independently to overwrite individual cubes.
+        Expects data, offset and limit in xyz and data.shape == self.cube_shape.
+        :param cube_path: absolute path to destination cube (*.seg.sz.zip, *.seg.sz, *.raw, *.[ending known by imageio.imread])
+        :param data: data to be written to the cube
+        :param overwrite_offset: overwrite area offset. Defaults to (0, 0, 0) if overwrite_limit is set.
+        :param overwrite_limit: overwrite area offset. Defaults to self.cube_shape if overwrite_offset is set.
+        """
+        assert np.array_equal(data.shape, self.cube_shape), 'Can only save cubes of shape self.cube_shape ({}). found shape {}'.format(self.cube_shape, data.shape)
+        data = data.reshape(np.prod(self.cube_shape))
+        dest_cube = data
+        if os.path.isfile(cube_path):
+            # read
+            if cube_path.endswith('.seg.sz.zip'):
+                try:
+                    with zipfile.ZipFile(cube_path, "r") as zf:
+                        in_zip_name = os.path.basename(cube_path)[:-4]
+                        dest_cube = np.fromstring(self.module_wide["snappy"].decompress(zf.read(in_zip_name)), dtype=np.uint64)
+                except zipfile.BadZipFile:
+                    print(cube_path, "is broken and will be overwritten")
+            elif cube_path.endswith('.seg.sz'):
+                with open(cube_path, "rb") as existing_file:
+                    dest_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
+            elif cube_path.endswith('.raw'):
+                dest_cube = np.fromfile(cube_path, dtype=np.uint8)
+            else: # png or jpg
+                try:
+                    dest_cube = imageio.imread(cube_path)
+                except ValueError:
+                    print(cube_path, "is broken and will be overwritten")
+            dest_cube = dest_cube.reshape(self.cube_shape)
+            data = data.reshape(self.cube_shape)
+
+            if overwrite_offset is not None or overwrite_limit is not None:
+                overwrite_offset = overwrite_offset if overwrite_offset is not None else (0, 0, 0)
+                overwrite_limit = overwrite_limit if overwrite_offset is not None else self.cube_shape
+                dest_cube[overwrite_offset[2]: overwrite_limit[2],
+                          overwrite_offset[1]: overwrite_limit[1],
+                          overwrite_offset[0]: overwrite_limit[0]] = data[overwrite_offset[2]: overwrite_limit[2],
+                                                                          overwrite_offset[1]: overwrite_limit[1],
+                                                                          overwrite_offset[0]: overwrite_limit[0]]
+            else:
+                indices = np.where(data != 0)
+                dest_cube[indices] = data[indices]
+        # write
+        if np.any(dest_cube):
+            dest_cube = dest_cube.reshape(np.prod(dest_cube.shape))
+            if cube_path.endswith('.seg.sz.zip'):
+                in_zip_name = os.path.basename(cube_path)[:-4]
+                with zipfile.ZipFile(cube_path, "w") as zf:
+                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube), compress_type=zipfile.ZIP_DEFLATED)
+            elif cube_path.endswith('.seg.sz'):
+                with open(cube_path, "wb") as dest_file:
+                    dest_file.write(self.module_wide["snappy"].compress(dest_cube))
+            elif cube_path.endswith('.raw'):
+                with open(cube_path, "wb") as dest_file:
+                    dest_file.write(dest_cube)
+            else:  # png or jpg
+                imageio.imwrite(cube_path, dest_cube.reshape(self._cube_shape[2] * self._cube_shape[1], self._cube_shape[0]))
+        elif (overwrite_offset is not None or overwrite_limit is not None) and os.path.exists(cube_path):
+            os.remove(cube_path)
+
     def from_matrix_to_cubes(self, offset, mags=[], data=None, data_mag=1,
                              data_path=None, hdf5_names=None,
                              datatype=np.uint64, fast_downsampling=True,
                              force_unique_labels=False, verbose=False,
-                             overwrite=True, kzip_path=None, compress_kzip=True,
+                             overwrite='area', kzip_path=None, compress_kzip=True,
                              annotation_str=None, as_raw=False, nb_threads=20,
                              upsample=True, downsample=True, gen_mergelist=True):
         """ Cubes data for viewing and editing in KNOSSOS
@@ -2064,22 +2061,11 @@ _BaseExt = .seg.sz.zip
             True: uses order 1 downsampling (striding)
             False: uses order 3 downsampling
         :param force_unique_labels: bool
-            True and len(data) > 0: Assures unique data before combining all
-            list entries
+            unsupported
         :param verbose: bool
             True: prints several information
-        :param overwrite: bool
-            True: whole KNOSSOS cube is overwritten with new data
-            False: cube entries where new data == 0 are contained
-            eg.: Two different function calls write to two non-overlapping parts
-                 of one KNOSSOS cube. When overwrite is set to False, the second
-                 call won't overwrite the output of the first one. When they
-                 overlap however, the second call will overwrite the data
-                 from the first call at all voxels where the second data block
-                 has non-zero entries. If overwrite is set to True for the
-                 second call the full block gets replaced with the new data
-                 regardless of its values. In the current implementation this
-                 effects all data within all knossos cubes that are accessed.
+        :param overwrite: True (overwrites all values within offset and offset+data.shape)
+                         | False (preserves original cube values at 0-locations of new data)
         :param kzip_path: str
             is not None: overlay data is written as kzip to this path
         :param annotation_str: str
@@ -2093,289 +2079,173 @@ _BaseExt = .seg.sz.zip
         :return:
             nothing
         """
-
-        if self._channel_selected == 'implicit':
-            warnings.warn('You are using implicit channel selection. This possibility will soon be removed.'
-                    ' Please call set_channel() before reading or writing data using KnossosDataset.')
-
-        def _write_cubes(args):
-            """ Helper function for multithreading """
-            folder_path = args[0]
-            path = args[1]
-            cube_offset = args[2]
-            cube_limit = args[3]
-            start = args[4]
-            end = args[5]
-
-            cube = np.zeros(self.cube_shape, dtype=datatype)
-
-            cube[cube_offset[0]: cube_limit[0],
-                 cube_offset[1]: cube_limit[1],
-                 cube_offset[2]: cube_limit[2]]\
-                = data_inter[start[0]: start[0] + end[0],
-                             start[1]: start[1] + end[1],
-                             start[2]: start[2] + end[2]]
-
-            cube = np.swapaxes(cube, 0, 2)
-            cube = cube.reshape(np.prod(self.cube_shape))
-
-            if kzip_path is None:
-
-                while True:
-                    try:
-                        try:
-                            os.makedirs(folder_path, exist_ok=True)
-                        except TypeError:
-                            if not os.path.isdir(folder_path):
-                                os.makedirs(folder_path)
-                        break
-                    except PermissionError: # sometimes happens via sshfs with multiple workers
-                        time.sleep(1)
-                        pass
-
-                while True:
-                    try:
-                        os.makedirs(folder_path+"block")    # Semaphore --------
-                        break
-                    except:#
-                        try:
-                            if time.time() - os.stat(folder_path+"block").st_mtime <= 5:
-                                time.sleep(1)
-                            else:
-                                    os.rmdir(folder_path+"block")
-                        except FileNotFoundError:
-                            pass
-
-                if not overwrite:
-                    mask = np.zeros(self.cube_shape, dtype=datatype)
-                    mask[cube_offset[0]: cube_limit[0],
-                         cube_offset[1]: cube_limit[1],
-                         cube_offset[2]: cube_limit[2]]\
-                         = np.ones((cube_limit[0] - cube_offset[0],
-                                    cube_limit[1] - cube_offset[1],
-                                    cube_limit[2] - cube_offset[2]), dtype=datatype)
-                    mask = np.swapaxes(mask, 0, 2)
-                    mask = mask.reshape(np.prod(self.cube_shape))
-                    indices = np.where(mask == 0)
-
-                    if as_raw and os.path.isfile(path):
-                        if self._raw_ext == "raw":
-                            existing_cube = np.fromfile(path, dtype=datatype)
-                        else:
-                            try:
-                                existing_cube = imageio.imread(path).reshape(cube.shape)
-                            except ValueError:
-                                print(path, "is broken and will be overwritten")
-                                existing_cube = cube
-                                pass
-                        cube[indices] = existing_cube[indices]
-
-                    if not as_raw and os.path.isfile(path+".zip"):
-                        with zipfile.ZipFile(path+".zip", "r") as zf:
-                            existing_cube = np.fromstring(
-                                    self.module_wide["snappy"].decompress(zf.read(os.path.basename(path))),
-                                    dtype=np.uint64)
-                        cube[indices] = existing_cube[indices]
-
-                if not np.sum(cube) == 0:
-                    if as_raw:
-                        if self._raw_ext == "raw":
-                            f = open(path, "wb")
-                            f.write(cube)
-                            f.close()
-                        else:
-                            imageio.imwrite(path, cube.reshape(self._cube_shape[2],
-                                                               self._cube_shape[0]*self._cube_shape[1]))
-                    else:
-                        arc_path = os.path.basename(path)
-                        with zipfile.ZipFile(path + ".zip", "w") as zf:
-                            zf.writestr(arc_path,
-                                        self.module_wide["snappy"].compress(cube),
-                                        compress_type=zipfile.ZIP_DEFLATED)
-
-                os.rmdir(folder_path+"block")   # ------------------------------
-
-            else:
-                if not np.sum(cube) == 0:
-                    if not overwrite and os.path.isfile(path):
-                        with open(path, "rb") as existing_file:
-                            existing_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
-                            indices = np.where(cube == 0)
-                            cube[indices] = existing_cube[indices]
-                    with open(path, "wb") as new_file:
-                        new_file.write(self.module_wide["snappy"].compress(cube))
-
-        # Main Function
-        if not self.initialized:
-            raise Exception("Dataset is not initialized")
-
-        if not (as_raw or self.module_wide["snappy"]):
-            raise Exception("Snappy is not available - you cannot write "
-                            "overlaycubes or kzips.")
-
-        if not isinstance(mags, list):
-            mags = [mags]
-
-        if not mags:
-            start_mag = 1 if upsample else data_mag
-            if downsample:
-                if self._ordinal_mags:
-                    mags = np.arange(start_mag, len(self.scales) + 1, dtype=np.int)
-                else: # power of 2 mags (KNOSSOS style)
-                    max_mag = np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
-                    mags = np.power(2, np.arange(start_mag - 1, max_mag, dtype=np.int))
-            else:
-                mags = [data_mag]
-
-        if (data is None) and (data_path is None or hdf5_names is None):
-            raise Exception("No data given")
-
-        if not as_raw: # overlay cube ids shall not be interpolated
-            fast_downsampling = True
-
-        if not kzip_path is None:
-            if as_raw:
-                raise Exception("You have to choose between kzip and raw cubes")
-            try:
-                if ".k.zip" == kzip_path[-6:]:
-                    kzip_path = kzip_path[:-6]
-            except:
-                pass
-
-            if not os.path.exists(kzip_path):
-                os.makedirs(kzip_path)
-                if verbose:
-                    _print("kzip path created, notice that kzips can only be "
-                           "created in mag1")
-
-        if not data_path is None:
+        print('from_matrix_to_cubes is DEPRECATED.\n Please use save_raw or save_seg instead.')
+        if data_path is not None:
             if '.h5' in data_path:
-                if not hdf5_names is None:
-                    if not isinstance(hdf5_names, list):
-                        hdf5_names = [hdf5_names]
-                else:
-                    raise Exception("No hdf5 names given to read hdf5 file.")
-
-                data = load_from_h5py(data_path, hdf5_names)
-
+                assert hdf5_names is not None, 'No hdf5 names given to read hdf5 file.'
+                data = load_from_h5py(data_path, list(hdf5_names))
             elif '.pkl' in data_path:
                 data = load_from_pickle(data_path)
             else:
-                raise Exception("File has to be of type hdf5 or pickle.")
+                raise Exception("File has to be .h5 pr .pkl")
 
-        elif len(data) > 0:
-            pass
-        else:
+        assert data is not None
+        if len(data) == 0:
             raise Exception("No data or path given!")
 
-        if (not isinstance(data, list)) and \
-                (not data is None):
-            data = np.array(data, copy=False)
-        else:
-            for ii in range(len(data)):
-                data[ii] = np.array(data[ii])
+        data = np.array(data)
+        data = np.swapaxes(data, 0, 2)
+        assert not force_unique_labels, 'force_unique_labels unsupported'
 
-            if force_unique_labels:
-                max_label_so_far = np.max(data[0])
-                for ii in range(1, len(data)):
-                    data[ii][data[ii] > 0] += max_label_so_far
-                    max_label_so_far = np.max(data[ii])
-            if len(data) > 1:  # only merge arrays if more than one in list
-                data = np.max(np.array(data), axis=0)
+        if kzip_path:
+            if compress_kzip:
+                self.save_to_kzip(data, data_mag, kzip_path, offset, mags, gen_mergelist, annotation_str)
             else:
-                data = data[0]
+                self.save_to_kzip_path_only(data, data_mag, kzip_path, offset, mags, gen_mergelist, annotation_str)
+        else:
+            self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
+
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling):
+        datatype=np.uint8 if as_raw else np.uint64
+        overwrite=True
+        def _write_cubes(args):
+            """ Helper function for multithreading """
+            folder_path, path, cube_offset, cube_limit, start, end = args
+
+            cube = np.zeros(self.cube_shape, dtype=datatype)
+            cube[cube_offset[2]: cube_limit[2],
+                 cube_offset[1]: cube_limit[1],
+                 cube_offset[0]: cube_limit[0]] = data_inter[start[2]: start[2] + end[2],
+                                                             start[1]: start[1] + end[1],
+                                                             start[0]: start[0] + end[0]]
+
+            if not np.any(cube):
+               self._print(path, 'no data to write, cube will be removed if present')
+
+            if kzip_path is None:
+                while True:
+                    try:
+                        os.makedirs(folder_path, exist_ok=True)
+                        break
+                    except PermissionError: # sometimes happens via sshfs with multiple workers
+                        print('Permission error while creating cube folder. Sleeping on', folder_path)
+                        time.sleep(random.uniform(0.1, 1.0))
+                        pass
+
+                block_path = os.path.join(folder_path, 'block')
+                while True:
+                    try:
+                        os.makedirs(block_path)    # Semaphore --------
+                        break
+                    except (FileExistsError, PermissionError):
+                        try:
+                            if time.time() - os.stat(block_path).st_mtime <= 30:
+                                time.sleep(random.uniform(0.1, 1.0)) # wait for other workers to finish
+                            else:
+                                print(f'had to remove block folder {block_path} that wasn’t accessed recently {os.stat(block_path).st_mtime}')
+                                os.rmdir(block_path)
+                        except FileNotFoundError:
+                            pass # folder was removed by another worker in the meantime
+
+                self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube,
+                               overwrite_offset=cube_offset if overwrite else None,
+                               overwrite_limit=cube_limit if overwrite else None)
+
+                try:
+                    os.rmdir(block_path)   # ------------------------------
+                except FileNotFoundError:
+                    print(f'another worker removed our semaphore {block_path}')
+                    pass
+            else:
+                self.save_cube(cube_path=path, data=cube,
+                                overwrite_offset=cube_offset if overwrite else None,
+                                overwrite_limit=cube_limit if overwrite else None)
+
+        # Main Function
+        assert self.initialized, 'Dataset is not initialized'
+        assert as_raw or self.module_wide["snappy"], 'Snappy is not available - you cannot write overlaycubes or kzips.'
+        mags = list(mags)
+
+        if not mags:
+            start_mag = 1 if upsample else data_mag
+            end_mag = self.highest_mag if downsample else data_mag
+            if self._ordinal_mags:
+                mags = np.arange(start_mag, end_mag, dtype=np.int)
+            else: # power of 2 mags (KNOSSOS style)
+                mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=np.int))
+        self._print(f'mags to write: {mags}')
+
+        if kzip_path is not None:
+            assert not as_raw, 'You have to choose between kzip and raw cubes'
+            if kzip_path.endswith(".k.zip"):
+                kzip_path = kzip_path[:-6]
+            if not os.path.exists(kzip_path):
+                os.makedirs(kzip_path)
 
         for mag in mags:
-            mag_i = mag-1 if self._ordinal_mags else int(np.log2(mag))
-            data_mag_i = data_mag-1 if self._ordinal_mags else int(np.log2(data_mag))
-            ratio = 3 * [float(mag) / data_mag] if len(self.scales) <= 1 else (self.scales[mag_i] / self.scales[data_mag_i])
+            ratio = self.scale_ratio(mag, data_mag)[::-1]
             inv_mag_ratio = 1.0/np.array(ratio)
-            if fast_downsampling and all(mag_ratio.is_integer() for mag_ratio in ratio):
+            fast = fast_resampling or (not as_raw and mag > data_mag)
+            if fast and all(mag_ratio.is_integer() for mag_ratio in ratio):
                 data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])], dtype=datatype)
             elif all(mag_ratio == 1 for mag_ratio in ratio):
                 # copy=False means in this context that a copy is only made
                 # when necessary (e.g. type change)
                 data_inter = data.astype(datatype, copy=False)
-            elif fast_downsampling:
-                #data_inter = np.zeros(
-                #    np.array(data.shape) * inv_mag_ratio,
-                #    dtype=data.dtype)
-
-                #for i_step in range(inv_mag_ratio):
-                #    data_inter[i_step:: inv_mag_ratio,
-                #               i_step:: inv_mag_ratio,
-                #               i_step:: inv_mag_ratio] = data
-
-                #data_inter = data_inter.astype(dtype=datatype, copy=False)
+            elif fast:
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
-            else:
-                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=1).astype(datatype, copy=False)
+            elif as_raw:
+                quality = 3 if mag > data_mag else 1
+                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=quality).astype(datatype, copy=False)
+            else: # fancy seg upsampling
+                data_inter = np.zeros(shape=(inv_mag_ratio * np.array(data.shape)).astype(np.int), dtype=datatype)
+                for value in np.unique(data):
+                    if value == 0: continue # no 0 upsampling
+                    up_chunk_channel = scipy.ndimage.zoom((data == value).astype(np.uint8), inv_mag_ratio, order=1)
+                    data_inter += (up_chunk_channel * value).astype(datatype, copy=False)
 
-            offset_mag = np.array(offset, dtype=np.int) // ratio
-            size_mag = np.array(data_inter.shape, dtype=np.int)
+            offset_mag = np.array(offset, dtype=np.int) // self.scale_ratio(mag, 1)
+            size_mag = np.array(data_inter.shape[::-1], dtype=np.int)
 
-            if verbose:
-                _print("box_offset: {0}".format(offset_mag))
-                _print("box_size: {0}".format(size_mag))
+            self._print(f'mag: {mag}')
+            self._print(f'box_offset: {offset_mag}')
+            self._print(f'box_size: {size_mag}')
 
-            start = np.array([get_first_block(dim, offset_mag, self._cube_shape)
-                              for dim in range(3)])
-            end = np.array([get_last_block(dim, size_mag, offset_mag,
-                                           self._cube_shape) + 1
-                            for dim in range(3)])
+            start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])
+            end = np.array([get_last_block(dim, size_mag, offset_mag, self._cube_shape) + 1 for dim in range(3)])
 
-            if verbose:
-                _print("start_cube: {0}".format(start))
-                _print("end_cube: {0}".format(end))
+            self._print(f'start_cube: {start}')
+            self._print(f'end_cube: {end}')
 
-            current = np.array([start[dim] for dim in range(3)])
             multithreading_params = []
 
-            while current[2] < end[2]:
-                current[1] = start[1]
-                while current[1] < end[1]:
-                    current[0] = start[0]
-                    while current[0] < end[0]:
-                        this_cube_info = []
-                        path = self.knossos_path + self.name_mag_folder + \
-                               str(mag) + "/" + "x%04d/y%04d/z%04d/" \
-                                        % (current[0], current[1], current[2])
+            for z in range(start[2], end[2]):
+                for y in range(start[1], end[1]):
+                    for x in range(start[0], end[0]):
+                        current = np.array([x, y, z])
 
+                        this_cube_info = []
+                        path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
                         this_cube_info.append(path)
 
                         if kzip_path is None:
-                            if as_raw:
-                                path += self.experiment_name \
-                                        + "_mag"+str(mag)+\
-                                        "_x%04d_y%04d_z%04d.%s" \
-                                        % (current[0], current[1], current[2], self._raw_ext)
-                            else:
-                                path += self.experiment_name \
-                                        + "_mag"+str(mag) + \
-                                        "_x%04d_y%04d_z%04d.seg.sz" \
-                                        % (current[0], current[1], current[2])
+                            path += f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}.{self._raw_ext if as_raw else "seg.sz"}'
                         else:
-                            path = kzip_path+"/"+self._experiment_name + \
-                                   '_mag%dx%dy%dz%d.seg.sz' % \
-                                   (mag, current[0], current[1], current[2])
+                            path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
                         this_cube_info.append(path)
 
-                        cube_coords = current*self.cube_shape
+                        cube_coords = current * self.cube_shape
                         cube_offset = np.zeros(3)
-                        cube_limit = np.ones(3)*self.cube_shape
+                        cube_limit = np.ones(3) * self.cube_shape
 
                         for dim in range(3):
                             if cube_coords[dim] < offset_mag[dim]:
-                                cube_offset[dim] += offset_mag[dim] \
-                                                    - cube_coords[dim]
-                            if cube_coords[dim] + self.cube_shape[dim] > \
-                                            offset_mag[dim] + size_mag[dim]:
-                                cube_limit[dim] -= \
-                                    self.cube_shape[dim] + cube_coords[dim]\
-                                        - (offset_mag[dim] + size_mag[dim])
+                                cube_offset[dim] = offset_mag[dim] - cube_coords[dim]
+                            if cube_coords[dim] + cube_limit[dim] > offset_mag[dim] + size_mag[dim]:
+                                cube_limit[dim] = offset_mag[dim] + size_mag[dim] - cube_coords[dim]
 
-                        start_coord = cube_coords-offset_mag+cube_offset
-                        end_coord = cube_limit-cube_offset
+                        start_coord = cube_coords - offset_mag + cube_offset
+                        end_coord = cube_limit - cube_offset
 
                         this_cube_info.append(cube_offset.astype(np.int))
                         this_cube_info.append(cube_limit.astype(np.int))
@@ -2383,34 +2253,44 @@ _BaseExt = .seg.sz.zip
                         this_cube_info.append(end_coord.astype(np.int))
 
                         multithreading_params.append(this_cube_info)
-                        current[0] += 1
-                    current[1] += 1
-                current[2] += 1
 
-            if nb_threads > 1:
-                pool = ThreadPool(nb_threads)
-                pool.map(_write_cubes, multithreading_params)
-                pool.close()
-                pool.join()
-            else:
-                for params in multithreading_params:
-                    _write_cubes(params)
+            with ThreadPoolExecutor() as pool:
+                list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
-        if kzip_path is not None:
-            if compress_kzip:
-                with zipfile.ZipFile(kzip_path+".k.zip", "w",
-                                     zipfile.ZIP_DEFLATED) as zf:
-                    for root, dirs, files in os.walk(kzip_path):
-                        for file in files:
-                            zf.write(os.path.join(root, file), file)
-                    if gen_mergelist:
-                        zf.writestr("mergelist.txt",
-                                    mergelist_tools.gen_mergelist_from_segmentation(
-                                        data.astype(datatype, copy=False),
-                                        offsets=np.array(offset, dtype=np.uint64)))
-                    if annotation_str is not None:
-                        zf.writestr("annotation.xml", annotation_str)
-                shutil.rmtree(kzip_path)
+    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+
+    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+
+    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=[], gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+        self.compress_kzip(kzip_path=kzip_path)
+
+    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+        if kzip_path.endswith('.k.zip'):
+            kzip_path = kzip_path[:-6]
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+        if gen_mergelist:
+            with open(os.path.join(kzip_path, 'mergelist.txt'), 'w') as mergelist:
+                start = time.time();
+                mergelist.write(mergelist_tools.gen_mergelist_from_segmentation(data, offsets=np.array(offset, dtype=np.uint64)))
+                print('gen mergelist', time.time() - start)
+        if annotation_str is not None:
+            with open(os.path.join(kzip_path, 'annotation.xml'), 'w') as annotation:
+                annotation.write(annotation_str)
+
+    def compress_kzip(self, kzip_path):
+        while kzip_path.endswith('/'):
+            kzip_path = kzip_path[:-1]
+        if kzip_path.endswith('.k.zip'):
+            kzip_path = kzip_path[:-6]
+        assert os.path.isdir(kzip_path), f"Could not find folder for compression to kzip: {kzip_path}"
+        with zipfile.ZipFile(kzip_path + '.k.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(kzip_path):
+                for file in files:
+                    zf.write(os.path.join(root, file), file)
+        shutil.rmtree(kzip_path)
 
     def from_overlaycubes_to_kzip(self, size, offset, output_path,
                                   src_mag=1, trg_mags=[1,2,4,8],
@@ -2445,33 +2325,33 @@ _BaseExt = .seg.sz.zip
                                   nb_threads=nb_threads,
                                   mags=trg_mags)
 
-    def add_mergelist_to_kzip(self, kzip_path, background_id=0):
-        ids = defaultdict(lambda: ([], [], []))
-        for idx_z, z in enumerate(range(0, self.boundary[2], 128)):
-            for idx_y, y in enumerate(range(0, self.boundary[1], 128)):
-                for idx_x, x in enumerate(range(0, self.boundary[0], 128)):
-                    min_x, min_y, min_z = np.array([idx_x, idx_y, idx_z]) * 128
-                    cube = self.from_kzip_to_matrix(kzip_path, size=(128, 128, 128),
-                                                            offset=(min_x, min_y, min_z), mag=1,
-                                                            return_empty_cube_if_nonexistent=False,
-                                                            apply_mergelist=False,
-                                                            show_progress=False, verbose=False)
-                    if cube is None: continue
-                    labels = np.unique(cube)[1:]  # no 0
-                    for sv_id in labels:
-                        indices = np.where(cube == sv_id)
-                        ids[sv_id][0].extend(indices[0] + min_x)
-                        ids[sv_id][1].extend(indices[1] + min_y)
-                        ids[sv_id][2].extend(indices[2] + min_z)
+    def add_mergelist_to_kzip(self, kzip_path, subobj_map={}):
+        ids = defaultdict(lambda: [0, 0, 0])
+        ids_count = defaultdict(int)
+        obj_map = defaultdict(set)
+        for x, y, z in self.iter((0, 0, 0), self.boundary.tolist(), (128, 128, 128)):
+            cube = self.from_kzip_to_matrix(kzip_path, size=(128, 128, 128), offset=(x, y, z), mag=1,
+                                            return_dataset_cube_if_nonexistent=True, apply_mergelist=False,
+                                            show_progress=False, verbose=False)
+            if not np.any(cube): continue
+            labels = np.unique(cube)[1:]  # no 0
+            for sv_id in labels:
+                obj_id = subobj_map.get(sv_id, sv_id)
+                obj_map[obj_id].add(sv_id)
+                indices = np.where(cube == sv_id)
+                ids[obj_id][0] += np.sum(indices[0] + x)
+                ids[obj_id][1] += np.sum(indices[1] + y)
+                ids[obj_id][2] += np.sum(indices[2] + z)
+                ids_count[obj_id] += len(indices[0])
+
         obj_dict = {}
         for obj_id, indices in ids.items():
-            center = np.mean(indices, axis=1)
-            obj_dict[obj_id] = ({obj_id}, center)
+            center = np.divide(indices, ids_count[obj_id])
+            obj_dict[obj_id] = (obj_map[obj_id], center)
 
         with zipfile.ZipFile(kzip_path, "a") as zf:
             mergelist = mergelist_tools.gen_mergelist_from_objects(obj_dict)
             zf.writestr("mergelist.txt", mergelist)
-
 
     def delete_all_overlaycubes(self, nb_processes=4, verbose=False):
         """  Deletes all overlaycubes

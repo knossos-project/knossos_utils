@@ -144,11 +144,11 @@ class AnnotationSearch(object):
 
         while len(to_visit) > 0:
             (from_node, cur_node) = to_visit.pop()
-            visited.add(cur_node)
-            yield process_f((from_node, cur_node))
-            next_nodes = next_f(cur_node)
-            next_nodes.difference_update(visited)
-            search_f(cur_node, to_visit, next_nodes)
+            if cur_node not in visited:
+                visited.add(cur_node)
+                yield process_f((from_node, cur_node))
+                next_nodes = next_f(cur_node)
+                search_f(cur_node, to_visit, next_nodes)
 
     #
     def dfs_search(self, from_node, to_visit, next_nodes):
@@ -461,13 +461,8 @@ def is_singly_connected(annotation):
     nodes = list(annotation.getNodes())
     if len(nodes) == 0:
         return False
-
     dfs_nodes = list(iter_nodes_dfs(annotation, nodes[0]))
-
-    if len(dfs_nodes) == len(nodes):
-        return True
-    else:
-        return False
+    return len(dfs_nodes) == len(nodes)
 
 
 def get_the_nonempty_annotation(s):

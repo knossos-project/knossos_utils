@@ -43,7 +43,7 @@ from knossos_utils import knossosdataset
 # also works). In case you are using a remote dataset you have to download the
 # knossos.conf as a textfile first.
 kd = knossosdataset.KnossosDataset()
-kd.initialize_from_knossos_path("path_to_knossos.conf")
+kd.initialize_from_conf("/path/to/dataset.conf")
 
 
 # Reading ----------------------------------------------------------------------

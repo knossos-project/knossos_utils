@@ -25,7 +25,6 @@ import itertools
 import math
 from multiprocessing import Pool
 import numpy as np
-import h5py
 import os
 import shutil
 import struct
@@ -33,7 +32,6 @@ import tempfile
 import unicodedata
 import zipfile
 from xml.dom import minidom
-import xml.etree.cElementTree as cElementTree
 
 
 def euclidian_distance(c1, c2):
@@ -62,7 +60,10 @@ class Skeleton:
         self.skeleton_time = None
         self.skeleton_idletime = None
         self.skeleton_comment = None
-        self.scaling = [1,1,1]
+        self.scaling = [1, 1, 1]
+        self.task_project = ''
+        self.task_category = ''
+        self.task_name = ''
         self.branchNodes = [] # list of node IDs
         self.active_node = None
         self.edit_position = None
@@ -158,67 +159,68 @@ class Skeleton:
         self.movement_area_min = np.array(area_min, dtype=np.int)
         self.movement_area_max = np.array(area_max, dtype=np.int)
 
-    def toSWC(self, path=''):
+    def toSWC(self, basename, px=False, dest_folder=''):
         """
         SWC is a standard skeleton format, very similar to nml, however,
         it is edge-centric instead of node-centric. Some spec can be found here:
         http://research.mssm.edu/cnic/swc.html
         SWC can also be read by Amira
-        :param path: str
+        :param basename: str
+        :param dest_folder: str
         :return:
         """
-        with open(path, 'w') as trg_file:
-            edges = []
-            rev_edges = []
-            for a in self.getAnnotations():
-                # after this, edges is a list of dictionaries containing the
-                # edges: key: node, value: node obj
-                edges.append(a.getEdges())
-                rev_edges.append(a.getReverseEdges())
+        trg_types = {
+                        'undefined': 0,
+                        'soma': 1,
+                        'axon': 2,
+                        'dendrite': 3,
+                        'basal': 3,
+                        'basal dendrite': 3,
+                        '(basal) dendrite': 3,
+                        'apical': 4,
+                        'apical dendrite': 4,
+                        'fork point': 5,
+                        'end point': 6,
+                        'custom': 7,
+                    }
+        multiplier = (1, 1, 1) if px else tuple(map(lambda coord: coord/1000, self.scaling))
+        def write_line(file, node, source=None):
+            trg_x, trg_y, trg_z = map(lambda coord, mult: coord*mult, node.getCoordinate(), multiplier)
+            trg_r = node.getDataElem('radius') * multiplier[0]
+            trg_id = node.getUniqueID()
+            trg_type = trg_types.get(node.getComment(), 0)
+            src_id = -1 if source is None else source.getUniqueID()
+            n_str = '{} {} {:g} {:g} {:g} {:g} {}'.format(
+                trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
+            file.write(n_str + '\n')
 
-            # find a root
-            for anno_index, e_dict in enumerate(edges):
-                root_set = False
-                for src_n in e_dict.keys():
-                    src_id = src_n.getUniqueID()
+        for idx, annotation in enumerate(self.annotations):
+            if len(annotation.nodes) == 0: continue
+            idx_part = "_{}".format(idx) if len(self.annotations) > 1 else ""
+            with open("{}/{}{}.swc".format(dest_folder, basename, idx_part), 'w') as trg_file:
+                # find root
+                roots = []
+                for src_node in annotation.getEdges():
+                    if 'soma' in src_node.getPureComment() or len(annotation.getReverseEdges()[src_node]) == 0:
+                        roots.append(src_node)
+                root = roots[0] if len(roots) > 0 else list(annotation.getNodes())[0] # any node as root
+                write_line(trg_file, root)
 
-                    nodes = [e_dict[src_n]]
-                    if (len(rev_edges[anno_index][src_n]) == 0) and not root_set:
-                        root_set = True
-                        # add root node to iteration
-                        nodes = [[src_n], e_dict[src_n]]
-
-                    for trg_n in itertools.chain(*nodes):
-                        trg_x = trg_n.getCoordinate()[0]
-                        trg_y = trg_n.getCoordinate()[1]
-                        trg_z = trg_n.getCoordinate()[2]
-                        trg_r = trg_n.getDataElem('radius')
-                        trg_id = trg_n.getUniqueID()
-
-                        trg_type = {
-                            'undefined': 0,
-                            'soma': 1,
-                            'axon': 2,
-                            'dendrite': 3,
-                            'basal dendrite': 3,
-                            '(basal) dendrite': 3,
-                            'apical dendrite': 4,
-                            'fork point': 5,
-                            'end point': 6,
-                            'custom': 7,
-                        }.get(trg_n.getComment(), 0)
-
-                        if trg_n == src_n:
-                            src_id = -1 # root node
-                        else:
-                            src_id = src_n.getUniqueID()
-                        n_str = '{} {} {} {} {} {} {}'.format(
-                            trg_id, trg_type, trg_x, trg_y, trg_z, trg_r, src_id)
-
-                        trg_file.write(n_str + '\n')
-
-                if not root_set:
-                    print('Warning, no root set.')
+                # traverse from there
+                next_nodes = deque([root])
+                visited = set()
+                while len(next_nodes) > 0:
+                    next_node = next_nodes.popleft()
+                    visited.add(next_node)
+                    # ignores saved directions, because they could be incorrect. Instead use traversal direction.
+                    for target in itertools.chain(annotation.getEdges()[next_node], annotation.getReverseEdges()[next_node]):
+                        if target in visited: continue
+                        next_nodes.append(target)
+                        write_line(trg_file, target, next_node)
+            if len(roots) == 0:
+                print('Warning, no root found in tree {}. Selected random node as root {}'.format(annotation.annotation_ID, root))
+            elif len(roots) > 1:
+                print("Found multiple roots. Set as root: {}. Handled others as ordinary nodes: {}".format(root, roots[1:]))
 
     def fromSWC(self, path=''):
         """
@@ -227,7 +229,7 @@ class Skeleton:
         :return:
         """
 
-    def fromNml(self, filename, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
+    def fromNml(self, filename, scaling=None, comment=None, meta_info_only=False, read_time=True):
         if filename.endswith('k.zip'):
             zipper = zipfile.ZipFile(filename)
 
@@ -239,17 +241,44 @@ class Skeleton:
         else:
             doc = minidom.parse(filename)
 
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=meta_info_only, read_time=read_time)
+        self.fromDom(doc, scaling, comment, meta_info_only=meta_info_only, read_time=read_time)
 
         return self
 
-    def fromNmlString(self, nmlString, use_file_scaling=False, scaling='dataset', comment=None, meta_info_only=False, read_time=True):
+    def fromNmlString(self, nmlString, scaling=None, comment=None, meta_info_only=False, read_time=True):
         doc = minidom.parseString(nmlString)
-        self.fromDom(doc, use_file_scaling, scaling, comment, meta_info_only=False, read_time=read_time)
+        self.fromDom(doc, scaling, comment, meta_info_only=False, read_time=read_time)
 
         return self
 
-    def fromDom(self, doc, use_file_scaling=False,  scaling='dataset', comment=None, meta_info_only=False, read_time=True):
+    def from_pyknossos_annotation(self, filename, scaling=(1, 1, 1)):
+        def get_time(nml_string):
+            # pyk nmls don’t have checksum, which fromNmlString expects to read the time
+            try:
+                doc = minidom.parseString(nml_string)
+                time_elem = doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0]
+                return int(time_elem.attributes["ms"].value)
+            except IndexError:
+                return 0
+
+        if filename.endswith('nmx'):
+            times = []
+            with zipfile.ZipFile(filename, 'r') as zf:
+                for file in zf.namelist():
+                    if not file.endswith('.nml'):
+                        continue
+                    nml_content = zf.read(file)
+                    self.fromNmlString(nml_content, scaling=scaling, read_time=False)
+                    times.append(get_time(nml_content))
+            self.skeleton_time = max(times) # in nmx
+
+        else: # nml
+            with open(filename, 'r') as f:
+                nml_content = f.read()
+                self.fromNmlString(nml_content, scaling=scaling, read_time=False)
+                self.skeleton_time = get_time(nml_content)
+
+    def fromDom(self, doc, scaling=None, comment=None, meta_info_only=False, read_time=True):
         try:
             [self.experiment_name] = parse_attributes(
                 doc.getElementsByTagName(
@@ -257,7 +286,11 @@ class Skeleton:
                     "experiment")[0], [["name", str]])
         except IndexError:
             self.experiment_name = None
-
+        try:
+            dataset = doc.getElementsByTagName("parameters")[0].getElementsByTagName("dataset")[0]
+            self.dataset_path = parse_attributes(dataset, [["path", str]])[0]
+        except IndexError:
+            self.dataset_path = None
         try: # movement area
             movement_area = doc.getElementsByTagName("parameters")[0].getElementsByTagName("MovementArea")[0]
             self.movement_area_min = parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]])
@@ -284,31 +317,41 @@ class Skeleton:
 
             if try_time_slice_version:
                 # Time slicing version
-                self.skeleton_time, skeleton_time_checksum = parse_attributes(
-                        doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                        [["min", int], ["checksum", str]])
-                if self.skeleton_time is None:
+                try:
                     self.skeleton_time, skeleton_time_checksum = parse_attributes(
                             doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
-                            [["ms", int], ["checksum", str]])
-                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                        raise Exception("Checksum mismatch")
-                else:
-                    if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                        raise Exception("Checksum mismatch")
-                    self.skeleton_time = self.skeleton_time * 60 * 1000
-                    skeleton_time_checksum = integer_checksum(self.skeleton_time)
+                            [["min", int], ["checksum", str]])
+                    if self.skeleton_time is None:
+                        self.skeleton_time, skeleton_time_checksum = parse_attributes(
+                                doc.getElementsByTagName("parameters")[0].getElementsByTagName("time")[0],
+                                [["ms", int], ["checksum", str]])
+                        if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                            raise Exception("Checksum mismatch")
+                    else:
+                        if skeleton_time_checksum != integer_checksum(self.skeleton_time):
+                            raise Exception("Checksum mismatch")
+                        self.skeleton_time = self.skeleton_time * 60 * 1000
+                        skeleton_time_checksum = integer_checksum(self.skeleton_time)
 
-                self.skeleton_idletime = 0
-                idletime_checksum = integer_checksum(0)
+                    self.skeleton_idletime = 0
+                    idletime_checksum = integer_checksum(0)
+                except IndexError:
+                    self.skeleton_time = None
+                    self.skeleton_idletime = None
+                    idletime_checksum = integer_checksum(0)
 
-        if use_file_scaling == True:
-            self.scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
-        else:
-            if isinstance(scaling, str):
-                self.scaling = [1,1,1]
-            else:
-                self.scaling = scaling
+        # the scaling argument is only for nmls that don’t contain the nm per px scale information
+        # if the nml already contains scale information (i.e. coords already in px space), this prevents an incorrect second divison
+        try:
+            file_scaling = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("scale")[0], [["x", float], ["y", float], ["z", float]])
+        except IndexError:
+            file_scaling = [1, 1, 1]
+        self.scaling = scaling or file_scaling
+        node_scale = tuple(map(lambda s1, s2: s1 / s2, file_scaling, self.scaling))
+
+        zero_based_nodes = len(doc.getElementsByTagName("parameters")[0].getElementsByTagName("nodes_0_based")) > 0
+        if not zero_based_nodes:
+            print("Warning: The <parameters/> section does not contain a tag <nodes_0_based/>.\nSince KNOSSOS NMLs were originally 1-based, your skeleton is assumed to be 1-based and will be converted to 0-based now.")
 
         try:
             [self.last_saved_version] = parse_attributes(doc.getElementsByTagName("parameters")[0].getElementsByTagName("lastsavedin")[0], [["version", str]])
@@ -320,7 +363,7 @@ class Skeleton:
             self.created_version = None
 
         if read_time:
-            if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
+            if Version(self.get_version()['saved']) >= Version(("3", "4", "2")):
                 # Has SHA256 checksums
                 if self.skeleton_time is not None and self.skeleton_idletime is not None:
                     if skeleton_time_checksum != integer_checksum(self.skeleton_time) or \
@@ -328,6 +371,12 @@ class Skeleton:
                            raise Exception('Checksum mismatch!')
                 else:
                     raise Exception('No time records exist!')
+
+        try:
+            [self.task_project, self.task_category, self.task_name] = parse_attributes(
+                doc.getElementsByTagName("parameters")[0].getElementsByTagName("task")[0], [['project', str], ["category", str], ['name', str]])
+        except IndexError:
+            pass
 
         if meta_info_only:
             return self
@@ -341,7 +390,9 @@ class Skeleton:
             annotation = SkeletonAnnotation().fromNml(
                     annotation_elem,
                     self,
-                    base_id=base_id)
+                    base_id=base_id,
+                    zero_based=zero_based_nodes,
+                    node_scale=node_scale)
             if comment:
                 annotation.setComment(comment)
             self.annotations.add(annotation)
@@ -362,136 +413,6 @@ class Skeleton:
             self.branchNodes.append(nodeID)
         return self
 
-    def fromNmlcTree(self, filename, use_file_scaling=False, scaling='dataset',
-                     comment=None):
-        """Reads nml file with cElementTree Parser
-        is capable of parsing patches
-
-        Parameters
-        ----------
-        filename : str
-            path to nml-file or path to k.zip-file (but this might cause
-            trouble with other functions since self.filename = *.k.zip)
-        use_file_scaling : bool
-        scaling : str
-        comment : str
-        """
-        if filename:
-            self.filename = filename
-            try:
-                # this was introduced to identify *.nml files that are really
-                #  *.k.zip files that have a wrong file ending.
-                zip_test = zipfile.ZipFile(filename)
-                is_k_zip = True
-            except:
-                is_k_zip = False
-
-        if filename.endswith('k.zip') or is_k_zip:
-            zipper = zipfile.ZipFile(filename)
-
-            if not 'annotation.xml' in zipper.namelist():
-                raise Exception("k.zip file does not contain annotation.xml")
-
-            xml_string = zipper.read('annotation.xml')
-            root = cElementTree.fromstring(xml_string)
-        else:
-            with open(filename) as fh:
-                xml_string = fh.read()
-            root = cElementTree.fromstring(xml_string)
-        try:
-            [self.experiment_name] = parse_cET(
-                root.find("parameters").find("experiment"),
-                [["name", str]])
-        except AttributeError:
-            self.experiment_name = None
-
-        # Read skeleton time and idle time
-        try:
-            [self.skeleton_time, skeleton_time_checksum] = parse_cET(
-                root.find("parameters").find("time"),
-                [["ms", int], ["checksum", str]])
-            [self.skeleton_idletime, idletime_checksum] = parse_cET(
-                root.find("parameters").find("idleTime"),
-                [["ms", int], ["checksum", str]])
-
-        except AttributeError:
-            self.skeleton_time = None
-            self.skeleton_idletime = None
-
-        if use_file_scaling == True:
-            self.scaling = parse_cET(root.find("parameters").find("scale"), [["x", float], ["y", float], ["z", float]])
-        else:
-            if isinstance(scaling, str):
-                self.scaling = [1.,1.,1.]
-            else:
-                self.scaling = scaling
-
-        try:
-            [self.last_saved_version] = parse_cET(root.find("parameters").find("lastsavedin"), [["version", str]])
-        except AttributeError:
-            self.last_saved_version = None
-        try:
-            [self.created_version] = parse_cET(root.find("parameters").find("createdin"), [["version", str]])
-        except AttributeError:
-            self.created_version = None
-
-        if Version(self.get_version()['saved']) >= Version((3, 4, 2)):
-            # Has SHA256 checksums
-            if self.skeleton_time:
-                if skeleton_time_checksum != integer_checksum(self.skeleton_time):
-                    raise Exception('Checksum mismatch!')
-            if self.skeleton_idletime:
-                if idletime_checksum != integer_checksum(self.skeleton_idletime):
-                    raise Exception('Checksum mismatch!')
-
-        base_id = self.get_high_node_id()
-
-        # Construct annotation. Annotations are trees (called things inside the nml files).
-        node_ID_to_node = {}
-        annotation_elems = root.findall("thing")
-        for annotation_elem in annotation_elems:
-            annotation = SkeletonAnnotation().fromNmlcTree(
-                    annotation_elem,
-                    self,
-                    base_id=base_id)
-
-            if comment:
-                annotation.setComment(comment)
-            self.annotations.add(annotation)
-            for node in annotation.getNodes():
-                node_ID_to_node[node.getUniqueID()] = node
-
-        # Read node comments
-        try:
-            comment_elems = root.find("comments").findall("comment")
-        except:
-            print("'NoneType' object has no attribute 'findall'")
-            comment_elems = []
-
-
-        for comment_elem in comment_elems:
-            try:
-                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
-                node_ID_to_node[nodeID + base_id].setComment(comment)
-            except KeyError:
-                print('Skipping comment, wrong node ID in comments sections: '
-                      '' + str(nodeID))
-            except UnicodeEncodeError:
-                # this means that a comment contains a non-ascii letter
-                [nodeID, comment] = parse_cET(comment_elem, [["node", int], ["content", str]])
-                ascii_comment = unicodedata.normalize('NFKD', comment).encode('ascii','ignore')
-                node_ID_to_node[nodeID + base_id].setComment(ascii_comment)
-        # Read branch points
-        branch_elems = root.findall("branchpoint")
-        for branch_elem in branch_elems:
-            [nodeID] = parse_cET(branch_elem, [["id", int]])
-            self.branchNodes.append(nodeID)
-
-        # pre init scaled coordinates for later usage
-        for node in self.getNodes():
-           node.getCoordinate_scaled()
-
-        return self
 
     def from_skeletopyze_skel(self, pyze_skel, coord_offset=[0, 0, 0]):
         try:
@@ -604,10 +525,11 @@ class Skeleton:
             build_attributes(dataset, [["path", self.dataset_path]])
             parameters.appendChild(dataset)
 
-        if self.scaling[0] != 1 or self.scaling[1] != 1 or self.scaling[2] != 1:
-            scale = doc.createElement("scale")
-            build_attributes(scale, [["x", self.scaling[0]], ["y", self.scaling[1]], ["z", self.scaling[2]]])
-            parameters.appendChild(scale)
+        scale = doc.createElement("scale")
+        build_attributes(scale, [["x", self.scaling[0]], ["y", self.scaling[1]], ["z", self.scaling[2]]])
+        parameters.appendChild(scale)
+
+        parameters.appendChild(doc.createElement("nodes_0_based"))
 
         if self.edit_position is not None:
             edit_position = doc.createElement("editPosition")
@@ -633,6 +555,11 @@ class Skeleton:
             build_attributes(movement_area,
                              [attribute for attribute in min_properties] + [attribute for attribute in max_properties])
             parameters.appendChild(movement_area)
+
+        if self.task_category or self.task_name:
+            task_elem = doc.createElement('task')
+            build_attributes(task_elem, [['project', self.task_project], ['category', self.task_category], ['name', self.task_name]])
+            parameters.appendChild(task_elem)
 
         # find property keys
         orig_keys = ["inVp", "node", "id", "inMag", "radius", "time",
@@ -669,24 +596,13 @@ class Skeleton:
 
         comments_elem = doc.createElement("comments")
         annotations_elem.appendChild(comments_elem)
-        id_iterator = 0
-        used_anno_ids = []
-        for annotation in self.getAnnotations():
-            if annotation.annotation_ID is None:
-                continue
-            assert not (annotation.annotation_ID in used_anno_ids), "Multiply ID assignment in skeleton annotations." +\
-                str(used_anno_ids)
-            used_anno_ids.append(annotation.annotation_ID)
+        annotation_ID = 0
         for annotation in self.getAnnotations():
             if not save_empty:
                 if annotation.isEmpty():
                     continue
-            if annotation.annotation_ID is None:
-                while id_iterator in used_anno_ids:
-                    id_iterator += 1
-                annotation.annotation_ID = id_iterator
-                used_anno_ids.append(id_iterator)
-            annotation.toNml(doc, annotations_elem, comments_elem, annotation.annotation_ID)
+            annotation_ID += 1
+            annotation.toNml(doc, annotations_elem, comments_elem, annotation_ID)
 
         branchNodes_elem = doc.createElement("branchpoints")
         annotations_elem.appendChild(branchNodes_elem)
@@ -700,49 +616,36 @@ class Skeleton:
     def getSkeletonTime(self):
         if self.skeleton_time == None:
             return None
-        if Version(self.get_version()['saved']) == Version((3, 4)):
+        if Version(self.get_version()['saved']) == Version(("3", "4")):
             return self.skeleton_time ^ 1347211871
         else:
             return self.skeleton_time
 
     def getIdleTime(self):
-        if self.skeleton_idletime == None:
-            return None
-        if Version(self.get_version()['saved']) == Version((3, 4)):
+        if Version(self.get_version()['saved']) == Version(("3", "4")):
             return self.skeleton_idletime ^ 1347211871
         else:
             return self.skeleton_idletime
 
     def get_version(self):
-        # Check whether the version string consists of a number or dot separated numbers.
-        try:
-            int(self.created_version.replace('.', ""))
-        except (AttributeError, ValueError): # Attribute Error: None
-            created_version = [0,]
-        else:
-            created_version = [int(x) for x in self.created_version.split('.')]
-
-        try:
-            int(self.last_saved_version.replace('.', ""))
-        except (AttributeError, ValueError): # Attribute Error: None
-            last_saved_version = [0,]
-        else:
-            last_saved_version = [int(x) for x in self.last_saved_version.split('.')]
+        created_version = self.created_version
+        last_saved_version = self.last_saved_version
 
         if self.created_version == '4.0 Beta 2':
-            created_version = [3, 99, 2]
+            created_version = '3.99.2'
         if self.created_version == '4.1 Alpha':
-            created_version = [4, 0, 99, 2]
+            created_version = '4.0.99.2'
         if self.created_version == '4.1 Pre Alpha':
-            created_version = [4, 0, 99, 1]
+            created_version = '4.0.99.1'
         if self.last_saved_version == '4.0 Beta 2':
-            last_saved_version = [3, 99, 2]
+            last_saved_version = '3.99.2'
         if self.last_saved_version == '4.1 Alpha':
-            last_saved_version = [4, 0, 99, 2]
+            last_saved_version = '4.0.99.2'
         if self.last_saved_version == '4.1 Pre Alpha':
-            last_saved_version = [4, 0, 99, 1]
+            last_saved_version = '4.0.99.1'
+
         return {'created': created_version, 'saved': last_saved_version}
-    #
+
     def set_scaling(self, scaling):
         self.scaling = scaling
         for annotation in self.annotations:
@@ -879,7 +782,7 @@ class SkeletonAnnotation:
         self.nodeBaseID = 0
         self.high_id = 0
 
-    def fromNml(self, annotation_elem, skeleton, base_id=0):
+    def fromNml(self, annotation_elem, skeleton, base_id=0, zero_based=False, node_scale=(1, 1, 1)):
         self.resetObject()
         self.annotation_ID = parse_attributes(annotation_elem, [["id", int],])[0]
         self.setNodeBaseID(base_id)
@@ -894,7 +797,7 @@ class SkeletonAnnotation:
         # Read nodes
         node_elems = annotation_elem.getElementsByTagName("node")
         for node_elem in node_elems:
-            node = SkeletonNode().fromNml(self, node_elem)
+            node = SkeletonNode().fromNml(self, node_elem, zero_based=zero_based, node_scale=node_scale)
             self.addNode(node)
         #
         # Read edges
@@ -912,64 +815,6 @@ class SkeletonAnnotation:
 
         return self
 
-    def fromNmlcTree(self, annotation_elem, skeleton, base_id=0):
-        """ Subfunction of fromNmlcTree from NewSkeleton
-
-        Parameters
-        ----------
-        annotation_elem : XML Element
-        skeleton : Skeleton
-        base_id : int
-        """
-        self.resetObject()
-
-        self.setNodeBaseID(base_id)
-
-        self.scaling = skeleton.scaling
-
-        [comment] = parse_cET(annotation_elem, [['comment', str],])
-        if comment:
-            self.setComment(comment)
-
-        # Read nodes
-        node_elems = []
-
-        for i in annotation_elem.findall("nodes"):
-            for j in i.findall("node"):
-                node_elems.append(j)
-
-        for node_elem in node_elems:
-            node = SkeletonNode().fromNmlcTree(self, node_elem)
-            self.addNode(node)
-
-        # Read edges
-        edge_elems = []
-
-        for i in annotation_elem.findall("edges"):
-            for j in i.findall("edge"):
-                edge_elems.append(j)
-
-        for edge_elem in edge_elems:
-            (source_ID, target_ID) = parse_cET(edge_elem, [["source", int], ["target", int]])
-            try:
-                source_node = self.node_ID_to_node[source_ID]
-                target_node = self.node_ID_to_node[target_ID]
-                source_node.addChild(target_node)
-            except KeyError:
-                print('Warning: Parsing of edges between different things is not yet supported, skipping edge: ' + str(source_ID) + ' -> ' + str(target_ID))
-
-        # Read patches
-        patch_elems = []
-
-        for i in annotation_elem.findall("patches"):
-            for j in i.findall("patch"):
-                patch_elems.append(j)
-
-        for patch_elem in patch_elems:
-            volume = SkeletonVolume().fromNmlcTree(patch_elem)
-            self.volumes.add(volume)
-
-        return self
 
     def toNml(self, doc, annotations_elem, comments_elem, annotation_ID):
         annotation_elem = doc.createElement("thing")
@@ -1262,7 +1107,7 @@ class SkeletonNode:
         new.setCoordinate(coordinate)
         return new
 
-    def from_scratch(self, annotation, x, y, z, inVp=1, inMag=1, time=0, ID=None, radius=1.0):
+    def from_scratch(self, annotation, x, y, z, inVp=1, inMag=1, time=0, ID=None, radius=1.5):
         self.resetObject()
         self.annotation = annotation
 
@@ -1277,38 +1122,26 @@ class SkeletonNode:
 
         return self
 
-    def fromNml(self, annotation, node_elem):
+    def fromNml(self, annotation, node_elem, zero_based=False, node_scale=(1, 1, 1)):
         self.resetObject()
         self.annotation = annotation
         [x, y, z, inVp, inMag, time, ID, radius] = parse_attributes(node_elem, \
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]])
         self.ID = ID
-        self.x, self.y, self.z = x, y, z
+        self.x, self.y, self.z = int(round(x * node_scale[0])), int(round(y * node_scale[1])), int(round(z * node_scale[2]))
+        if not zero_based: # make it zero based
+            self.x -= 1
+            self.y -= 1
+            self.z -= 1
 
-        self.setDataElem("inVp", inVp)
-        self.setDataElem("radius", radius)
-        self.setDataElem("inMag", inMag)
-        self.setDataElem("time", time)
+        # KNOSSOS defaults
+        self.setDataElem("inVp", inVp or 5) # VIEWPORT_UNDEFINED
+        self.setDataElem("radius", (radius or 1.5) * node_scale[0])
+        self.setDataElem("inMag", inMag or 0)
+        self.setDataElem("time", time or 0)
         return self
 
-    def fromNmlcTree(self, annotation, node_elem):
-        self.resetObject()
-        self.annotation = annotation
-        [x, y, z, inVp, inMag, time, ID, radius], additional_attr = parse_cET(node_elem, \
-            [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
-             ["time", int], ["id", int], ["radius", float]], ret_all_attr=True)
-        self.ID = ID
-        self.x, self.y, self.z = x, y, z
-
-        self.setDataElem("inVp", inVp)
-        self.setDataElem("radius", radius)
-        self.setDataElem("inMag", inMag)
-        self.setDataElem("time", time)
-
-        for key, val in additional_attr.items():
-            self.setDataElem(key, val)
-        return self
 
     def toNml(self, doc, nodes_elem, edges_elem, comments_elem):
         node_elem = doc.createElement("node")
@@ -1581,25 +1414,6 @@ class SkeletonVolume:
     def __len__(self):
         return len(self.loops)
 
-    def fromNmlcTree(self, patch_elem):
-        """ Subfunction of fromNmlcTree from SkeletonAnnotation
-
-        Parameters
-        ----------
-        patch_elem : XML Element
-        """
-        self.resetObject()
-
-        [comment] = parse_cET(patch_elem, [['comment', str],])
-        if comment:
-            self.setComment(comment)
-
-        for loop_elem in patch_elem.findall("loop"):
-            loop = SkeletonLoop().fromNmlcTree(loop_elem)
-            self.loops.add(loop)
-            self.setVP(loop.getVP())
-        self.setLimits()
-        return self
 
     def setLimits(self):
         """ Calculates the two outer points (3D) of the box exactly around the volume """
@@ -1656,7 +1470,7 @@ class SkeletonLoop:
         self.setLimits(point)
 
     def fillHole(self, curr, prior):
-        """ Adds a point to a hole detected by fromNmlcTree()
+        """ Adds a point to a hole
 
         The added point has to be a neighbour of curr (= current point)
         to guarantee a successful use of the while loop.
@@ -1683,32 +1497,6 @@ class SkeletonLoop:
 
         self.add(point)
 
-    def fromNmlcTree(self, loop_elem):
-        """Subfunction of fromNmlcTree from SkeletonVolume
-
-        Parameters
-        ----------
-        loop_elem : XML Element
-        """
-        self.resetObject()
-
-        [vp] = parse_cET(loop_elem, [['inVP', str],])
-        if vp:
-            self.setVP(vp)
-        for point_elem in loop_elem.findall("point"):
-            point = SkeletonLoopPoint().fromNmlcTree(point_elem)
-            currentcoord = point.getCoordinates()
-            if currentcoord[0] > -1:
-                if len(self.points) > 0:
-                    while False in \
-                            (2 > abs(currentcoord[dim]-self.last.getCoordinates()[dim]) \
-                            for dim in range(3)):
-                        print("Warning: Loop with hole detected")
-                        self.fillHole(currentcoord, self.last.getCoordinates())
-
-                self.add(point)
-
-        return self
 
     def setLimits(self, point):
         """ Calculates the two outer points (3D) of the box exactly around the loop """
@@ -1769,8 +1557,8 @@ class SkeletonLoopPoint:
     def __repr__(self):
         return "Looppoint at %s" % (self.getCoordinates(),)
 
-    def fromNmlcTree(self, point_elem):
-        """Subfunction of fromNmlcTree from SkeletonLoop
+    def fromNmlTree(self, point_elem):
+        """Subfunction of fromNmlTree from SkeletonLoop
 
         Parameters
         ----------
@@ -1782,7 +1570,7 @@ class SkeletonLoopPoint:
 
     def setCoordinates(self, point_elem):
         """ Sets the coordinates for a point and convert them to int """
-        [x, y, z] = parse_cET(point_elem, [["x", float], ["y", float], ["z", float]])
+        [x, y, z] = parse_attributes(point_elem, [["x", float], ["y", float], ["z", float]])
         if x > -1:
             [x, y, z] = [int(x), int(y), int(z)]
         [self.x, self.y, self.z] = [x, y, z]
@@ -1962,37 +1750,6 @@ def parse_attributes(xml_elem, parse_input):
     return parse_output
 
 
-def parse_cET(xml_elem, parse_input, ret_all_attr=False):
-    """
-    Implementation of cElementTree Parser
-
-    Keyword arguments:
-    xml_elem -- XML Element
-    parse_input -- what the parser should look for ["whatyouarelookingfor", type]
-
-    returns a list of python-typed values
-    """
-    parse_output = []
-    already_parsed_input_keys = {}
-    additional_attr = {}
-    attributes = xml_elem.attrib
-    for x in parse_input:
-        already_parsed_input_keys[x[0]] = True
-        try:
-            parse_output.append(x[1](attributes[x[0]]))
-        except KeyError:
-                parse_output.append(None)
-    if ret_all_attr:
-        for key in attributes.keys():
-            try:
-                _ = already_parsed_input_keys[key]
-            except KeyError:
-                additional_attr[key] = attributes[key]
-        return parse_output, additional_attr
-    else:
-        return parse_output
-
-
 def build_attributes(xml_elem, attributes):
     for attr in attributes:
         try:
@@ -2016,9 +1773,9 @@ def compare_version(v1, v2):
     v2 = list(v2)
 
     if len(v1) > len(v2):
-        v2.extend([0] * (len(v1) - len(v2)))
+        v2.extend(["0"] * (len(v1) - len(v2)))
     elif len(v1) < len(v2):
-        v1.extend([0] * (len(v2) - len(v1)))
+        v1.extend(["0"] * (len(v2) - len(v1)))
 
     v1v2 = [(v1[x], v2[x]) for (x, y) in enumerate(v1)]
 
