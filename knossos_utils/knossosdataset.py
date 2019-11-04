@@ -922,7 +922,7 @@ _BaseExt = .seg.sz.zip
         with open(path_to_pyknossos_conf, "w") as f:
             f.write(config_str)
 
-    def initialize_from_matrix(self, path, scale, experiment_name,
+    def initialize_from_matrix(self, path, scale, experiment_name, data_mag=1,
                                offset=None, boundary=None, fast_downsampling=True,
                                data=None, data_path=None, hdf5_names=None,
                                mags=None, verbose=False, cache_size=0,
@@ -938,6 +938,7 @@ _BaseExt = .seg.sz.zip
             scaling between original data and knossos data
         :param experiment_name: str
             name of the experiment
+        :param data_mag: int
         :param offset: 3 sequence of ints or None
             offset of the given data
             if None offset is set to [0, 0, 0]
@@ -990,10 +991,8 @@ _BaseExt = .seg.sz.zip
                                      mags=mags, make_mag_folders=True, raw_dtype=raw_dtype,
                                      create_knossos_conf=True, verbose=verbose)
 
-        self.from_matrix_to_cubes(offset, mags=mags, data=data,
-                                  datatype=self.raw_dtype,
-                                  fast_downsampling=fast_downsampling,
-                                  as_raw=True, verbose=verbose)
+        self.save_raw(offset=offset, mags=mags, data=data,
+                      fast_resampling=fast_downsampling, data_mag=data_mag)
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
                      stride=256, return_errors=False, nb_threads=20,

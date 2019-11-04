@@ -132,9 +132,9 @@ def _export_cset_as_kd_control_thread(args):
     kd.initialize_from_knossos_path(kd_path)
 
     if as_raw:
-        data = kd.from_raw_cubes_to_matrix(size, coords)
+        data = kd.load_raw(size=size, offset=coords, mag=1)
     else:
-        data = kd.from_overlaycubes_to_matrix(size, coords)
+        data = kd.load_seg(size=size, offset=coords, mag=1)
 
     if np.sum(data) == 0:
         _export_cset_as_kd_thread(args)
