@@ -52,7 +52,8 @@ def wrapper(func, args, kwargs):
 
 
 def _export_cset_as_kd_thread(args):
-    """Helper function
+    """Helper function.
+    TODO: refactor.
     """
     coords = args[0]
     size = np.copy(args[1])
@@ -102,18 +103,16 @@ def _export_cset_as_kd_thread(args):
                 curr_d = (curr_d * 255).astype(np.uint8)
             data_list[0] = np.maximum(data_list[0], curr_d)
             data_dict[hdf5names[nb_hdf5_name]] = []
+        assert len(data_list) == 1
+        data_list = data_list[0]
+    # make it ZYX
+    data_list = np.swapaxes(data_list, 0, 2)
     if as_raw:
-        datatype = np.uint8
+        kd.save_raw(offset=coords, mags=kd.available_mags, data=data_list, data_mag=1,
+                    fast_resampling=fast_downsampling)
     else:
-        datatype = np.uint64
-    kd.from_matrix_to_cubes(coords, verbose=False,
-                            mags=kd.mag,
-                            data=data_list,
-                            as_raw=as_raw,
-                            nb_threads=nb_threads,
-                            overwrite=overwrite,
-                            datatype=datatype,
-                            fast_downsampling=fast_downsampling)
+        kd.save_seg(offset=coords, mags=kd.available_mags, data=data_list, data_mag=1,
+                    fast_resampling=fast_downsampling)
 
 
 def _export_cset_as_kd_control_thread(args):
@@ -606,9 +605,10 @@ class ChunkDataset(object):
             current[2] += 1
 
         for hdf5_name in setnames:
+            # cut_matrix cuts in ZYX order
             output_matrix[hdf5_name] = knossosdataset.cut_matrix(
-                output_matrix[hdf5_name], offset_start, offset_end,
-                self.chunk_size * interpolated_data, start, end)
+                output_matrix[hdf5_name], offset_start[::-1], offset_end[::-1],
+                self.chunk_size * interpolated_data, start[::-1], end[::-1])
 
         for this_key in output_matrix.keys():
             if False in [output_matrix[this_key].shape[dim] ==
@@ -630,6 +630,7 @@ class ChunkDataset(object):
 
     def from_matrix_to_chunky(self, offset, chunk_offset, data, name, h5_name,
                               datatype=None, verbose=True, n_threads=16):
+        # TODO: untested with new ZYX order in knossosdataset.py
         def _write_chunks(args):
             path = args[0]
             h5_name = args[1]

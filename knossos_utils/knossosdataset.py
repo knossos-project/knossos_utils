@@ -1365,7 +1365,7 @@ _BaseExt = .seg.sz.zip
         if self.show_progress:
             dt = time.time() - t0
             speed = np.product(output.shape) * 1.0/1000000/dt
-            print(f'\rSpeed: {speed:.2f} Mvx/s, time {dt}')
+            _print(f'\rSpeed: {speed:.2f} Mvx/s, time {dt}')
 
         if not np.all(output.shape == size[::-1]):
             raise Exception(f'Incorrect shape! Should be {size[::-1]}; got {output.shape}')
@@ -1502,7 +1502,7 @@ _BaseExt = .seg.sz.zip
                                     pickle_path=None, invert_data=False,
                                     zyx_mode=False, nb_threads=40,
                                     verbose=False, http_verbose=False,
-                                    show_progress=False, stored_datatype=None):
+                                    show_progress=False):
         """ Extracts a 3D matrix from the KNOSSOS-dataset overlay cubes
 
         :param size: 3 sequence of ints
@@ -1547,8 +1547,7 @@ _BaseExt = .seg.sz.zip
                                          nb_threads=nb_threads,
                                          verbose=verbose,
                                          http_verbose=http_verbose,
-                                         show_progress=show_progress,
-                                         stored_datatype=stored_datatype)
+                                         show_progress=show_progress)
 
     @staticmethod
     def get_movement_area(kzip_path):
@@ -2106,8 +2105,9 @@ _BaseExt = .seg.sz.zip
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
     def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling):
-        datatype=np.uint8 if as_raw else np.uint64
-        overwrite=True
+        datatype = np.uint8 if as_raw else np.uint64
+        overwrite = True
+
         def _write_cubes(args):
             """ Helper function for multithreading """
             folder_path, path, cube_offset, cube_limit, start, end = args

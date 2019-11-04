@@ -1373,7 +1373,8 @@ def loadj0126NML(path_to_file, merge_all_annos=False):
 
 def write_skeleton(path, new_annos, update=True):
     """
-    Writes annotations to nml file.
+    Writes annotations to nml file. Uses scaling of 'first' annotation
+    (``list(new_annos.values())[0]``) in `new_annos` as skeleton scaling.
 
     Parameters
     ----------
@@ -1404,6 +1405,7 @@ def write_skeleton(path, new_annos, update=True):
         annos = new_annos
 
     knossos_skeleton = Skeleton()
+    knossos_skeleton.scaling = list(new_annos.values())[0].scaling
     for anno_key in annos.keys():
         if len(annos[anno_key].comment) == 0:
             annos[anno_key].comment = anno_key
