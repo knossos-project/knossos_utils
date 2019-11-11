@@ -1435,18 +1435,22 @@ class KnossosDataset(object):
                                          http_verbose=http_verbose,
                                          show_progress=show_progress)
 
-    @staticmethod
-    def get_movement_area(kzip_path):
-        with zipfile.ZipFile(kzip_path, "r") as zf:
-            xml_str = zf.read('annotation.xml').decode()
-        annotation_xml = ET.fromstring(xml_str)
-        area_elem = annotation_xml.find("parameters").find("MovementArea")
-        area_min = (int(area_elem.get("min.x")),
-                  int(area_elem.get("min.y")),
-                  int(area_elem.get("min.z")))
-        area_max = (int(area_elem.get("max.x")),
-                int(area_elem.get("max.y")),
-                int(area_elem.get("max.z")))
+    def get_movement_area(self, kzip_path):
+        try:
+            with zipfile.ZipFile(kzip_path, "r") as zf:
+                xml_str = zf.read('annotation.xml').decode()
+            annotation_xml = ET.fromstring(xml_str)
+            area_elem = annotation_xml.find("parameters/MovementArea")
+            area_min = (int(area_elem.get("min.x")),
+                        int(area_elem.get("min.y")),
+                        int(area_elem.get("min.z")))
+            area_max = (int(area_elem.get("max.x")),
+                        int(area_elem.get("max.y")),
+                        int(area_elem.get("max.z")))
+        except (KeyError, AttributeError):
+            # KeyError: annotation.xml does not exist, AttributeError: xml elem does not exist
+            # Error if attribute missing, because this is probably not intended
+            return np.array([0, 0, 0]), self.boundary
         return (np.array(area_min), np.array(area_max))
 
     def load_kzip_seg(self, path, mag, return_area=False):
