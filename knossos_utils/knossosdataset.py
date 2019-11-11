@@ -1105,7 +1105,6 @@ class KnossosDataset(object):
         :param datatype: numpy datatype
             typically: for mode 'raw' this is np.uint8, and for 'overlay' np.uint64
         :return: 3D numpy array or nothing
-            if a path is given no data is returned
         """
         def _read_cube(c):
             local_offset = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
@@ -1272,8 +1271,22 @@ class KnossosDataset(object):
         return output
 
     def load_raw(self, **kwargs):
-        """ from_cubes_to_matrix helper func with mode=raw.
-        datatype default is np.uint8, but can be overriden.
+        """from_cubes_to_matrix wrapper with mode=raw.
+
+        :param offset: 3 sequence of ints
+            mag 1 coordinate of the corner closest to (0, 0, 0)
+        :param size: 3 sequence of ints
+            mag 1 size of requested data block
+        :param mag: int
+            magnification of the requested data block
+            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
+        :param expand_area_to_mag: bool
+        :param padding: str or int
+            Pad mode for matrix parts outside the dataset. See https://www.pydoc.io/pypi/numpy-1.9.3/autoapi/numpy/lib/arraypad/index.html?highlight=pad#numpy.lib.arraypad.pad
+            When passing an it, will pad with that int in 'constant' mode
+        :param datatype: numpy datatype
+            default is np.uint8
+        :return: 3D numpy array or nothing
         """
         assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to False here.'
         kwargs.update({'from_overlay': False})
@@ -1282,8 +1295,21 @@ class KnossosDataset(object):
         return self._load(**kwargs)
 
     def load_seg(self, **kwargs):
-        """ from_cubes_to_matrix helper func with mode=overlay.
-        datatype default is np.uint64, but can be overriden.
+        """from_cubes_to_matrix wrapper with mode=overlay.
+        :param offset: 3 sequence of ints
+            mag 1 coordinate of the corner closest to (0, 0, 0)
+        :param size: 3 sequence of ints
+            mag 1 size of requested data block
+        :param mag: int
+            magnification of the requested data block
+            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
+        :param expand_area_to_mag: bool
+        :param padding: str or int
+            Pad mode for matrix parts outside the dataset. See https://www.pydoc.io/pypi/numpy-1.9.3/autoapi/numpy/lib/arraypad/index.html?highlight=pad#numpy.lib.arraypad.pad
+            When passing an it, will pad with that int in 'constant' mode
+        :param datatype: numpy datatype
+            default is np.uint64
+        :return: 3D numpy array or nothing
         """
         assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to True here.'
         kwargs.update({'from_overlay': True})
