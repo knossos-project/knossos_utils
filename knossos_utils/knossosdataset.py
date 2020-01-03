@@ -611,6 +611,7 @@ class KnossosDataset(object):
         self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
 
     def initialize_from_pyknossos_path(self, path):
+        # TODO: add 16bit flag
         self.parse_pyknossos_conf(path)
         self._knossos_path = os.path.dirname(path) + "/"
         self._name_mag_folder = "mag"
@@ -794,7 +795,8 @@ class KnossosDataset(object):
         :param raw_dtype:
             datatype of raw data
         :param create_pyk_conf:
-            True: creates pyk.conf file a target folder
+            True: creates pyk.conf file at target folder:
+            ``'{}/{}.pyk.conf'.format(path, experiment_name)``.
         :param descriptions:
             Dict[str, str] with keys 'raw' and 'overlay' passed to
             :func:`~write_pyknossos_conf`.
@@ -867,9 +869,9 @@ class KnossosDataset(object):
 
     def write_pyknossos_conf(self, path_to_pyknossos_conf,
                              include_overlay=True, descriptions=None):
-        """ Write a pyknossos conf
+        """ Write pyknossos conf
 
-        TODO: refactor '_BaseExt' settings.
+        TODO: Add all required properties.
 
         :param path_to_pyknossos_conf: str
         :param include_overlay: bool
@@ -882,7 +884,7 @@ class KnossosDataset(object):
             raise ValueError('Pyk conf file already exists at {}.'.format(path_to_pyknossos_conf))
         if descriptions is None:
             descriptions = {'raw': 'original quality', 'overlay': 'original quality'}
-        if len(self.scales) <= 0:
+        if len(self.scales) <= 0 or len(self.scales) != len(self.available_mags):
             raise ValueError('Cannot create pyk conf file without '
                              'per-mag-level scale definitions.')
             # TODO: work-in target_mags
@@ -897,28 +899,24 @@ class KnossosDataset(object):
                 adapted_scale[2] = new_z_scale
                 kd_dataset_atlas.scales[ii] = adapted_scale
         scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
-        config_str = """[Dataset]
+        config_str = ""
+        for ch, base_ext in zip(('raw', 'overlay'), ('.raw', '.seg.sz.zip')):
+            config_str += """[Dataset]
 _BaseName = {}
 _ServerFormat = pyknossos
 _DataScale = {}
 _Extent = {}
+_CubeSize = {}
+_NumberofCubes = {}
 _Description = {}
-_BaseExt = .raw
-    """.format(self._experiment_name, scales,
-               ','.join([str(int(el)) for el in self.boundary]),
-               descriptions['raw'])
+_BaseExt = {}\n\n""".format(self._experiment_name, scales,
+                            ','.join([str(int(el)) for el in self.boundary]),
+                            ','.join([str(int(el)) for el in self.cube_shape]),
+                            ','.join([str(int(el)) for el in self.number_of_cubes]),
+                            descriptions[ch], base_ext)
+            if not include_overlay and ch == 'overlay':
+                continue
 
-        if include_overlay:
-            config_str += """\n\n[Dataset]
-_BaseName = {}
-_ServerFormat = pyknossos
-_DataScale = {}
-_Extent = {}
-_Description = {}
-_BaseExt = .seg.sz.zip
-    """.format(self._experiment_name, scales,
-               ','.join([str(int(el)) for el in self.boundary]),
-               descriptions['overlay'])
         with open(path_to_pyknossos_conf, "w") as f:
             f.write(config_str)
 

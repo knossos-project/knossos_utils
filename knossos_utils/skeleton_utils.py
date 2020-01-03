@@ -988,7 +988,7 @@ def get_convex_hull(s, scaling='nm'):
 
     if isinstance(s, str):
         skel = Skeleton()
-        skel.fromNmlcTree(s)
+        skel.fromNml(s)
         s = skel
 
     nodes_np = get_node_positions_as_nparray(s, scaling)
@@ -1361,11 +1361,11 @@ def load_j0256_nml(path_to_file, merge_all_annos=False):
     return annos
 
 
-def loadj0126NML(path_to_file, merge_all_annos=False):
+def loadj0126NML(path_to_file, scaling=(9., 9., 20.), merge_all_annos=False):
     annos = load_jk_NML(pathToFile=path_to_file,
                         ds_id = 'j0126',
                         merge_all_annos=merge_all_annos,
-                        scaling=(9., 9., 20.),
+                        scaling=scaling,
                         dataset_dims = [1, 108810, 1, 106250, 1, 115220],
                         remove_empty_annotations=True)
     return annos
@@ -1415,7 +1415,7 @@ def write_skeleton(path, new_annos, update=True):
     knossos_skeleton.to_kzip(path)
 
 
-def load_skeleton(path):
+def load_skeleton(path, scaling=None):
     """
     Load nml of mapped skeleton and ordered trees.
 
@@ -1423,6 +1423,8 @@ def load_skeleton(path):
     ----------
     path : str
         Path to kzip
+    scaling :
+        Scaling. If given, nodes are divided by this.
 
     Returns
     -------
@@ -1431,10 +1433,10 @@ def load_skeleton(path):
     """
     anno_dict = {}
     try:
-        annotations = loadj0126NML(path)
+        annotations = loadj0126NML(path, scaling=scaling)
     # # TODO: specific exception handling
     except Exception as e:
-        # print(e)
+        print(e)
         annotations = []
     for anno in annotations:
         anno_dict[anno.comment] = anno
@@ -1457,7 +1459,7 @@ def load_jk_NML(pathToFile,
 
     annos = []
     skeletonObj = Skeleton()
-    skeletonObj.fromNmlcTree(pathToFile, scaling=scaling)
+    skeletonObj.fromNml(pathToFile, scaling=scaling)
 
     filename = os.path.basename(pathToFile)
     seed = ''

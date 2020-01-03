@@ -73,8 +73,21 @@ def _export_cset_as_kd_thread(args):
 
     cset = load_dataset(cset_path, update_paths=True)
 
+    # initialize KD object
     kd = knossosdataset.KnossosDataset()
-    kd.initialize_from_knossos_path(kd_path)
+    # TODO: set appropriate channel
+    # # kd.set_channel(channel)
+    if os.path.isfile(kd_path):
+        kd.initialize_from_conf(kd_path)
+    elif len(glob.glob(f'{kd_path}/*.pyk.conf')) == 1:
+        pyk_confs = glob.glob(f'{kd_path}/*.pyk.conf')
+        kd.initialize_from_pyknossos_path(pyk_confs[0])
+    elif os.path.isfile(kd_path + "/mag1/knossos.conf"):
+        # Initializes the dataset by parsing the knossos.conf in path + "mag1"
+        kd_path += "/mag1/knossos.conf"
+        kd.initialize_from_knossos_path(kd_path)
+    else:
+        raise ValueError(f'Could not find KnossosDataset config at {kd_path}.')
 
     for dim in range(3):
         if coords[dim] + size[dim] > cset.box_size[dim]:
