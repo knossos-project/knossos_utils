@@ -111,11 +111,13 @@ def _export_cset_as_kd_thread(args):
         data_list.append(curr_d)
         data_dict[hdf5names[0]] = []
         for nb_hdf5_name in range(1, len(hdf5names)):
-            curr_d = data_dict[nb_hdf5_name]
+            curr_d = data_dict[hdf5names[nb_hdf5_name]]
             if (curr_d.dtype.kind not in ("u", "i")) and (0 < np.max(curr_d) <= 1.0):
                 curr_d = (curr_d * 255).astype(np.uint8)
             data_list[0] = np.maximum(data_list[0], curr_d)
             data_dict[hdf5names[nb_hdf5_name]] = []
+        # TODO: this needed to be introduced at some point, make sure this behaves as
+        #  originally with len(hdf5names) > 1.
         assert len(data_list) == 1
         data_list = data_list[0]
     # make it ZYX
@@ -494,9 +496,8 @@ class ChunkDataset(object):
     def from_chunky_to_matrix(self, size, offset, name, setnames,
                               dtype=np.uint32, outputpath=None,
                               binary=False,
-                              interpolated_data=np.ones(3, dtype=np.uint8),
+                              interpolated_data=np.ones(3),
                               show_progress=False):
-
         interpolated_data = np.array(interpolated_data, dtype=np.int)
 
         dataset_offset = np.array(self.box_coords, dtype=np.uint32)
@@ -616,12 +617,11 @@ class ChunkDataset(object):
                     current[0] += 1
                 current[1] += 1
             current[2] += 1
-
         for hdf5_name in setnames:
             # cut_matrix cuts in ZYX order
             output_matrix[hdf5_name] = knossosdataset.cut_matrix(
                 output_matrix[hdf5_name], offset_start[::-1], offset_end[::-1],
-                self.chunk_size * interpolated_data, start[::-1], end[::-1])
+                (self.chunk_size * interpolated_data)[::-1], start[::-1], end[::-1])
 
         for this_key in output_matrix.keys():
             if False in [output_matrix[this_key].shape[dim] ==
@@ -632,7 +632,7 @@ class ChunkDataset(object):
         else:
             pass
 
-        if not outputpath is None:
+        if outputpath is not None:
             f = h5py.File(outputpath)
             for hdf5_name in setnames:
                 f.create_dataset(hdf5_name, data=output_matrix[hdf5_name],

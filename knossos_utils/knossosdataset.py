@@ -924,7 +924,7 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
                                offset=None, boundary=None, fast_downsampling=True,
                                data=None, data_path=None, hdf5_names=None,
                                mags=None, verbose=False, cache_size=0,
-                               raw_dtype=np.uint8):
+                               raw_dtype=np.uint8, force_overwrite=False):
         """ Initializes the dataset with matrix
             Only for use with "small" matrices (~10^3 edgelength)
 
@@ -959,10 +959,15 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
             True: prints several information
         :param raw_dtype:
             datatype of raw data
+        :param force_overwrite:
+            Ignores existing dirctory at `path`.
         :return:
             nothing
         """
-
+        if os.path.isdir(path) and not force_overwrite:
+            raise FileExistsError('Specified path already exists. Set '
+                                  'force_overwrite if target directory can be '
+                                  'safely modified.')
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
 
