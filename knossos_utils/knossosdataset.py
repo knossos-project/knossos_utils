@@ -414,7 +414,7 @@ class KnossosDataset(object):
     def highest_mag(self):
         return len(self.scales) + 1\
                if self._ordinal_mags else\
-               np.ceil(np.log2(max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))))
+               max(np.ceil(np.array(self._boundary) / np.array(self._cube_shape)))
 
     def mag_scale(self, mag): # get scale in specific mag
         index = mag - 1 if self._ordinal_mags else int(np.log2(mag))
