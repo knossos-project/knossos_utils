@@ -63,6 +63,7 @@ import numpy as np
 import requests
 import scipy.misc
 import scipy.ndimage
+import skimage.transform
 from PIL import Image
 
 try:
@@ -611,7 +612,6 @@ class KnossosDataset(object):
         self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
 
     def initialize_from_pyknossos_path(self, path):
-        # TODO: add 16bit flag
         self.parse_pyknossos_conf(path)
         self._knossos_path = os.path.dirname(path) + "/"
         self._name_mag_folder = "mag"
@@ -795,8 +795,7 @@ class KnossosDataset(object):
         :param raw_dtype:
             datatype of raw data
         :param create_pyk_conf:
-            True: creates pyk.conf file at target folder:
-            ``'{}/{}.pyk.conf'.format(path, experiment_name)``.
+            True: creates pyk.conf file a target folder
         :param descriptions:
             Dict[str, str] with keys 'raw' and 'overlay' passed to
             :func:`~write_pyknossos_conf`.
@@ -869,9 +868,9 @@ class KnossosDataset(object):
 
     def write_pyknossos_conf(self, path_to_pyknossos_conf,
                              include_overlay=True, descriptions=None):
-        """ Write pyknossos conf
+        """ Write a pyknossos conf
 
-        TODO: Add all required properties.
+        TODO: refactor '_BaseExt' settings.
 
         :param path_to_pyknossos_conf: str
         :param include_overlay: bool
@@ -884,7 +883,7 @@ class KnossosDataset(object):
             raise ValueError('Pyk conf file already exists at {}.'.format(path_to_pyknossos_conf))
         if descriptions is None:
             descriptions = {'raw': 'original quality', 'overlay': 'original quality'}
-        if len(self.scales) <= 0 or len(self.scales) != len(self.available_mags):
+        if len(self.scales) <= 0:
             raise ValueError('Cannot create pyk conf file without '
                              'per-mag-level scale definitions.')
             # TODO: work-in target_mags
@@ -899,24 +898,28 @@ class KnossosDataset(object):
                 adapted_scale[2] = new_z_scale
                 kd_dataset_atlas.scales[ii] = adapted_scale
         scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
-        config_str = ""
-        for ch, base_ext in zip(('raw', 'overlay'), ('.raw', '.seg.sz.zip')):
-            config_str += """[Dataset]
+        config_str = """[Dataset]
 _BaseName = {}
 _ServerFormat = pyknossos
 _DataScale = {}
 _Extent = {}
-_CubeSize = {}
-_NumberofCubes = {}
 _Description = {}
-_BaseExt = {}\n\n""".format(self._experiment_name, scales,
-                            ','.join([str(int(el)) for el in self.boundary]),
-                            ','.join([str(int(el)) for el in self.cube_shape]),
-                            ','.join([str(int(el)) for el in self.number_of_cubes]),
-                            descriptions[ch], base_ext)
-            if not include_overlay and ch == 'overlay':
-                continue
+_BaseExt = .raw
+    """.format(self._experiment_name, scales,
+               ','.join([str(int(el)) for el in self.boundary]),
+               descriptions['raw'])
 
+        if include_overlay:
+            config_str += """\n\n[Dataset]
+_BaseName = {}
+_ServerFormat = pyknossos
+_DataScale = {}
+_Extent = {}
+_Description = {}
+_BaseExt = .seg.sz.zip
+    """.format(self._experiment_name, scales,
+               ','.join([str(int(el)) for el in self.boundary]),
+               descriptions['overlay'])
         with open(path_to_pyknossos_conf, "w") as f:
             f.write(config_str)
 
@@ -924,7 +927,7 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
                                offset=None, boundary=None, fast_downsampling=True,
                                data=None, data_path=None, hdf5_names=None,
                                mags=None, verbose=False, cache_size=0,
-                               raw_dtype=np.uint8, force_overwrite=False):
+                               raw_dtype=np.uint8):
         """ Initializes the dataset with matrix
             Only for use with "small" matrices (~10^3 edgelength)
 
@@ -959,15 +962,10 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
             True: prints several information
         :param raw_dtype:
             datatype of raw data
-        :param force_overwrite:
-            Ignores existing dirctory at `path`.
         :return:
             nothing
         """
-        if os.path.isdir(path) and not force_overwrite:
-            raise FileExistsError('Specified path already exists. Set '
-                                  'force_overwrite if target directory can be '
-                                  'safely modified.')
+
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
 
@@ -994,8 +992,7 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
                                      mags=mags, make_mag_folders=True, raw_dtype=raw_dtype,
                                      create_knossos_conf=True, verbose=verbose)
 
-        self.save_raw(offset=offset*data_mag, mags=mags*data_mag,
-                      data=data.swapaxes(0, 2),
+        self.save_raw(offset=offset, mags=mags, data=data,
                       fast_resampling=fast_downsampling, data_mag=data_mag)
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
@@ -1236,7 +1233,7 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
                             request.raise_for_status()
                             if not from_overlay:
                                 if self._raw_ext == 'raw':
-                                    values = np.fromstring(request.content, dtype=np.uint8).astype(datatype)
+                                    values = np.fromstring(request.content, dtype=self.raw_dtype).astype(datatype)
                                 else:
                                     values = imageio.imread(request.content)
                             else:
@@ -1270,7 +1267,7 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
                             values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
                         elif self._cube_type == KnossosDataset.CubeType.RAW:
                             flat_shape = int(np.prod(self.cube_shape))
-                            values = np.fromfile(path, dtype=np.uint8, count=flat_shape).astype(datatype)
+                            values = np.fromfile(path, dtype=self.raw_dtype, count=flat_shape).astype(datatype)
                         else: # compressed
                             values = imageio.imread(path)
                         valid_values = True
@@ -1592,8 +1589,7 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
         data = self._load_kzip_seg(path, offset, size, mag, datatype, apply_mergelist, return_dataset_cube_if_nonexistent, expand_area_to_mag)
 
         if binarize_overlay:
-            # TODO: why > 1? Should probably be >= 1, changed Nov 08 PS
-            data[data >= 1] = 1
+            data[data > 1] = 1
 
         return data.swapaxes(0, 2)
 
@@ -2185,7 +2181,7 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
                 kzip_path = kzip_path[:-6]
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
-
+        # TODO: skimage.transform.rescale is functional (only tested on raw channel)
         for mag in mags:
             ratio = self.scale_ratio(mag, data_mag)[::-1]
             inv_mag_ratio = 1.0/np.array(ratio)
@@ -2198,16 +2194,22 @@ _BaseExt = {}\n\n""".format(self._experiment_name, scales,
                 data_inter = data.astype(datatype, copy=False)
             elif fast:
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
+                # data_inter = skimage.transform.rescale(data, inv_mag_ratio, multichannel=False, order=0,
+                #                                        preserve_range=True).astype(datatype, copy=False)
             elif as_raw:
                 quality = 3 if mag > data_mag else 1
-                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=quality).astype(datatype, copy=False)
-            else: # fancy seg upsampling
+                # data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=quality).astype(datatype, copy=False)
+                data_inter = skimage.transform.rescale(data, inv_mag_ratio, multichannel=False, order=quality,
+                                                       preserve_range=True).astype(datatype, copy=False)
+            else:  # fancy seg upsampling
                 data_inter = np.zeros(shape=(inv_mag_ratio * np.array(data.shape)).astype(np.int), dtype=datatype)
                 for value in np.unique(data):
-                    if value == 0: continue # no 0 upsampling
+                    if value == 0: continue  # no 0 upsampling
+                    # keep fancy scipy upsampling for overlays
                     up_chunk_channel = scipy.ndimage.zoom((data == value).astype(np.uint8), inv_mag_ratio, order=1)
+                    # up_chunk_channel = skimage.transform.rescale(
+                    #     (data == value).astype(np.uint8), inv_mag_ratio, order=0, multichannel=False, preserve_range=True)
                     data_inter += (up_chunk_channel * value).astype(datatype, copy=False)
-
             offset_mag = np.array(offset, dtype=np.int) // self.scale_ratio(mag, 1)
             size_mag = np.array(data_inter.shape[::-1], dtype=np.int)
 

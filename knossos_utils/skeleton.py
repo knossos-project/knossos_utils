@@ -815,7 +815,6 @@ class SkeletonAnnotation:
 
         return self
 
-
     def toNml(self, doc, annotations_elem, comments_elem, annotation_ID):
         annotation_elem = doc.createElement("thing")
         build_attributes(annotation_elem, [["id", annotation_ID]])
