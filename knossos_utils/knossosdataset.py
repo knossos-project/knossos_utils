@@ -992,7 +992,8 @@ _BaseExt = .seg.sz.zip
                                      mags=mags, make_mag_folders=True, raw_dtype=raw_dtype,
                                      create_knossos_conf=True, verbose=verbose)
 
-        self.save_raw(offset=offset, mags=mags, data=data,
+        self.save_raw(offset=offset*data_mag, mags=mags*data_mag,
+                      data=data.swapaxes(0, 2),
                       fast_resampling=fast_downsampling, data_mag=data_mag)
 
     def copy_dataset(self, path, data_range=None, do_raw=True, mags=None,
