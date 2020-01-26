@@ -463,44 +463,47 @@ class Skeleton:
             high_ids.append(cur_anno.nodeBaseID + cur_anno.high_id)
         return max(high_ids)
 
-    def toNml(self, filename, save_empty=True):
+    def toNml(self, filename, save_empty=True, force_keep_annotation_ids=False):
         try:
             f = open(filename, "w")
-            f.write(self.to_xml_string(save_empty))
+            f.write(self.to_xml_string(save_empty, force_keep_annotation_ids))
             f.close()
         except Exception as e:
             print("Couldn't open file for writing.")
             print(e)
         return
 
-    def to_kzip(self, filename, save_empty=True, force_overwrite=False):
+    def to_kzip(self, filename, save_empty=True, force_overwrite=False,
+                force_keep_annotation_ids=False):
         """
         Similar to self.toNML, but writes NewSkeleton to k_zip.
         :param filename: Path to k.zip
         :param save_empty: like in self.to_xml_string
         :param force_overwrite: overwrite existing .k.zip
+        :param force_keep_annotation_ids: Keen the annotation_ID attribute of
+            the annotations.
         :return:
         """
         if os.path.isfile(filename):
             try:
                 if force_overwrite:
                     with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
-                        zf.writestr('annotation.xml', self.to_xml_string(save_empty))
+                        zf.writestr('annotation.xml', self.to_xml_string(save_empty, force_keep_annotation_ids))
                 else:
                     remove_from_zip(filename, 'annotation.xml')
                     with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
-                        zf.writestr('annotation.xml', self.to_xml_string(save_empty))
+                        zf.writestr('annotation.xml', self.to_xml_string(save_empty, force_keep_annotation_ids))
             except Exception as e:
                 print("Couldn't open file for reading and overwriting.", e)
         else:
             try:
                 with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
-                    zf.writestr('annotation.xml', self.to_xml_string(save_empty))
+                    zf.writestr('annotation.xml', self.to_xml_string(save_empty, force_keep_annotation_ids))
             except Exception as e:
                 print("Couldn't open file for writing.", e)
         return
 
-    def to_xml_string(self, save_empty=True):
+    def to_xml_string(self, save_empty=True, force_keep_annotation_ids=False):
         # This is currently only a slight cosmetic duplication of the old
         # Skeleton, therefore far from complete
         doc = minidom.Document()
@@ -601,7 +604,10 @@ class Skeleton:
             if not save_empty:
                 if annotation.isEmpty():
                     continue
-            annotation_ID += 1
+            if not force_keep_annotation_ids:
+                annotation_ID += 1
+            else:
+                annotation_ID = annotation.annotation_ID
             annotation.toNml(doc, annotations_elem, comments_elem, annotation_ID)
 
         branchNodes_elem = doc.createElement("branchpoints")
