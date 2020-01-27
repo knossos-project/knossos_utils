@@ -265,7 +265,10 @@ class ChunkDataset(object):
     def dataset(self):
         assert os.path.exists(self._dataset_path)
         kd = knossosdataset.KnossosDataset()
-        kd.initialize_from_knossos_path(self._dataset_path)
+        try:
+            kd.initialize_from_pyknossos_path(self._dataset_path)
+        except:
+            kd.initialize_from_knossos_path(self._dataset_path)
         return kd
 
     def initialize(self, knossos_dataset_object, box_size,
@@ -304,7 +307,7 @@ class ChunkDataset(object):
         self.path_head_folder = path_head_folder
         self.chunk_size = np.array(chunk_size)
         self.box_coords = box_coords
-        self._dataset_path = knossos_dataset_object.knossos_path
+        self._dataset_path = knossos_dataset_object.conf_path
         self.box_size = box_size
         self.overlap = overlap
         # TODO: test whether this can be removed safely
@@ -335,7 +338,7 @@ class ChunkDataset(object):
                 np.array([box_coords[0] + coord[0],
                           box_coords[1] + coord[1],
                           box_coords[2] + coord[2]])
-            new_chunk._dataset_path = knossos_dataset_object.knossos_path
+            new_chunk._dataset_path = knossos_dataset_object.conf_path
             new_chunk.size = chunk_size
             new_chunk.overlap = overlap
             new_chunk.folder_name = 'chunky_%i/' % nb_coord
@@ -562,7 +565,7 @@ class ChunkDataset(object):
 
                         f = h5py.File(path, 'r')
                         for hdf5_name in setnames:
-                            values_dict[hdf5_name] = f[hdf5_name].value
+                            values_dict[hdf5_name] = f[hdf5_name][()]
                         f.close()
                     except Exception as e:
                         print("Exception:", e)
@@ -657,7 +660,7 @@ class ChunkDataset(object):
             if os.path.exists(path):
                 with h5py.File(path, "r") as f:
                     for key in f.keys():
-                        chunk_data[key] = f[key].value
+                        chunk_data[key] = f[key][()]
 
                     if not h5_name in f.keys():
                         chunk_data[h5_name] = np.zeros(
@@ -849,22 +852,23 @@ class Chunk(object):
         if self._dataset is None:
             assert os.path.exists(self._dataset_path)
             kd = knossosdataset.KnossosDataset()
-            kd.initialize_from_knossos_path(self._dataset_path)
-        else:
+            try:
+                kd.initialize_from_pyknossos_path(self._dataset_path)
+            except:
+                kd.initialize_from_knossos_path(self._dataset_path)        else:
             kd = self._dataset
         return kd
 
-    def raw_data(self, overlap=None, show_progress=False, invert_raw=False):
+    def raw_data(self, zyx_mode=False, overlap=None, invert_raw=False):
         """ Uses DatasetUtils.knossosDataset for getting the real data
 
         Parameters:
         -----------
-
-        interpolation: int
-            paramater that is passed to from_raw_cubes_to_matrix
-            if 1 then no interpolation is beeing made
+        zyx_mode: bool
+            If True, data is returned as ZYX.
         overlap: 3 sequence of int
             defines overlap of extracted data
+        invert_raw: bool
 
         Returns:
         --------
@@ -879,19 +883,24 @@ class Chunk(object):
                         dtype=np.int)
         coords = np.array(np.array(self.coordinates) -
                           np.array(overlap), dtype=np.int)
+        data = self.dataset.load_raw(offset=coords, size=size,
+                                     mag=1, padding=0)
+        if invert_raw:
+            data = np.invert(data)
+        if not zyx_mode:
+            data = data.swapaxes(0, 2)
+        return data
 
-        return self.dataset.from_raw_cubes_to_matrix(size, coords,
-                                                     invert_data=invert_raw,
-                                                     show_progress=
-                                                     show_progress)
-
-    def seg_data(self, with_overlap=False, dtype_opt=np.uint64):
+    def seg_data(self, zyx_mode=False, with_overlap=False, dtype_opt=np.uint64,
+                 invert_seg=False):
         """ Uses DatasetUtils.knossosDataset for getting the seg data
 
         Parameters:
         -----------
-
-        none so far
+        zyx_mode: bool
+            If True, data is returned as zyx.
+        with_overlap: bool
+        dtype_opt:
 
         Returns:
         --------
@@ -909,13 +918,13 @@ class Chunk(object):
                             dtype=np.int)
             coords = np.array(np.array(self.coordinates),
                               dtype=np.int)
-
-        print('getting seg data', size, coords)
-        seg = self.dataset.from_overlaycubes_to_matrix(size,
-                                                       coords,
-                                                       datatype=dtype_opt)
-
-        return seg
+        data = self.dataset.load_seg(offset=coords, size=size, mag=1, padding=0,
+                                     datatype=dtype_opt)
+        if invert_seg:
+            data = np.invert(data)
+        if not zyx_mode:
+            data = data.swapaxes(0, 2)
+        return data
 
     def write_overlaycube(self, seg_name=None, seg_set_name=None,
                           swap_axes=0, without_overlap=True,
@@ -1005,7 +1014,6 @@ class Chunk(object):
                 f = h5py.File(path, 'w')
         else:
             f = h5py.File(path, 'a')
-
         if type(setname) == list or type(setname) == np.ndarray:
             for nb_data in range(len(data)):
                 if compress:
@@ -1059,9 +1067,9 @@ class Chunk(object):
         if type(setname) == list or type(setname) == np.ndarray:
             data = []
             for this_setname in setname:
-                data.append(f[this_setname].value)
+                data.append(f[this_setname][()])
         else:
-            data = f[setname].value
+            data = f[setname][()]
         f.close()
 
         return data

@@ -310,7 +310,7 @@ class KnossosDataset(object):
         RAW = 0,
         COMPRESSED = 1
 
-    def __init__(self, path=None, show_progress=True):
+    def __init__(self, path=None, show_progress=False):
         moduleInit()
         global module_wide
         self.module_wide = module_wide
