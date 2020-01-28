@@ -1386,7 +1386,11 @@ _BaseExt = .seg.sz.zip
         assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to False here.'
         kwargs.update({'from_overlay': False})
         if 'datatype' not in kwargs:
-            kwargs.update({'datatype': np.uint8})
+            dtype = self.raw_dtype if self.raw_dtype is not None else np.uint8
+            kwargs.update({'datatype': dtype})
+        else:
+            if self.raw_dtype != kwargs['datatype']:
+                _print("Specified datatype differs from config datatype.")
         return self._load(**kwargs)
 
     def load_seg(self, **kwargs):
