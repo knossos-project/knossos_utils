@@ -67,9 +67,9 @@ def _export_cset_as_kd_thread(args):
     orig_dtype = args[9]
     fast_downsampling = args[10]
     if len(args) == 12:
-        overwrite = args[11]
+        mags2do = args[11]
     else:
-        overwrite = True  # default as before
+        mags2do = None
 
     cset = load_dataset(cset_path, update_paths=True)
 
@@ -122,11 +122,13 @@ def _export_cset_as_kd_thread(args):
         data_list = data_list[0]
     # make it ZYX
     data_list = np.swapaxes(data_list, 0, 2)
+    if mags2do is None:
+        mags2do = kd.available_mags
     if as_raw:
-        kd.save_raw(offset=coords, mags=kd.available_mags, data=data_list, data_mag=1,
+        kd.save_raw(offset=coords, mags=mags2do, data=data_list, data_mag=1,
                     fast_resampling=fast_downsampling)
     else:
-        kd.save_seg(offset=coords, mags=kd.available_mags, data=data_list, data_mag=1,
+        kd.save_seg(offset=coords, mags=mags2do, data=data_list, data_mag=1,
                     fast_resampling=fast_downsampling)
 
 
@@ -143,8 +145,21 @@ def _export_cset_as_kd_control_thread(args):
     unified_labels = args[7]
     nb_threads = args[8]
 
+    # initialize KD object
     kd = knossosdataset.KnossosDataset()
-    kd.initialize_from_knossos_path(kd_path)
+    # TODO: set appropriate channel
+    # # kd.set_channel(channel)
+    if os.path.isfile(kd_path):
+        kd.initialize_from_conf(kd_path)
+    elif len(glob.glob(f'{kd_path}/*.pyk.conf')) == 1:
+        pyk_confs = glob.glob(f'{kd_path}/*.pyk.conf')
+        kd.initialize_from_pyknossos_path(pyk_confs[0])
+    elif os.path.isfile(kd_path + "/mag1/knossos.conf"):
+        # Initializes the dataset by parsing the knossos.conf in path + "mag1"
+        kd_path += "/mag1/knossos.conf"
+        kd.initialize_from_knossos_path(kd_path)
+    else:
+        raise ValueError(f'Could not find KnossosDataset config at {kd_path}.')
 
     if as_raw:
         data = kd.load_raw(size=size, offset=coords, mag=1)
@@ -265,10 +280,7 @@ class ChunkDataset(object):
     def dataset(self):
         assert os.path.exists(self._dataset_path)
         kd = knossosdataset.KnossosDataset()
-        try:
-            kd.initialize_from_pyknossos_path(self._dataset_path)
-        except:
-            kd.initialize_from_knossos_path(self._dataset_path)
+        kd.initialize_from_conf(self._dataset_path)
         return kd
 
     def initialize(self, knossos_dataset_object, box_size,
@@ -778,7 +790,8 @@ class ChunkDataset(object):
                           coordinate=None, size=None,
                           stride=[4 * 128, 4 * 128, 4 * 128],
                           as_raw=False, fast_downsampling=False,
-                          unified_labels=False, orig_dtype=np.uint8):
+                          unified_labels=False, orig_dtype=np.uint8,
+                          target_mags=None):
         if coordinate is None or size is None:
             coordinate = np.zeros(3, dtype=np.int)
             size = np.copy(kd.boundary)
@@ -793,7 +806,8 @@ class ChunkDataset(object):
                     coords = np.array([coordx, coordy, coordz])
                     multi_params.append([coords, stride, self.path_head_folder,
                                          kd.knossos_path, name, hdf5names, as_raw,
-                                         unified_labels, nb_threads[1], orig_dtype, fast_downsampling])
+                                         unified_labels, nb_threads[1], orig_dtype,
+                                         fast_downsampling, target_mags])
 
         np.random.shuffle(multi_params)
         if nb_threads[0] > 1:
@@ -852,10 +866,8 @@ class Chunk(object):
         if self._dataset is None:
             assert os.path.exists(self._dataset_path)
             kd = knossosdataset.KnossosDataset()
-            try:
-                kd.initialize_from_pyknossos_path(self._dataset_path)
-            except:
-                kd.initialize_from_knossos_path(self._dataset_path)        else:
+            kd.initialize_from_conf(self._dataset_path)
+        else:
             kd = self._dataset
         return kd
 
