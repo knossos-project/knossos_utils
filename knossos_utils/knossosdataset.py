@@ -899,12 +899,20 @@ class KnossosDataset(object):
                 kd_dataset_atlas.scales[ii] = adapted_scale
         scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
         config_str = """[Dataset]
-_BaseName = {}
+_BaseName = {0}
 _ServerFormat = pyknossos
-_DataScale = {}
-_Extent = {}
-_Description = {}
+_DataScale = {1}
+_Extent = {2}
+_Description = {3}
 _BaseExt = .raw
+
+[Dataset]
+_BaseName = {0}
+_ServerFormat = pyknossos
+_DataScale = {1}
+_Extent = {2}
+_Description = "streaming optimized"
+_BaseExt = .jpg
     """.format(self._experiment_name, scales,
                ','.join([str(int(el)) for el in self.boundary]),
                descriptions['raw'])
