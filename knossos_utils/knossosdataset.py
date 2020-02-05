@@ -903,16 +903,16 @@ _BaseName = {0}
 _ServerFormat = pyknossos
 _DataScale = {1}
 _Extent = {2}
-_Description = {3}
-_BaseExt = .raw
+_Description = "streaming optimized"
+_BaseExt = .jpg
 
 [Dataset]
 _BaseName = {0}
 _ServerFormat = pyknossos
 _DataScale = {1}
 _Extent = {2}
-_Description = "streaming optimized"
-_BaseExt = .jpg
+_Description = {3}
+_BaseExt = .raw
     """.format(self._experiment_name, scales,
                ','.join([str(int(el)) for el in self.boundary]),
                descriptions['raw'])
