@@ -2012,6 +2012,9 @@ _BaseExt = .seg.sz.zip
                     dest_cube = imageio.imread(cube_path)
                 except ValueError:
                     print(cube_path, "is broken and will be overwritten")
+            if dest_cube.size == 0:
+                print(cube_path, "has size 0 and will be overwritten")
+                dest_cube = data
             dest_cube = dest_cube.reshape(self.cube_shape)
             data = data.reshape(self.cube_shape)
 
