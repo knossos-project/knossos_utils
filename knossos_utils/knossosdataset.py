@@ -1563,15 +1563,20 @@ class KnossosDataset(object):
         current = np.array([start[dim] for dim in range(3)])
         cnt = 1
         nb_cubes_to_process = (end - start).prod()
-
+        experiment_name = self.experiment_name
+        for file in archive.namelist():
+            if file.endswith('.seg.sz'):
+                experiment_name = file[0:re.search(r'_mag\d+x\d+y\d+z\d+.seg.sz', file).span()[0]]
+                break
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
                 for x in range(start[0], end[0]):
                     current = [x, y, z]
                     if self.show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
-                        _stdout(f'\rProgress: {progress:.2f}% ') # 
-                    this_path = f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
+                        _stdout(f'\rProgress: {progress:.2f}% ')
+
+                    this_path = f'{experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
                     try:
                         scube = archive.read(this_path)
                         values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
