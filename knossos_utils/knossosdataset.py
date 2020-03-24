@@ -2013,6 +2013,7 @@ class KnossosDataset(object):
         self._print(f'mags to write: {mags}')
 
         if kzip_path is not None:
+            kzip_path = str(kzip_path)
             assert not as_raw, 'You have to choose between kzip and raw cubes'
             if kzip_path.endswith(".k.zip"):
                 kzip_path = kzip_path[:-6]
@@ -2105,6 +2106,7 @@ class KnossosDataset(object):
         self.compress_kzip(kzip_path=kzip_path)
 
     def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+        kzip_path = str(kzip_path)
         if kzip_path.endswith('.k.zip'):
             kzip_path = kzip_path[:-6]
         self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
@@ -2118,6 +2120,7 @@ class KnossosDataset(object):
                 annotation.write(annotation_str)
 
     def compress_kzip(self, kzip_path):
+        kzip_path = str(kzip_path)
         while kzip_path.endswith('/'):
             kzip_path = kzip_path[:-1]
         if kzip_path.endswith('.k.zip'):
