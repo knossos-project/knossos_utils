@@ -290,7 +290,7 @@ class KnossosDataset(object):
         self.module_wide = module_wide
         self._knossos_path = None
         self._conf_path = None
-        self._http_url = None
+        self.url = None
         self._http_user = None
         self._http_passwd = None
         self._experiment_name = None
@@ -327,7 +327,7 @@ class KnossosDataset(object):
             if self.in_http_mode:
                 for mag_test_nb in range(10):
                     mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
-                    mag_folder = "{}/{}{}".format(self.http_url, self.name_mag_folder, mag_num)
+                    mag_folder = "{}/{}{}".format(self.url, self.name_mag_folder, mag_num)
                     for tries in range(10):
                         try:
                             request = requests.get(mag_folder,
@@ -367,7 +367,7 @@ class KnossosDataset(object):
     @property
     def knossos_path(self):
         if self.in_http_mode:
-            return self.http_url
+            return self.url
         elif self._knossos_path:
             return self._knossos_path
         else:
@@ -390,10 +390,6 @@ class KnossosDataset(object):
         return self._initialized
 
     @property
-    def http_url(self):
-        return self._http_url
-
-    @property
     def http_user(self):
         return self._http_user
 
@@ -403,7 +399,7 @@ class KnossosDataset(object):
 
     @property
     def in_http_mode(self):
-        return bool(self.http_url)
+        return self.url and self.url.startswith('http')
 
     @property
     def http_auth(self):# when auth is contained in URL we can return None here
@@ -553,7 +549,7 @@ class KnossosDataset(object):
             if key == "_BaseName":
                 layer._experiment_name = tokens[1]
             elif key == "_BaseURL":
-                layer._http_url = tokens[1]
+                layer.url = tokens[1]
             elif key == "_UserName":
                 layer._http_user = tokens[1]
             elif key == "_Password":
@@ -587,6 +583,8 @@ class KnossosDataset(object):
         for layer in layers:
             layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
             initialize(layer)
+            if layer.url is None:
+                layer.url = f'file://{layer._knossos_path}'
             # set to first local layer or to first remote layer if there is no local one.
             if not self._initialized or (self.in_http_mode and not layer.in_http_mode):
                 self.__dict__.update(layer.__dict__)
@@ -617,7 +615,7 @@ class KnossosDataset(object):
         for line in lines:
             if line.startswith("ftp_mode"):
                 line_s = line.split(" ")
-                self._http_url = "http://" + line_s[1] + line_s[2] + "/"
+                self.url = "http://" + line_s[1] + line_s[2] + "/"
                 self._http_user = line_s[3]
                 self._http_passwd = line_s[4]
             else:
