@@ -294,7 +294,8 @@ class KnossosDataset(object):
         self._http_user = None
         self._http_passwd = None
         self._experiment_name = None
-        self._name_mag_folder = None
+        self.layers = []
+        self._name_mag_folder = 'mag'
         self._ordinal_mags = False
         self._boundary = np.zeros(3, dtype=np.int)
         self._scale = np.ones(3, dtype=np.float)
@@ -305,6 +306,7 @@ class KnossosDataset(object):
         self._raw_ext = 'raw'
         self._initialized = False
         self._mags = None
+        self.is_seg = True # backwards compatibility for knossos.conf
         self.verbose = False
         self.show_progress = show_progress
         self.background_label = 0
@@ -520,15 +522,17 @@ class KnossosDataset(object):
             self.initialize_from_pyknossos_path(path_to_conf)
         else:
             self.initialize_from_knossos_path(path_to_conf)
+            self.layers = [self]
 
-    def parse_pyknossos_conf(self, path_to_pyknossos_conf):
+    def initialize_from_pyknossos_path(self, path_to_pyknossos_conf):
         """ Parse a pyknossos conf
 
         :param path_to_pyknossos_conf: str
-        :param verbose: bool
-        :return:
-            nothing
         """
+        def initialize(layer):
+            layer._knossos_path = os.path.dirname(path_to_pyknossos_conf) + "/"
+            layer._initialized = True
+            layer._initialize_cache(0)
         try:
             f = open(path_to_pyknossos_conf)
             lines = f.readlines()
@@ -536,60 +540,58 @@ class KnossosDataset(object):
         except FileNotFoundError as e:
             raise NotImplementedError("Could not read .conf: {}".format(e))
 
-        self._conf_path = path_to_pyknossos_conf
-        self._ordinal_mags = True # pyk.conf is ordinal by default
-        self._cube_shape = [128, 128, 128]  # default cube shape
-        exts = set()
-
+        layers = []
         for line in lines:
             tokens = re.split(" = |,|\n", line)
             key = tokens[0]
+            if re.match(r'\[Dataset[ \d]*]$', tokens[0]):
+                layer = KnossosDataset(show_progress=self.show_progress)
+                layer._conf_path = path_to_pyknossos_conf
+                layer._ordinal_mags = True # pyk.conf is ordinal by default
+                layer._cube_shape = [128, 128, 128] # default cube shape
+                layers.append(layer)
             if key == "_BaseName":
-                self._experiment_name = tokens[1]
+                layer._experiment_name = tokens[1]
             elif key == "_BaseURL":
-                self._http_url = tokens[1]
+                layer._http_url = tokens[1]
             elif key == "_UserName":
-                self._http_user = tokens[1]
+                layer._http_user = tokens[1]
             elif key == "_Password":
-                self._http_passwd = tokens[1]
+                layer._http_passwd = tokens[1]
             elif key == "_ServerFormat":
-                self._ordinal_mags = tokens[1] != "knossos";
+                layer._ordinal_mags = tokens[1] != "knossos";
             elif key == "_DataScale":
-                self.scales = []
+                layer.scales = []
                 for x, y, z in zip(tokens[1::3], tokens[2::3], tokens[3::3]):
-                    self.scales.append(np.array([float(x), float(y), float(z)]))
-                self._scale = self.scales[0]
+                    layer.scales.append(np.array([float(x), float(y), float(z)]))
+                layer._scale = layer.scales[0]
             elif key == "_FileType":
                 type_map = {'0': 'raw', '2': 'png', '3': 'jpg'}
                 assert tokens[1] in type_map, f'unsupported _FileType ({tokens[1]})'
-                exts.add(type_map[tokens[1]])
+                layer.raw_ext = type_map[tokens[1]]
             elif key == "_NumberofCubes":
-                self._number_of_cubes[0] = int(tokens[1])
-                self._number_of_cubes[1] = int(tokens[2])
-                self._number_of_cubes[2] = int(tokens[3])
+                layer._number_of_cubes[0] = int(tokens[1])
+                layer._number_of_cubes[1] = int(tokens[2])
+                layer._number_of_cubes[2] = int(tokens[3])
             elif key == "_Extent":
-                self._boundary[0] = float(tokens[1])
-                self._boundary[1] = float(tokens[2])
-                self._boundary[2] = float(tokens[3])
+                layer._boundary[0] = float(tokens[1])
+                layer._boundary[1] = float(tokens[2])
+                layer._boundary[2] = float(tokens[3])
             elif key == '_CubeSize':
-                self._cube_shape = [int(tokens[1]), int(tokens[2]), int(tokens[3])]
+                layer._cube_shape = [int(tokens[1]), int(tokens[2]), int(tokens[3])]
             elif key == "_BaseExt":
-                exts.add(tokens[1].replace('.', '', 1))
-        # prefer raw over png
-        if 'raw' in exts:
-            self._raw_ext = 'raw'
-        elif 'png' in exts:
-            self._raw_ext = 'png'
-        else:
-            self._raw_ext = 'jpg'
-        self._cube_type = KnossosDataset.CubeType.RAW if self._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
+                ext = tokens[1].replace('.', '', 1)
+                layer.is_seg = ext == 'seg.sz.zip'
+                layer._raw_ext = None if layer.is_seg else ext
 
-    def initialize_from_pyknossos_path(self, path):
-        self.parse_pyknossos_conf(path)
-        self._knossos_path = os.path.dirname(path) + "/"
-        self._name_mag_folder = "mag"
-        self._initialized = True
-        self._initialize_cache(0)
+        for layer in layers:
+            layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
+            initialize(layer)
+            # set to first local layer or to first remote layer if there is no local one.
+            if not self._initialized or (self.in_http_mode and not layer.in_http_mode):
+                self.__dict__.update(layer.__dict__)
+
+        self.layers = layers
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
@@ -1292,7 +1294,20 @@ class KnossosDataset(object):
         kwargs.update({'from_overlay': False})
         if 'datatype' not in kwargs:
             kwargs.update({'datatype': np.uint8})
-        return self._load(**kwargs)
+
+        # preference raw → png → jpg
+        preferred_raw_layer = None
+        for layer in self.layers:
+            if layer._raw_ext is None:
+                continue
+            if layer._raw_ext == 'raw' or layer._raw_ext == 'png':
+                preferred_raw_layer = layer
+                break
+            preferred_raw_layer = layer
+
+        assert preferred_raw_layer is not None, 'Tried to load raw data, but the loaded dataset configuration contains no raw layer.'
+
+        return preferred_raw_layer._load(**kwargs)
 
     def load_seg(self, **kwargs):
         """from_cubes_to_matrix wrapper with mode=overlay.
@@ -1315,7 +1330,14 @@ class KnossosDataset(object):
         kwargs.update({'from_overlay': True})
         if 'datatype' not in kwargs:
             kwargs.update({'datatype': np.uint64})
-        return self._load(**kwargs)
+
+        for layer in self.layers: # prefer local seg
+            if not layer.in_http_mode and layer.is_seg:
+                return self._load(**kwargs)
+        for layer in self.layers:
+            if layer.is_seg:
+                return layer._load(**kwargs)
+        raise Exception("Tried to load segmentation but the loaded dataset configuration contains no segmentation layer.")
 
     def from_cubes_to_matrix(self, size, offset, mode, mag=1, datatype=np.uint8,
                              mirror_oob=True, hdf5_path=None,
@@ -2056,14 +2078,14 @@ class KnossosDataset(object):
             self._print(f'end_cube: {end}')
 
             multithreading_params = []
-
+            conf_folder = os.path.dirname(self._conf_path)
             for z in range(start[2], end[2]):
                 for y in range(start[1], end[1]):
                     for x in range(start[0], end[0]):
                         current = np.array([x, y, z])
 
                         this_cube_info = []
-                        path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
+                        path = f'{conf_folder}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
                         this_cube_info.append(path)
 
                         if kzip_path is None:
