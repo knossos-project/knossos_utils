@@ -457,6 +457,16 @@ class KnossosDataset(object):
         z = int(cube_name[z_pos + 1:dot_pos])
         return [x, y, z]
 
+    def get_intervals(self, offset, size, cube_coord):
+        global_end = offset + size
+        out_start = np.maximum(0, cube_coord * self.cube_shape - offset)
+        out_end = (cube_coord + 1) * self.cube_shape - global_end
+        out_end = size * (out_end >= 0) + out_end * (out_end < 0) # cube contains this output edge
+        incube_start = np.maximum(0, offset - cube_coord * self.cube_shape)
+        incube_end = global_end - (cube_coord + 1) * self.cube_shape
+        incube_end = self.cube_shape * (incube_end >= 0) + incube_end * (incube_end < 0) # output contains this cube edge
+        return out_start, out_end, incube_start, incube_end
+
     def _initialize_cache(self, cache_size):
         """ Initializes the internal RAM cache for repeated look-ups.
         max_size: Maximum number of cubes to hold before replacing existing cubes.
@@ -1106,17 +1116,18 @@ class KnossosDataset(object):
             typically: for mode 'raw' this is np.uint8, and for 'overlay' np.uint64
         :return: 3D numpy array or nothing
         """
-        def _read_cube(c):
-            local_offset = np.subtract([c[0], c[1], c[2]], start) * self.cube_shape
+        def _read_cube(cube_coord):
+            out_start, out_end, incube_start, incube_end = self.get_intervals(offset, size, cube_coord)
+
             valid_values = False
 
             # check cache first
-            values = self._cube_from_cache(c, from_overlay)
+            values = self._cube_from_cache(cube_coord, from_overlay)
             from_cache = values is not None
 
             if not from_cache:
-                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{c[0]:04d}_y{c[1]:04d}_z{c[2]:04d}.{"seg.sz.zip" if from_overlay else self._raw_ext}'
-                path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{c[0]:04d}/y{c[1]:04d}/z{c[2]:04d}/{filename}'
+                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{cube_coord[0]:04d}_y{cube_coord[1]:04d}_z{cube_coord[2]:04d}.{"seg.sz.zip" if from_overlay else self._raw_ext}'
+                path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{cube_coord[0]:04d}/y{cube_coord[1]:04d}/z{cube_coord[2]:04d}/{filename}'
 
                 if self.in_http_mode:
                     for tries in range(1, self.http_max_tries + 1):
@@ -1169,9 +1180,9 @@ class KnossosDataset(object):
             if valid_values:
                 values = values.reshape(self.cube_shape)
                 if not from_cache:
-                    self._add_to_cube_cache(c, from_overlay, values)
-                local_end = local_offset + self.cube_shape
-                output[local_offset[2]:local_end[2], local_offset[1]:local_end[1], local_offset[0]:local_end[0]] = values
+                    self._add_to_cube_cache(cube_coord, from_overlay, values)
+                output[out_start[2]:out_end[2], out_start[1]:out_end[1], out_start[0]:out_end[0]] \
+                    = values[incube_start[2]:incube_end[2], incube_start[1]:incube_end[1], incube_start[0]:incube_end[0]]
 
         t0 = time.time()
 
@@ -1218,9 +1229,8 @@ class KnossosDataset(object):
 
         start = self.get_first_blocks(offset).astype(int)
         end = self.get_last_blocks(offset, size).astype(int)
-        uncut_matrix_size = (end - start) * self.cube_shape
 
-        output = np.zeros(uncut_matrix_size[::-1], dtype=datatype)
+        output = np.zeros(size[::-1], dtype=datatype)
 
         offset_start = offset % self.cube_shape
         offset_end = (self.cube_shape - (offset + size)
@@ -1235,7 +1245,7 @@ class KnossosDataset(object):
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
                 for x in range(start[0], end[0]):
-                    cube_coordinates.append([x, y, z])
+                    cube_coordinates.append(np.array([x, y, z]))
 
         with ThreadPoolExecutor() as pool:
             results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
@@ -1248,11 +1258,6 @@ class KnossosDataset(object):
                 elif result is not None: # errors without server response
                     errors[result.__class__.__name__] += 1
             self._print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
-
-        output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
-
-        if (uncut_matrix_size / output.shape).prod() > 1.5: # shrink allocation
-            output = output.astype(datatype, copy=True)
 
         if self.show_progress:
             dt = time.time() - t0
@@ -1565,17 +1570,17 @@ class KnossosDataset(object):
             size = (end - offset) // ratio
             offset = offset // ratio
         else:
-            size = np.array(size, dtype=np.int)//ratio
-            offset = np.array(offset, dtype=np.int)//ratio
-
+            size = np.array(size, dtype=np.int) // ratio
+            offset = np.array(offset, dtype=np.int) // ratio
+        offset = offset.astype(np.int64)
+        size = size.astype(np.int64)
 
         start = np.array([get_first_block(dim, offset, self._cube_shape)
                           for dim in range(3)])
         end = np.array([get_last_block(dim, size, offset, self._cube_shape) + 1
                         for dim in range(3)])
 
-        matrix_size = (end - start) * self.cube_shape
-        output = np.zeros(matrix_size[::-1], dtype=datatype)
+        output = np.zeros(size[::-1], dtype=datatype)
 
         offset_start = offset % self.cube_shape
         offset_end = (self.cube_shape - (offset + size) % self.cube_shape) % self.cube_shape
@@ -1591,7 +1596,7 @@ class KnossosDataset(object):
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
                 for x in range(start[0], end[0]):
-                    current = [x, y, z]
+                    current = np.array([x, y, z])
                     if self.show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout(f'\rProgress: {progress:.2f}% ')
@@ -1609,24 +1614,22 @@ class KnossosDataset(object):
                         else:
                             values = np.full(self.cube_shape, self.background_label, dtype=datatype)
 
-                    local_offset = (current - start) * self.cube_shape
-                    local_end = local_offset + self.cube_shape
-                    output[local_offset[2]:local_end[2], 
-                           local_offset[1]:local_end[1], 
-                           local_offset[0]:local_end[0]] = values.reshape(self.cube_shape).astype(datatype, copy=False)
+                    out_start, out_end, incube_start, incube_end = self.get_intervals(offset, size, current)
+                    output[out_start[2]:out_end[2], out_start[1]:out_end[1], out_start[0]:out_end[0]] \
+                        = values.reshape(self.cube_shape).astype(datatype, copy=False) \
+                            [incube_start[2]:incube_end[2], incube_start[1]:incube_end[1], incube_start[0]:incube_end[0]]
+
                     cnt += 1
 
         if self.show_progress and not self.verbose:
             print() # newline after sys.stdout.writes inside loop
-        output = cut_matrix(output, offset_start, offset_end, self.cube_shape, start, end)
+
         if apply_mergelist:
             if "mergelist.txt" not in archive.namelist():
                 self._print("no mergelist to apply")
             else:
                 self._print("applying mergelist now")
                 mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
-
-        assert np.array_equal(output.shape, size[::-1]), f'Incorrect shape! Should be {size[::-1]}; got {output.shape}'
 
         return output
 
