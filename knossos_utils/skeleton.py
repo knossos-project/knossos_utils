@@ -229,16 +229,14 @@ class Skeleton:
         """
 
     def fromNml(self, filename, scaling=None, comment=None, meta_info_only=False, read_time=True):
-        if filename.endswith('k.zip'):
-            zipper = zipfile.ZipFile(filename)
-
-            if not 'annotation.xml' in zipper.namelist():
-                raise Exception("k.zip file does not contain annotation.xml")
-
-            xml_string = zipper.read('annotation.xml')
-            doc = minidom.parseString(xml_string)
+        if str(filename).endswith('k.zip'):
+            with zipfile.ZipFile(filename, 'r') as zipper:
+                if 'annotation.xml' not in zipper.namelist():
+                    raise Exception("k.zip file does not contain annotation.xml")
+                xml_string = zipper.read('annotation.xml')
+                doc = minidom.parseString(xml_string)
         else:
-            doc = minidom.parse(filename)
+            doc = minidom.parse(str(filename))
 
         self.fromDom(doc, scaling, comment, meta_info_only=meta_info_only, read_time=read_time)
 
