@@ -17,7 +17,7 @@
 #
 ################################################################################
 
-from collections import Iterable
+from collections.abc import Iterable
 import copy
 from math import sqrt
 import numpy as np
@@ -325,8 +325,8 @@ def has_3_4_worktime_bug(filename):
 
     # Decide quickly whether the file could be affected
 
-    re_3_4_saved = 'lastsavedin version=\"3\.4\"'
-    re_3_4_created = 'createdin version=\"3\.4\"'
+    re_3_4_saved = r'lastsavedin version=\"3\.4\"'
+    re_3_4_created = r'createdin version=\"3\.4\"'
 
     with open(filename, 'r') as f:
         header = f.read(2048)
@@ -540,7 +540,7 @@ def reset_nml_for_heidelbrain_taskfile(f, time=0, current_knossos='3.4.2'):
         cur_text = re.sub('time=\"[0-9]*\"', 'time=\"0\"', cur_text)
         cur_text = re.sub('<createdin.*>', '', cur_text)
         cur_text = re.sub('<lastsavedin.*>', '', cur_text)
-        cur_text = re.sub('\n\s*\n', '\n', cur_text)
+        cur_text = re.sub(r'\n\s*\n', r'\n', cur_text)
         cur_text = re.sub(
             '</parameters>',
             '\t<time checksum=\"%s\" ms=\"%d\"/>\n'
@@ -1361,7 +1361,7 @@ def load_j0256_nml(path_to_file, merge_all_annos=False):
     return annos
 
 
-def loadj0126NML(path_to_file, scaling=(9., 9., 20.), merge_all_annos=False):
+def loadj0126NML(path_to_file, scaling=(10., 10., 20.), merge_all_annos=False):
     annos = load_jk_NML(pathToFile=path_to_file,
                         ds_id = 'j0126',
                         merge_all_annos=merge_all_annos,
@@ -1466,19 +1466,18 @@ def load_jk_NML(pathToFile,
     tracer = ''
 
     # old wiki format:
-    mobj=re.search(ds_id + '-(?P<seed>.*)-(?P<tracer>[A-Za-z]*)\.\d{3}\.nml$',
+    mobj=re.search(ds_id + r'-(?P<seed>.*)-(?P<tracer>[A-Za-z]*)\.\d{3}\.nml$',
                    filename)
     if mobj:
         tracer = mobj.group('tracer')
         seed = mobj.group('seed')
 
     # hdbrain format:
-    mobj=re.search(ds_id+'.*-(?P<seed>.*)-(?P<tracer>[A-Za-z]*)-\d{8}-\d{6}'
+    mobj=re.search(ds_id + r'.*-(?P<seed>.*)-(?P<tracer>[A-Za-z]*)-\d{8}-\d{6}'
                    '.*((nml)|(k.zip))$', filename)
     if mobj:
         tracer = mobj.group('tracer')
         seed = mobj.group('seed')
-
 
     if merge_all_annos and len(skeletonObj.annotations) > 1:
         for anno_to_merge in skeletonObj.annotations[1:]:
@@ -1792,7 +1791,6 @@ def prune_stub_branches(annotations,
 
 
     pruned_annotations = []
-
     if not type(annotations) == list:
         annotations = [annotations]
 

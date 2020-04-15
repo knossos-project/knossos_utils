@@ -1664,7 +1664,6 @@ _BaseExt = .seg.sz.zip
         current = np.array([start[dim] for dim in range(3)])
         cnt = 1
         nb_cubes_to_process = (end - start).prod()
-
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
                 for x in range(start[0], end[0]):
@@ -1672,18 +1671,22 @@ _BaseExt = .seg.sz.zip
                     if self.show_progress:
                         progress = 100*cnt/float(nb_cubes_to_process)
                         _stdout(f'\rProgress: {progress:.2f}% ') #
-                    this_path = f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
-                    try:
-                        scube = archive.read(this_path)
-                        values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
-                        self._print(f'{current}: loaded from .k.zip')
-                    except KeyError:
-                        self._print(f'{current}: {"dataset" if return_dataset_cube_if_nonexistent else self.background_label} cube assigned')
-                        if return_dataset_cube_if_nonexistent:
-                            values = self.load_seg(offset=current * ratio * self.cube_shape, size=ratio * self.cube_shape, mag=mag,
-                                                   datatype=datatype, padding=padding, expand_area_to_mag=expand_area_to_mag)
-                        else:
-                            values = np.full(self.cube_shape, self.background_label, dtype=datatype)
+                    # this_path = f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
+                    # # compatibility with weirldy generated kzips
+                    for this_path in [f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz',
+                                      f'{self._experiment_name}_mag{mag}_mag{mag}x{x}y{y}z{z}.seg.sz']:
+                        try:
+                            scube = archive.read(this_path)
+                            values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
+                            self._print(f'{current}: loaded from .k.zip')
+                            break
+                        except KeyError:
+                            self._print(f'{current}: {"dataset" if return_dataset_cube_if_nonexistent else self.background_label} cube assigned')
+                            if return_dataset_cube_if_nonexistent:
+                                values = self.load_seg(offset=current * ratio * self.cube_shape, size=ratio * self.cube_shape, mag=mag,
+                                                       datatype=datatype, padding=padding, expand_area_to_mag=expand_area_to_mag)
+                            else:
+                                values = np.full(self.cube_shape, self.background_label, dtype=datatype)
 
                     local_offset = (current - start) * self.cube_shape
                     local_end = local_offset + self.cube_shape
@@ -2012,6 +2015,9 @@ _BaseExt = .seg.sz.zip
                     dest_cube = imageio.imread(cube_path)
                 except ValueError:
                     print(cube_path, "is broken and will be overwritten")
+            if dest_cube.size == 0:
+                print(cube_path, "has size 0 and will be overwritten")
+                dest_cube = data
             dest_cube = dest_cube.reshape(self.cube_shape)
             data = data.reshape(self.cube_shape)
 
@@ -2299,7 +2305,7 @@ _BaseExt = .seg.sz.zip
             with open(os.path.join(kzip_path, 'mergelist.txt'), 'w') as mergelist:
                 start = time.time();
                 mergelist.write(mergelist_tools.gen_mergelist_from_segmentation(data, offsets=np.array(offset, dtype=np.uint64)))
-                print('gen mergelist', time.time() - start)
+                self._print('gen mergelist', time.time() - start)
         if annotation_str is not None:
             with open(os.path.join(kzip_path, 'annotation.xml'), 'w') as annotation:
                 annotation.write(annotation_str)
