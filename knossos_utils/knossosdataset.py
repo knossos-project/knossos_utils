@@ -1145,7 +1145,7 @@ class KnossosDataset(object):
                                     raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
                                     values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
                             try:# check if requested values match shape
-                                values.reshape(self.cube_shape)
+                                values.reshape(self.cube_shape[::-1])
                                 valid_values = True
                                 break
                             except ValueError:
@@ -1178,7 +1178,7 @@ class KnossosDataset(object):
                         self. _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
 
             if valid_values:
-                values = values.reshape(self.cube_shape)
+                values = values.reshape(self.cube_shape[::-1])
                 if not from_cache:
                     self._add_to_cube_cache(cube_coord, from_overlay, values)
                 output[out_start[2]:out_end[2], out_start[1]:out_end[1], out_start[0]:out_end[0]] \
@@ -1612,11 +1612,11 @@ class KnossosDataset(object):
                             values = self.load_seg(offset=current * ratio * self.cube_shape, size=ratio * self.cube_shape, mag=mag, 
                                                    datatype=datatype, padding=padding, expand_area_to_mag=expand_area_to_mag)
                         else:
-                            values = np.full(self.cube_shape, self.background_label, dtype=datatype)
+                            values = np.full(self.cube_shape[::-1], self.background_label, dtype=datatype)
 
                     out_start, out_end, incube_start, incube_end = self.get_intervals(offset, size, current)
                     output[out_start[2]:out_end[2], out_start[1]:out_end[1], out_start[0]:out_end[0]] \
-                        = values.reshape(self.cube_shape).astype(datatype, copy=False) \
+                        = values.reshape(self.cube_shape[::-1]).astype(datatype, copy=False) \
                             [incube_start[2]:incube_end[2], incube_start[1]:incube_end[1], incube_start[0]:incube_end[0]]
 
                     cnt += 1
@@ -1831,8 +1831,7 @@ class KnossosDataset(object):
         :param overwrite_offset: overwrite area offset. Defaults to (0, 0, 0) if overwrite_limit is set.
         :param overwrite_limit: overwrite area offset. Defaults to self.cube_shape if overwrite_offset is set.
         """
-        assert np.array_equal(data.shape, self.cube_shape), 'Can only save cubes of shape self.cube_shape ({}). found shape {}'.format(self.cube_shape, data.shape)
-        data = data.reshape(np.prod(self.cube_shape))
+        assert np.array_equal(data.shape, self.cube_shape[::-1]), 'Can only save cubes of shape self.cube_shape ({}). found shape {}'.format(self.cube_shape[::-1], data.shape)
         dest_cube = data
         if os.path.isfile(cube_path):
             # read
@@ -1853,8 +1852,7 @@ class KnossosDataset(object):
                     dest_cube = imageio.imread(cube_path)
                 except ValueError:
                     print(cube_path, "is broken and will be overwritten")
-            dest_cube = dest_cube.reshape(self.cube_shape)
-            data = data.reshape(self.cube_shape)
+            dest_cube = dest_cube.reshape(self.cube_shape[::-1])
 
             if overwrite_offset is not None or overwrite_limit is not None:
                 overwrite_offset = overwrite_offset if overwrite_offset is not None else (0, 0, 0)
@@ -1971,7 +1969,7 @@ class KnossosDataset(object):
             """ Helper function for multithreading """
             folder_path, path, cube_offset, cube_limit, start, end = args
 
-            cube = np.zeros(self.cube_shape, dtype=datatype)
+            cube = np.zeros(self.cube_shape[::-1], dtype=datatype)
             cube[cube_offset[2]: cube_limit[2],
                  cube_offset[1]: cube_limit[1],
                  cube_offset[0]: cube_limit[0]] = data_inter[start[2]: start[2] + end[2],
