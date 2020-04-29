@@ -1871,13 +1871,13 @@ class KnossosDataset(object):
             if cube_path.endswith('.seg.sz.zip'):
                 in_zip_name = os.path.basename(cube_path)[:-4]
                 with zipfile.ZipFile(cube_path, "w") as zf:
-                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube), compress_type=zipfile.ZIP_DEFLATED)
+                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube.astype(np.uint64)), compress_type=zipfile.ZIP_DEFLATED)
             elif cube_path.endswith('.seg.sz'):
                 with open(cube_path, "wb") as dest_file:
-                    dest_file.write(self.module_wide["snappy"].compress(dest_cube))
+                    dest_file.write(self.module_wide["snappy"].compress(dest_cube.astype(np.uint64)))
             elif cube_path.endswith('.raw'):
                 with open(cube_path, "wb") as dest_file:
-                    dest_file.write(dest_cube)
+                    dest_file.write(dest_cube.astype(np.uint8))
             else:  # png or jpg
                 imageio.imwrite(cube_path, dest_cube.reshape(self._cube_shape[2] * self._cube_shape[1], self._cube_shape[0]))
         elif (overwrite_offset is not None or overwrite_limit is not None) and os.path.exists(cube_path):
@@ -2046,11 +2046,9 @@ class KnossosDataset(object):
             inv_mag_ratio = 1.0/np.array(ratio)
             fast = fast_resampling or (not as_raw and mag > data_mag)
             if fast and all(mag_ratio.is_integer() for mag_ratio in ratio):
-                data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])], dtype=datatype)
+                data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])])
             elif all(mag_ratio == 1 for mag_ratio in ratio):
-                # copy=False means in this context that a copy is only made
-                # when necessary (e.g. type change)
-                data_inter = data.astype(datatype, copy=False)
+                data_inter = data
             elif fast:
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
             elif as_raw:
