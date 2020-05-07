@@ -473,30 +473,20 @@ class Skeleton:
 
     def to_kzip(self, filename, save_empty=True, force_overwrite=False):
         """
-        Similar to self.toNML, but writes NewSkeleton to k_zip.
-        :param filename: Path to k.zip
+        Similar to self.toNML, but writes Skeleton to .k.zip.
+        :param filename: Path to .k.zip
         :param save_empty: like in self.to_xml_string
         :param force_overwrite: overwrite existing .k.zip
         :return:
         """
-        if os.path.isfile(filename):
-            try:
-                if force_overwrite:
-                    with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
-                        zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-                else:
-                    remove_from_zip(filename, 'annotation.xml')
-                    with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
-                        zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception as e:
-                print("Couldn't open file for reading and overwriting.", e)
+        if os.path.isfile(filename) and not force_overwrite:
+            remove_from_zip(filename, 'annotation.xml')
+            with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr('annotation.xml', self.to_xml_string(save_empty))
         else:
-            try:
-                with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
-                    zf.writestr('annotation.xml', self.to_xml_string(save_empty))
-            except Exception as e:
-                print("Couldn't open file for writing.", e)
-        return
+            with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr('annotation.xml', self.to_xml_string(save_empty))
+
 
     def to_xml_string(self, save_empty=True):
         # This is currently only a slight cosmetic duplication of the old
@@ -1728,18 +1718,15 @@ def remove_from_zip(zipfname, *filenames):
     :param zipfname: str Path to zipfile
     :param filenames: list of str Files to delete
     """
-    tempdir = tempfile.mkdtemp()
-    try:
+    with tempfile.TemporaryDirectory() as tempdir:
         tempname = os.path.join(tempdir, 'new.zip')
-        with zipfile.ZipFile(zipfname, 'r') as zipread:
-            with zipfile.ZipFile(tempname, 'w') as zipwrite:
-                for item in zipread.infolist():
-                    if item.filename not in filenames:
-                        data = zipread.read(item.filename)
-                        zipwrite.writestr(item, data)
+        with zipfile.ZipFile(zipfname, 'r') as zipread, zipfile.ZipFile(tempname, 'w') as zipwrite:
+            for item in zipread.infolist():
+                if item.filename not in filenames:
+                    data = zipread.read(item.filename)
+                    zipwrite.writestr(item, data)
         shutil.move(tempname, zipfname)
-    finally:
-        shutil.rmtree(tempdir)
+
 
 
 def parse_attributes(xml_elem, parse_input):
