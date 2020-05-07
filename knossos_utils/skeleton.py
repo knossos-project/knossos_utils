@@ -572,9 +572,10 @@ class Skeleton:
                                                   ["type", "number"]])
                     props.appendChild(prop_entry)
 
-        time = doc.createElement("time")
-        build_attributes(time, [["ms", 0], ["checksum", integer_checksum(0)]])
-        parameters.appendChild(time)
+        if self.skeleton_time is not None:
+            time = doc.createElement("time")
+            build_attributes(time, [["ms", self.skeleton_time], ["checksum", integer_checksum(self.skeleton_time)]])
+            parameters.appendChild(time)
 
         if self.active_node is not None:
             activenode = doc.createElement("activeNode")
@@ -646,6 +647,21 @@ class Skeleton:
         self.scaling = scaling
         for annotation in self.annotations:
             annotation.scaling = scaling
+
+    def wipe_metadata(self):
+        self.active_node = None
+        self.dataset_path = None
+        self.edit_position = None
+        self.task_category = None
+        self.task_name = None
+        self.created_version = None
+        self.last_saved_version = None
+        self.skeleton_time = None
+        self.skeleton_idletime = None
+        for node in self.getNodes():
+            del node.data['inMag']
+            del node.data['inVp']
+            del node.data['time']
 
 
 class SkeletonAnnotation:
@@ -1141,11 +1157,8 @@ class SkeletonNode:
 
     def toNml(self, doc, nodes_elem, edges_elem, comments_elem):
         node_elem = doc.createElement("node")
-        build_attributes(node_elem, [("id", self.getUniqueID())])
-        build_attributes(node_elem, [("inMag", self.data["inMag"]),
-            ("inVp", self.data['inVp']), ("radius", self.data["radius"]),
-            ("time", self.data["time"]), ("x", int(self.x)),
-            ("y", int(self.y)), ("z", int(self.z))])
+        build_attributes(node_elem, [("id", self.getUniqueID()), ("x", int(self.x)), ("y", int(self.y)), ("z", int(self.z))])
+        build_attributes(node_elem, [(key, self.data[key]) for key in ('radius', 'inMag', 'inVp', 'time') if key in self.data])
         for key, val in self.data.items():
             if key in ["inVp", "node", "id", "inMag", "radius", "time", "x",
                        "y", "z", "edge", "comment", "content", "target"]:
