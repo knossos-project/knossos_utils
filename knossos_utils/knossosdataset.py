@@ -1674,7 +1674,8 @@ _BaseExt = .seg.sz.zip
                     # this_path = f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
                     # # compatibility with weirldy generated kzips
                     for this_path in [f'{self._experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz',
-                                      f'{self._experiment_name}_mag{mag}_mag{mag}x{x}y{y}z{z}.seg.sz']:
+                                      f'{self._experiment_name}_mag{mag}_mag{mag}x{x}y{y}z{z}.seg.sz',
+                                      f'{self._experiment_name}_mag1_mag{mag}x{x}y{y}z{z}.seg.sz']:
                         try:
                             scube = archive.read(this_path)
                             values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
