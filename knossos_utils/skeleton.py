@@ -275,7 +275,7 @@ class Skeleton:
                 self.fromNmlString(nml_content, scaling=scaling, read_time=False)
                 self.skeleton_time = get_time(nml_content)
 
-    def fromDom(self, doc, scaling=None, comment=None, meta_info_only=False, read_time=True):
+    def fromDom(self, doc, scaling=None, comment=None, meta_info_only=False, read_time=True, warn=True):
         try:
             [self.experiment_name] = parse_attributes(
                 doc.getElementsByTagName(
@@ -347,7 +347,7 @@ class Skeleton:
         node_scale = tuple(map(lambda s1, s2: s1 / s2, file_scaling, self.scaling))
 
         zero_based_nodes = len(doc.getElementsByTagName("parameters")[0].getElementsByTagName("nodes_0_based")) > 0
-        if not zero_based_nodes:
+        if not zero_based_nodes and warn:
             print("Warning: The <parameters/> section does not contain a tag <nodes_0_based/>.\nSince KNOSSOS NMLs were originally 1-based, your skeleton is assumed to be 1-based and will be converted to 0-based now.")
 
         try:
@@ -593,9 +593,9 @@ class Skeleton:
 
         branchNodes_elem = doc.createElement("branchpoints")
         annotations_elem.appendChild(branchNodes_elem)
-        for branchID in self.branchNodes:
+        for branchNode in self.branchNodes:
             branchNode_elem = doc.createElement("branchpoint")
-            build_attributes(branchNode_elem, [["id", branchID]])
+            build_attributes(branchNode_elem, [["id", branchNode.getUniqueID()]])
             branchNodes_elem.appendChild(branchNode_elem)
 
         return doc.toprettyxml()
@@ -1127,6 +1127,7 @@ class SkeletonNode:
     def fromNml(self, annotation, node_elem, zero_based=False, node_scale=(1, 1, 1)):
         self.resetObject()
         self.annotation = annotation
+        self.xml_attrs = dict(node_elem.attributes.items())
         [x, y, z, inVp, inMag, time, ID, radius] = parse_attributes(node_elem, \
             [["x", int], ["y", int], ["z", int], ["inVp", int], ["inMag", int],
              ["time", int], ["id", int], ["radius", float]])
@@ -1143,7 +1144,6 @@ class SkeletonNode:
         self.setDataElem("inMag", inMag or 0)
         self.setDataElem("time", time or 0)
         return self
-
 
     def toNml(self, doc, nodes_elem, edges_elem, comments_elem):
         node_elem = doc.createElement("node")

@@ -367,7 +367,7 @@ def get_nodes_with_comment(s, expression, flags=0):
     Parameters
     ----------
 
-    s : NewSkeleton instance or SkeletonAnnotation instance.
+    s : Skeleton instance or SkeletonAnnotation instance.
 
     expression : str
 
@@ -393,7 +393,7 @@ def get_nodes_with_token(s, token):
     Parameters
     ----------
 
-    s: NewSkeleton instance or SkeletonAnnotation instance.
+    s: Skeleton instance or SkeletonAnnotation instance.
 
     token : str
 
@@ -420,7 +420,7 @@ def get_annotations_with_comment(s, expression, flags=0):
     Parameters
     ----------
 
-    s : NewSkeleton instance
+    s : Skeleton instance
 
     expression : str
 
@@ -468,13 +468,13 @@ def is_singly_connected(annotation):
 def get_the_nonempty_annotation(s):
     """
     Convenience function that returns the one nonempty annotation from a
-    NewSkeleton instance s and raises an Exception if more than one exist in
+    Skeleton instance s and raises an Exception if more than one exist in
     s.
 
     Parameters
     ----------
 
-    s : NewSkeleton instance
+    s : Skeleton instance
     """
 
     annos = get_nonempty_annotations(s)
@@ -489,14 +489,14 @@ def get_the_nonempty_annotation(s):
 def get_the_nonempty_connected_annotation(s):
     """
     Convenience function that returns the one nonempty, singly connected
-    annotation from NewSkeleton instance s and raises Exception if more than
+    annotation from Skeleton instance s and raises Exception if more than
     one non-empty annotation exists or if that one annotation is not singly
     connected.
 
     Parameters
     ----------
 
-    s : NewSkeleton instance
+    s : Skeleton instance
     """
 
     anno = get_the_nonempty_annotation(s)
@@ -700,7 +700,7 @@ def get_largest_annotation(skeleton):
     Parameters
     ----------
 
-    skeleton : NewSkeleton instance
+    skeleton : Skeleton instance
 
     Returns
     -------
@@ -942,7 +942,7 @@ def get_node_positions_as_nparray(s, scaling='raw'):
     Parameters
     ----------
 
-    s : NewSkeleton instance
+    s : Skeleton instance
 
     scaling : str
         if 'raw', use the raw node coordinates, otherwise, use scaled
@@ -974,7 +974,7 @@ def get_convex_hull(s, scaling='nm'):
     Parameters
     ----------
 
-    s : NewSkeleton instance or str
+    s : Skeleton instance or str
         If str, path to a file to load skeleton from
 
     scaling : str
@@ -1061,7 +1061,7 @@ def prune_short_end_branches(anno, length, debug_labels=False):
 def skeleton_from_single_coordinate(
         coordinate, comment=None, branchpoint=False):
     """
-    Return a NewSkeleton object containing exactly one annotation with
+    Return a Skeleton object containing exactly one annotation with
     exactly one node at position coordinate.
     This is good for generating seed NML files for specific coordinates.
 
@@ -1078,7 +1078,7 @@ def skeleton_from_single_coordinate(
     Returns
     -------
 
-    s : NewSkeleton instance
+    s : Skeleton instance
     """
 
     s = Skeleton()
@@ -1574,7 +1574,7 @@ def annotation_matcher(annotations,
     Parameters
     ----------
 
-    annotations :    list of NewSkeleton.annotation objects
+    annotations :    list of Skeleton.annotation objects
     spotlightRadius: int [nm] that defines the radius of a sphere  around a
                     currently
                     searched node used to find nodes in other annotations
@@ -1953,7 +1953,7 @@ def getAnnosByCommentRegex(regex, annotations):
 def annotation_to_nx_graph(annotation):
     """
     Creates a network x graph representation of an annotation object.
-    :param annotation: NewSkeleton.annotation object
+    :param annotation: Skeleton.annotation object
     :return: networkx graph object
     """
 
@@ -1980,7 +1980,7 @@ def nx_graph_to_annotation(G, scaling=None):
     """
     Turn a NetworkX graph into a SkeletonAnnotation. Nodes in the graph are
     assumed to be SkeletonNode instances, but only the edges present in the
-    NetworkX graph are used, potentially existing NewSkeleton style edges are
+    NetworkX graph are used, potentially existing Skeleton style edges are
     ignored.
 
     Parameters
