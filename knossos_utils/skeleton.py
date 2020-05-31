@@ -228,7 +228,7 @@ class Skeleton:
         :return:
         """
 
-    def fromNml(self, filename, scaling=None, comment=None, meta_info_only=False, read_time=True):
+    def fromNml(self, filename, scaling=None, comment=None, meta_info_only=False, read_time=False):
         if str(filename).endswith('k.zip'):
             with zipfile.ZipFile(filename, 'r') as zipper:
                 if 'annotation.xml' not in zipper.namelist():
@@ -242,7 +242,7 @@ class Skeleton:
 
         return self
 
-    def fromNmlString(self, nmlString, scaling=None, comment=None, meta_info_only=False, read_time=True):
+    def fromNmlString(self, nmlString, scaling=None, comment=None, meta_info_only=False, read_time=False):
         doc = minidom.parseString(nmlString)
         self.fromDom(doc, scaling, comment, meta_info_only=False, read_time=read_time)
 
@@ -275,7 +275,7 @@ class Skeleton:
                 self.fromNmlString(nml_content, scaling=scaling, read_time=False)
                 self.skeleton_time = get_time(nml_content)
 
-    def fromDom(self, doc, scaling=None, comment=None, meta_info_only=False, read_time=True, warn=True):
+    def fromDom(self, doc, scaling=None, comment=None, meta_info_only=False, read_time=False, warn=True):
         try:
             [self.experiment_name] = parse_attributes(
                 doc.getElementsByTagName(
