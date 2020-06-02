@@ -63,7 +63,7 @@ class Skeleton:
         self.task_project = ''
         self.task_category = ''
         self.task_name = ''
-        self.branchNodes = [] # list of node IDs
+        self.branchNodes = [] # list of SkeletonNode
         self.active_node = None
         self.edit_position = None
         self.experiment_name = None
@@ -407,7 +407,7 @@ class Skeleton:
         branch_elems = doc.getElementsByTagName("branchpoint")
         for branch_elem in branch_elems:
             [nodeID] = parse_attributes(branch_elem, [["id", int]])
-            self.branchNodes.append(nodeID)
+            self.branchNodes.append(node_ID_to_node[nodeID + base_id])
         return self
 
 
