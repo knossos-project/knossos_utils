@@ -1141,7 +1141,7 @@ class KnossosDataset(object):
                                     values = imageio.imread(request.content)
                             else:
                                 with zipfile.ZipFile(BytesIO(request.content), 'r') as zf:
-                                    snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
+                                    snappy_cube = zf.read(zf.namelist()[0]) # seg.sz (without .zip)
                                     raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
                                     values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
                             try:# check if requested values match shape
@@ -1165,7 +1165,7 @@ class KnossosDataset(object):
                     if os.path.exists(path):
                         if from_overlay:
                             with zipfile.ZipFile(path, 'r') as zf:
-                                snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
+                                snappy_cube = zf.read(zf.namelist()[0]) # seg.sz (without .zip)
                             raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
                             values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
                         elif self._cube_type == KnossosDataset.CubeType.RAW:
