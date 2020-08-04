@@ -1359,7 +1359,7 @@ _BaseExt = .seg.sz.zip
                 for x in range(start[0], end[0]):
                     cube_coordinates.append([x, y, z])
 
-        with ThreadPoolExecutor() as pool:
+        with ThreadPoolExecutor(max_workers=min(32, os.cpu_count() + 4)) as pool:
             results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
 
         if results.count(None) < len(results):
@@ -2285,7 +2285,7 @@ _BaseExt = .seg.sz.zip
 
                         multithreading_params.append(this_cube_info)
 
-            with ThreadPoolExecutor() as pool:
+            with ThreadPoolExecutor(max_workers=min(32, os.cpu_count() + 4)) as pool:
                 list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
     def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
