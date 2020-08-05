@@ -2609,4 +2609,3 @@ def _downsample_kd_thread(args):
                             data=data, as_raw=as_raw, nb_threads=1,
                             overwrite=False, datatype=datatype, verbose=False,
                             fast_downsampling=fast_downsampling)
-
