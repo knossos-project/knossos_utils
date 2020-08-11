@@ -1659,19 +1659,20 @@ class KnossosDataset(object):
         if out_mags is None:
             out_mags = []
         if chunk_size is None:
-            mat, area_min, size = self.from_kzip_movement_area_to_matrix(str(kzip_path), mag=source_mag, apply_mergelist=False, return_area=True)
-            area_max = np.array(area_min) + np.array(size) - 1
+            area_min, area_max = self.get_movement_area(kzip_path)
+            size = area_max - area_min - 1
+            mat = self._load_kzip_seg(str(kzip_path), offset=area_min, size=size, mag=source_mag, apply_mergelist=False)
         else:
             area_min, area_max = self.get_movement_area(str(kzip_path))
             for offset in self.iter(area_min, area_max, chunk_size):
-                mat = self.from_kzip_to_matrix(path=str(kzip_path), offset=offset, size=chunk_size, mag=source_mag, apply_mergelist=False)
-                self.from_matrix_to_cubes(offset=offset, data=mat, data_mag=source_mag, kzip_path=dest_path,
-                                          mags=out_mags, downsample=downsample, upsample=upsample, compress_kzip=False)
+                mat = self._load_kzip_seg(path=str(kzip_path), offset=offset, size=chunk_size, mag=source_mag, apply_mergelist=False)
+                self.save_to_kzip(offset=offset, data=mat, data_mag=source_mag, kzip_path=dest_path, gen_mergelist=True,
+                                  mags=out_mags, downsample=downsample, upsample=upsample, compress_kzip=False)
             area_min = offset
         skel = k_skel.Skeleton()
         mag_limit = 1
         if len(out_mags) > 0:
-            mag_limit = np.log2(max(out_mags)) if self._ordinal_mags else max(out_mags)
+            mag_limit = np.log2(max(out_mags)) if not self._ordinal_mags else max(out_mags)
         elif downsample:
             mag_limit = self.highest_mag
         skel.movement_area_min = np.array(area_min) + (mag_limit - np.array(area_min) % mag_limit)
@@ -1679,8 +1680,8 @@ class KnossosDataset(object):
         skel.set_scaling(self.scales[0])
         skel.experiment_name = self.experiment_name
         annotation_str = skel.to_xml_string()
-        self.from_matrix_to_cubes(offset=area_min, data=mat, data_mag=source_mag, kzip_path=dest_path, mags=out_mags,
-                                  downsample=downsample, upsample=upsample, annotation_str=annotation_str)
+        self.save_to_kzip(offset=area_min, data=mat, data_mag=source_mag, kzip_path=dest_path, mags=out_mags, gen_mergelist=True,
+                          downsample=downsample, upsample=upsample, annotation_str=annotation_str)
 
     def from_raw_cubes_to_image_stack(self, size, offset, output_path,
                                       name="img", output_format='png', mag=1,
