@@ -285,7 +285,7 @@ class ChunkDataset(object):
 
     def initialize(self, knossos_dataset_object, box_size,
                    chunk_size, path_head_folder, overlap=np.zeros(3),
-                   list_of_coords=[], box_coords=None, fit_box_size=False):
+                   list_of_coords=None, box_coords=None, fit_box_size=False):
         """ Calculates the coordinates of all chunks and initializes them
 
         Parameters:
@@ -308,7 +308,8 @@ class ChunkDataset(object):
 
         nothing so far
         """
-
+        if list_of_coords is None:
+            list_of_coords = []
         box_size = np.array(box_size).copy()
         if fit_box_size:
             for dim in range(3):
