@@ -555,6 +555,7 @@ class KnossosDataset(object):
                 layer._conf_path = path_to_pyknossos_conf
                 layer._ordinal_mags = True # pyk.conf is ordinal by default
                 layer._cube_shape = [128, 128, 128] # default cube shape
+                layer.layers = [layer]
                 layers.append(layer)
             if key == "_BaseName":
                 layer._experiment_name = tokens[1]
