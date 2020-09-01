@@ -53,6 +53,7 @@ from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from threading import Lock
 from xml.etree import ElementTree as ET
+import warnings
 
 import imageio
 import h5py
@@ -1592,8 +1593,12 @@ class KnossosDataset(object):
         experiment_name = self.experiment_name
         for file in archive.namelist():
             if file.endswith('.seg.sz'):
-                experiment_name = file[0:re.search(r'_mag\d+x\d+y\d+z\d+.seg.sz', file).span()[0]]
-                break
+                match = re.search(r'_mag\d+x\d+y\d+z\d+.seg.sz', file)
+                if match is None:
+                    warnings.warn(f'{path}: found seg cube with invalid name: {file}')
+                else:
+                    experiment_name = file[0:match.span()[0]]
+                    break
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
                 for x in range(start[0], end[0]):
