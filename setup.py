@@ -37,6 +37,7 @@ install_requires = [
     "imageio",
     "numpy>=1.10",
     "scipy>=0.16",
+    "toml",
     "networkx>=1.11",
     "requests>=2.12",
     "matplotlib",

@@ -33,6 +33,8 @@ reading and writing raw and overlay data."""
 
 
 import collections
+import dataclasses
+from dataclasses import dataclass
 import glob
 import os
 import pickle
@@ -42,6 +44,8 @@ import shutil
 import sys
 import tempfile
 import time
+import toml
+from typing import List, Optional, Union
 import urllib
 import warnings
 import zipfile
@@ -295,7 +299,9 @@ class KnossosDataset(object):
         self.url = None
         self._http_user = None
         self._http_passwd = None
+        self.server_format = None
         self._experiment_name = None
+        self.description = None
         self.layers = []
         self._name_mag_folder = 'mag'
         self._ordinal_mags = False
@@ -553,11 +559,67 @@ class KnossosDataset(object):
 
     def initialize_from_conf(self, path_to_conf):
         path_to_conf = str(path_to_conf)
-        if path_to_conf.endswith("ariadne.conf") or path_to_conf.endswith(".pyknossos.conf") or path_to_conf.endswith(".pyk.conf"):
+        if path_to_conf.endswith('.k.toml'):
+            self.initialize_from_toml(path_to_conf)
+        elif path_to_conf.endswith("ariadne.conf") or path_to_conf.endswith(".pyknossos.conf") or path_to_conf.endswith(".pyk.conf"):
             self.initialize_from_pyknossos_path(path_to_conf)
         else:
             self.initialize_from_knossos_path(path_to_conf)
             self.layers = [self]
+
+    def initialize_from_toml(self, path_to_toml: Union[str, Path]):
+        def initialize(layer):
+            layer._knossos_path = os.path.dirname(path_to_toml) + "/"
+            layer._initialized = True
+            layer._initialize_cache(0)
+        try:
+            conf = toml.load(path_to_toml)
+        except FileNotFoundError as e:
+            raise NotImplementedError("Could not read .conf: {}".format(e))
+
+        layers = []
+        for layer_conf in conf['Layer']:
+            for ext in layer_conf['FileExtension']:
+                layer = KnossosDataset(show_progress=self.show_progress)
+                layer._conf_path = path_to_toml
+                layer._ordinal_mags = True
+                layer._cube_shape = [128, 128, 128]
+                layer.layers = [layer]
+                layers.append(layer)
+                layer._experiment_name = layer_conf['Name']
+                if 'URL' in layer_conf:
+                    layer.url = layer_conf['URL']
+                    split_url = urllib.parse.urlsplit(layer.url)
+                    layer._http_user = split_url.username
+                    layer._http_user = split_url.password
+                layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
+                layer._ordinal_mags = True
+                layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
+                layer._scale = layer.scales[0]
+                layer._boundary = layer_conf['Extent_px']
+                layer._cube_shape = layer_conf['CubeShape_px']
+                layer.description = layer_conf.get('Description', layer.description)
+                layer._raw_ext = ext if ext != '.seg.sz.zip' else None
+                layer.is_seg = layer._raw_ext is None
+
+        for layer in layers:
+            layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
+            initialize(layer)
+            if layer.url is None:
+                layer.url = f'file://{layer._knossos_path}'
+            # set to first local layer or to first remote layer if there is no local one.
+            if not self._initialized or (self.in_http_mode and not layer.in_http_mode):
+                self.__dict__.update(layer.__dict__)
+
+        self.layers = layers
+
+    def save_toml(self, path_to_toml: Union[str, Path]):
+        with open(path_to_toml, 'w') as toml_file:
+            string = ''
+            for layer in self.layers:
+                string += '[[Layer]]\n'
+                string += LayerConfig(layer).to_toml_string() + '\n'
+            toml_file.write(string[:-1])
 
     def initialize_from_pyknossos_path(self, path_to_pyknossos_conf):
         """ Parse a pyknossos conf
@@ -627,6 +689,8 @@ class KnossosDataset(object):
                 layer.visible = bool(int(tokens[1]))
 
         for layer in layers:
+            if layer._raw_ext is not None and not layer._raw_ext.startswith('.'):
+                layer._raw_ext = '.' + layer._raw_ext
             layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
             initialize(layer)
             if layer.url is None:
@@ -1197,7 +1261,7 @@ class KnossosDataset(object):
             from_cache = values is not None
 
             if not from_cache:
-                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{cube_coord[0]:04d}_y{cube_coord[1]:04d}_z{cube_coord[2]:04d}.{"seg.sz.zip" if from_overlay else self._raw_ext}'
+                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{cube_coord[0]:04d}_y{cube_coord[1]:04d}_z{cube_coord[2]:04d}{".seg.sz.zip" if from_overlay else self._raw_ext}'
                 path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{cube_coord[0]:04d}/y{cube_coord[1]:04d}/z{cube_coord[2]:04d}/{filename}'
 
                 if self.in_http_mode:
@@ -2206,8 +2270,8 @@ class KnossosDataset(object):
                                 ext = save_layer._raw_ext
                             else:
                                 save_layer = self
-                                ext = 'seg.sz'
-                            path += f'{save_layer.experiment_name}_{save_layer.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}.{ext}'
+                                ext = '.seg.sz'
+                            path += f'{save_layer.experiment_name}_{save_layer.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}{ext}'
                         else:
                             path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
                         this_cube_info.append(path)
@@ -2383,7 +2447,7 @@ class KnossosDataset(object):
                         glob_input = self.knossos_path + \
                                      self._name_mag_folder + \
                                      str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
-                                     self._experiment_name + "*." + self._raw_ext
+                                     self._experiment_name + "*" + self._raw_ext
                     else:
                         glob_input = self.knossos_path + \
                                      self._name_mag_folder + \
@@ -2403,3 +2467,40 @@ class KnossosDataset(object):
         else:
             for params in multi_params:
                 _find_and_delete_cubes_process(params)
+
+
+@dataclass
+class LayerConfig:
+    URL: Optional[str]
+    Name: str
+    ServerFormat: Optional[str]
+    FileExtension: List[str]
+    Extent_px: List[int]
+    VoxelSize_nm: List[List[float]]
+    CubeShape_px: List[int]
+    Description: Optional[str]
+
+    def __init__(self, layer: KnossosDataset):
+        self.URL = layer.url
+        self.Name = layer.experiment_name
+        self.ServerFormat = layer.server_format
+        self.FileExtension = ['.seg.sz.zip' if layer.is_seg else layer._raw_ext]
+        self.Extent_px = list(layer.boundary)
+        self.VoxelSize_nm = [scale.tolist() for scale in layer.scales]
+        self.CubeShape_px = list(layer.cube_shape)
+        self.Description = layer.description
+
+    def to_toml_string(self):
+        string = ''
+        for key, value in dataclasses.asdict(self).items():
+            if value is not None:
+                string += f'{key} = {self.elem_to_toml_string(value)}\n'
+        return string
+
+    def elem_to_toml_string(self, elem):
+        if isinstance(elem, list):
+            return '[' + ', '.join([self.elem_to_toml_string(sub_elem) for sub_elem in elem]) + ']'
+        elif isinstance(elem, str):
+            return f"'{elem}'"
+        else:
+            return str(elem)
