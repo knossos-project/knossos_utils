@@ -63,7 +63,6 @@ class Skeleton:
         self.task_project = ''
         self.task_category = ''
         self.task_name = ''
-        self.branchNodes = [] # list of SkeletonNode
         self.active_node = None
         self.edit_position = None
         self.experiment_name = None
@@ -116,8 +115,11 @@ class Skeleton:
         all_nodes = set(all_nodes_lst)
         return all_nodes
 
-    def getBranchpoints(self):
-        return [node for node in self.getNodes() if node.is_branch_point()]
+    def getBranchNodes(self):
+        return [node for node in self.getNodes() if node.marked_branch_node]
+
+    def getForkPoints(self):
+        return [node for node in self.getNodes() if node.is_fork_point()]
 
     def getNodeByID(self, node_id):
         for annotation in self.annotations:
@@ -407,7 +409,7 @@ class Skeleton:
         branch_elems = doc.getElementsByTagName("branchpoint")
         for branch_elem in branch_elems:
             [nodeID] = parse_attributes(branch_elem, [["id", int]])
-            self.branchNodes.append(node_ID_to_node[nodeID + base_id])
+            node_ID_to_node[nodeID + base_id].marked_branch_node = True
         return self
 
 
@@ -593,7 +595,7 @@ class Skeleton:
 
         branchNodes_elem = doc.createElement("branchpoints")
         annotations_elem.appendChild(branchNodes_elem)
-        for branchNode in self.branchNodes:
+        for branchNode in self.getBranchNodes():
             branchNode_elem = doc.createElement("branchpoint")
             build_attributes(branchNode_elem, [["id", branchNode.getUniqueID()]])
             branchNodes_elem.appendChild(branchNode_elem)
@@ -971,8 +973,8 @@ class SkeletonAnnotation:
     def getRoot(self):
         return self.root
 
-    def get_branch_points(self):
-        return [node for node in self.nodes if node.is_branch_point()]
+    def get_fork_points(self):
+        return [node for node in self.nodes if node.is_fork_point()]
 
     def setRootInternal(self, root):
         self.root = root
@@ -1068,6 +1070,7 @@ class SkeletonNode:
         self.pure_comment = ""
         self.metadata = {}
         self.annotation = None
+        self.marked_branch_node = False
         return
 
     def __init__(self):
@@ -1332,7 +1335,7 @@ class SkeletonNode:
     def getParents(self):
         return self.annotation.getNodeReverseEdges(self)
 
-    def is_branch_point(self):
+    def is_fork_point(self):
         return self.degree() > 2
 
     def is_connected_to(self, node):
