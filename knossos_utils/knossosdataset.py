@@ -42,6 +42,7 @@ import shutil
 import sys
 import tempfile
 import time
+import urllib
 import warnings
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -343,7 +344,7 @@ class KnossosDataset(object):
                             continue
             else:
                 regex = re.compile("mag[1-9][0-9]*$")
-                for mag_folder in glob.glob(os.path.join(self._knossos_path, "*mag*")):
+                for mag_folder in glob.glob(os.path.join(self.knossos_path, "*mag*")):
                     match = regex.search(mag_folder)
                     if match is not None:
                         self._mags.append(int(mag_folder[match.start() + 3:])) # mag number
@@ -369,8 +370,8 @@ class KnossosDataset(object):
     def knossos_path(self):
         if self.in_http_mode:
             return self.url
-        elif self._knossos_path:
-            return self._knossos_path
+        elif self.url or self._knossos_path:
+            return urllib.parse.urlparse(self.url).path if self.url else self._knossos_path
         else:
             raise Exception("No knossos path available")
 
@@ -2259,16 +2260,16 @@ class KnossosDataset(object):
         """
         multi_params = []
         for mag in range(32):
-            if os.path.exists(self._knossos_path+self._name_mag_folder +
+            if os.path.exists(self.knossos_path+self._name_mag_folder +
                               str(2**mag)):
                 for x_cube in range(int(self._number_of_cubes[0] // 2**mag+1)):
                     if raw:
-                        glob_input = self._knossos_path + \
+                        glob_input = self.knossos_path + \
                                      self._name_mag_folder + \
                                      str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
                                      self._experiment_name + "*." + self._raw_ext
                     else:
-                        glob_input = self._knossos_path + \
+                        glob_input = self.knossos_path + \
                                      self._name_mag_folder + \
                                      str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
                                      self._experiment_name + "*seg*"
