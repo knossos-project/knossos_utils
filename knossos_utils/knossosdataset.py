@@ -905,6 +905,7 @@ _DataScale = {1}
 _Extent = {2}
 _Description = "streaming optimized"
 _BaseExt = .jpg
+_CubeSize = {4}
 
 [Dataset]
 _BaseName = {0}
@@ -913,9 +914,10 @@ _DataScale = {1}
 _Extent = {2}
 _Description = {3}
 _BaseExt = .raw
+_CubeSize = {4}
     """.format(self._experiment_name, scales,
                ','.join([str(int(el)) for el in self.boundary]),
-               descriptions['raw'])
+               descriptions['raw'], ','.join([str(int(el)) for el in self.cube_shape]))
 
         if include_overlay:
             config_str += """\n\n[Dataset]
@@ -925,9 +927,10 @@ _DataScale = {}
 _Extent = {}
 _Description = {}
 _BaseExt = .seg.sz.zip
+_CubeSize = {}
     """.format(self._experiment_name, scales,
                ','.join([str(int(el)) for el in self.boundary]),
-               descriptions['overlay'])
+               descriptions['overlay'], ','.join([str(int(el)) for el in self.cube_shape]))
         with open(path_to_pyknossos_conf, "w") as f:
             f.write(config_str)
 
