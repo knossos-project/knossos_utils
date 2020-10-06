@@ -1489,29 +1489,54 @@ class KnossosDataset(object):
                                          http_verbose=http_verbose,
                                          show_progress=show_progress)
 
-    def get_movement_area(self, kzip_path):
+    def read_movement_area(self, kzip_path):
         try:
             with zipfile.ZipFile(kzip_path, "r") as zf:
                 xml_str = zf.read('annotation.xml').decode()
             annotation_xml = ET.fromstring(xml_str)
             area_elem = annotation_xml.find("parameters/MovementArea")
-            area_min = (int(area_elem.get("min.x")),
-                        int(area_elem.get("min.y")),
-                        int(area_elem.get("min.z")))
-            area_max = (int(area_elem.get("max.x")),
-                        int(area_elem.get("max.y")),
-                        int(area_elem.get("max.z")))
+            area_min = [0, 0, 0]
+            area_size = np.copy(self.boundary)
+            area_max = np.copy(self.boundary)
+            size_exists = False
+            for key, value in area_elem.items():
+                if key == 'min.x':
+                    area_min[0] = int(value)
+                elif key == 'min.y':
+                    area_min[1] = int(value)
+                elif key == 'min.z':
+                    area_min[2] = int(value)
+                elif key == 'size.x':
+                    size_exists = True
+                    area_size[0] = int(value)
+                elif key == 'size.y':
+                    size_exists = True
+                    area_size[1] = int(value)
+                elif key == 'size.z':
+                    size_exists = True
+                    area_size[2] = int(value)
+                elif key == 'max.x':
+                    area_max[0] = int(value)
+                elif key == 'max.y':
+                    area_max[1] = int(value)
+                elif key == 'max.z':
+                    area_max[2] = int(value)
+            if not size_exists:
+                area_size = area_max - area_min
         except (KeyError, AttributeError):
             # KeyError: annotation.xml does not exist, AttributeError: xml elem does not exist
-            # Error if attribute missing, because this is probably not intended
             return np.array([0, 0, 0]), self.boundary
-        return (np.array(area_min), np.array(area_max))
+        return (np.array(area_min), np.array(area_size))
+
+    def get_movement_area(self, kzip_path):
+        print('get_movement_area is DEPRECATED.\nPlease use read_movement_area. Instead of movement area min and max, it will return min and size.')
+        area_min, area_size = self.read_movement_area(kzip_path)
+        return area_min, area_min + area_size
 
     def load_kzip_seg(self, path, mag, return_area=False):
-        area_min, area_max = self.get_movement_area(path)
-        size = area_max - area_min
-        matrix = self._load_kzip_seg(path=path, offset=area_min, size=size, mag=mag)
-        return (matrix, area_min, size) if return_area else matrix
+        area_min, area_size = self.read_movement_area(path)
+        matrix = self._load_kzip_seg(path=path, offset=area_min, size=area_size, mag=mag)
+        return (matrix, area_min, area_size) if return_area else matrix
 
     def from_kzip_to_matrix(self, path, size, offset, mag=8, empty_cube_label=0,
                             datatype=np.uint64,
@@ -1665,13 +1690,11 @@ class KnossosDataset(object):
             dest_path = kzip_path
         if out_mags is None:
             out_mags = []
+        area_min, area_size = self.read_movement_area(str(kzip_path))
         if chunk_size is None:
-            area_min, area_max = self.get_movement_area(kzip_path)
-            size = area_max - area_min - 1
-            mat = self._load_kzip_seg(str(kzip_path), offset=area_min, size=size, mag=source_mag, apply_mergelist=False)
+            mat = self._load_kzip_seg(str(kzip_path), offset=area_min, size=area_size, mag=source_mag, apply_mergelist=False)
         else:
-            area_min, area_max = self.get_movement_area(str(kzip_path))
-            for offset in self.iter(area_min, area_max, chunk_size):
+            for offset in self.iter(area_min, area_min + area_size, chunk_size):
                 mat = self._load_kzip_seg(path=str(kzip_path), offset=offset, size=chunk_size, mag=source_mag, apply_mergelist=False)
                 self.save_to_kzip(offset=offset, data=mat, data_mag=source_mag, kzip_path=dest_path, gen_mergelist=True,
                                   mags=out_mags, downsample=downsample, upsample=upsample, compress_kzip=False)
@@ -1683,7 +1706,9 @@ class KnossosDataset(object):
         elif downsample:
             mag_limit = self.highest_mag
         skel.movement_area_min = np.array(area_min) + (mag_limit - np.array(area_min) % mag_limit)
-        skel.movement_area_max = np.maximum(area_max - np.array(area_max) % mag_limit, skel.movement_area_min + 1)
+        area_max = area_min + area_size
+        area_max = np.maximum(area_max - np.array(area_max) % mag_limit, skel.movement_area_min + 1)
+        skel.movement_area_size = area_max - skel.movement_area_min
         skel.set_scaling(self.scales[0])
         skel.experiment_name = self.experiment_name
         annotation_str = skel.to_xml_string()

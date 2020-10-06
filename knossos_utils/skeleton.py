@@ -68,8 +68,7 @@ class Skeleton:
         self.experiment_name = None
         self.dataset_path = None
         self.movement_area_min = None
-        self.movement_area_max = None
-        return
+        self.movement_area_size = None
 
     def set_edit_position(self, edit_position):
         self.edit_position = edit_position
@@ -156,9 +155,14 @@ class Skeleton:
             annotation.annotation_ID = max_annotation_id + 1
         self.annotations.add(annotation)
 
-    def add_movement_area(self, area_min, area_max):
+    def set_movement_area(self, area_min, area_size):
         self.movement_area_min = np.array(area_min, dtype=np.int)
-        self.movement_area_max = np.array(area_max, dtype=np.int)
+        self.movement_area_size = np.array(area_size, dtype=np.int)
+
+    def add_movement_area(self, area_min, area_max):
+        print('add_movement_area is DEPRECATED.\nPlease use set_movement_area. Instead of movement area min and max, it will set min and size.')
+        self.movement_area_min = np.array(area_min, dtype=np.int)
+        self.movement_area_size = area_max - self.movement_area_min
 
     def toSWC(self, basename, px=False, dest_folder=''):
         """
@@ -292,11 +296,15 @@ class Skeleton:
             self.dataset_path = None
         try: # movement area
             movement_area = doc.getElementsByTagName("parameters")[0].getElementsByTagName("MovementArea")[0]
-            self.movement_area_min = parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]])
-            self.movement_area_max = parse_attributes(movement_area, [["max.x", int], ["max.y", int], ["max.z", int]])
+            self.movement_area_min = np.array(parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]]), dtype=np.int)
+            if 'size.x' in movement_area.attributes or 'size.y' in movement_area.attributes or 'size.z' in movement_area.attributes:
+                self.movement_area_size = np.array(parse_attributes(movement_area, [["size.x", int], ["size.y", int], ["size.z", int]]), dtype=np.int)
+            else:
+                area_max = np.array(parse_attributes(movement_area, [["max.x", int], ["max.y", int], ["max.z", int]]), dtype=np.int)
+                self.movement_area_size = area_max - self.movement_area_min
         except IndexError:
-            self.movement_area_max = None
             self.movement_area_min = None
+            self.movement_area_size = None
 
         try_time_slice_version = False
         if read_time:
@@ -528,20 +536,22 @@ class Skeleton:
                  ["z", self.edit_position[2]], ])
             parameters.appendChild(edit_position)
 
-        min_properties = []
-        max_properties = []
-        if self.movement_area_min is not None:
-            min_properties = [["min.x", self.movement_area_min[0]],
-                              ["min.y", self.movement_area_min[1]],
-                              ["min.z", self.movement_area_min[2]]]
-        if self.movement_area_max is not None:
-            max_properties = [["max.x", self.movement_area_max[0]],
-                              ["max.y", self.movement_area_max[1]],
-                              ["max.z", self.movement_area_max[2]]]
-        if len(min_properties) > 0 or len(max_properties) > 0:
+        area_attributes = []
+        if self.movement_area_min:
+            area_attributes.append([["min.x", self.movement_area_min[0]],
+                                    ["min.y", self.movement_area_min[1]],
+                                    ["min.z", self.movement_area_min[2]]])
+        if self.movement_area_size:
+            area_attributes.append([["size.x", self.movement_area_size[0]],
+                                    ["size.y", self.movement_area_size[1]],
+                                    ["size.z", self.movement_area_size[2]]])
+        if self.movement_area_min and self.movement_area_size:
+            area_attributes.append([["max.x", self.movement_area_min[0] + self.movement_area_size[0]],
+                                    ["max.y", self.movement_area_min[1] + self.movement_area_size[1]],
+                                    ["max.z", self.movement_area_min[2] + self.movement_area_size[2]]])
+        if len(area_attributes) > 0:
             movement_area = doc.createElement("MovementArea")
-            build_attributes(movement_area,
-                             [attribute for attribute in min_properties] + [attribute for attribute in max_properties])
+            build_attributes(movement_area, area_attributes)
             parameters.appendChild(movement_area)
 
         if self.task_category or self.task_name:
@@ -1187,7 +1197,7 @@ class SkeletonNode:
         return [self.x, self.y, self.z]
 
     def setCoordinate(self, coord):
-        if len(coord) is not 3:
+        if len(coord) != 3:
             raise Exception('Coordinate dimensionality must be 3.')
 
         self.x = coord[0]
@@ -1362,7 +1372,7 @@ class SkeletonNode:
 
     def getSingleParent(self):
         parents = self.getParents()
-        if len(parents) is not 1:
+        if len(parents) != 1:
             raise RuntimeError("Not a Single Parent!")
         return list(parents)[0]
 
