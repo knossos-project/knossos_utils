@@ -1988,7 +1988,7 @@ class KnossosDataset(object):
             if not np.any(cube):
                self._print(path, 'no data to write, cube will be removed if present')
 
-            if kzip_path is None:
+            if not kzip_path:
                 while True:
                     try:
                         os.makedirs(folder_path, exist_ok=True)
@@ -1998,34 +1998,30 @@ class KnossosDataset(object):
                         time.sleep(random.uniform(0.1, 1.0))
                         pass
 
-                block_path = os.path.join(folder_path, 'block')
-                while True:
-                    try:
-                        os.makedirs(block_path)    # Semaphore --------
-                        break
-                    except (FileExistsError, PermissionError):
-                        try:
-                            if time.time() - os.stat(block_path).st_mtime <= 30:
-                                time.sleep(random.uniform(0.1, 1.0)) # wait for other workers to finish
-                            else:
-                                print(f'had to remove block folder {block_path} that wasn’t accessed recently {os.stat(block_path).st_mtime}')
-                                os.rmdir(block_path)
-                        except FileNotFoundError:
-                            pass # folder was removed by another worker in the meantime
-
-                self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube,
-                               overwrite_offset=cube_offset if overwrite else None,
-                               overwrite_limit=cube_limit if overwrite else None)
-
+            block_path = f'{path}-block'
+            while True:
                 try:
-                    os.rmdir(block_path)   # ------------------------------
-                except FileNotFoundError:
-                    print(f'another worker removed our semaphore {block_path}')
-                    pass
-            else:
-                self.save_cube(cube_path=path, data=cube,
-                                overwrite_offset=cube_offset if overwrite else None,
-                                overwrite_limit=cube_limit if overwrite else None)
+                    os.makedirs(block_path)    # file lock -------------
+                    break
+                except (FileExistsError, PermissionError):
+                    try:
+                        if time.time() - os.stat(block_path).st_mtime <= 30:
+                            time.sleep(random.uniform(0.1, 1.0)) # wait for other workers to finish
+                        else:
+                            print(f'had to remove block folder {block_path} that wasn’t accessed recently {os.stat(block_path).st_mtime}')
+                            os.rmdir(block_path)
+                    except FileNotFoundError:
+                        pass # folder was removed by another worker in the meantime
+
+            self.save_cube(cube_path=path if as_raw or kzip_path else path + '.zip', data=cube,
+                            overwrite_offset=cube_offset if overwrite else None,
+                            overwrite_limit=cube_limit if overwrite else None)
+
+            try:
+                os.rmdir(block_path)   # ------------------------------
+            except FileNotFoundError:
+                print(f'another worker removed our semaphore {block_path}')
+                pass
 
         # Main Function
         assert self.initialized, 'Dataset is not initialized'
