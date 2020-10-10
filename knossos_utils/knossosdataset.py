@@ -2005,7 +2005,7 @@ class KnossosDataset(object):
                     break
                 except (FileExistsError, PermissionError):
                     try:
-                        if time.time() - os.stat(block_path).st_mtime <= 30:
+                        if time.time() - filesystem_process_time_diff - os.stat(block_path).st_mtime <= 30:
                             time.sleep(random.uniform(0.1, 1.0)) # wait for other workers to finish
                         else:
                             print(f'had to remove block folder {block_path} that wasn’t accessed recently {os.stat(block_path).st_mtime}')
@@ -2044,6 +2044,10 @@ class KnossosDataset(object):
                 kzip_path = kzip_path[:-6]
             if not os.path.exists(kzip_path):
                 os.makedirs(kzip_path)
+
+        # obtain clock difference between write destination and process system for correct block file age determination
+        with tempfile.NamedTemporaryFile(dir=kzip_path if kzip_path else os.path.dirname(self._conf_path)) as time_file:
+            filesystem_process_time_diff = time.time() - os.stat(time_file.name).st_mtime
 
         for mag in mags:
             ratio = self.scale_ratio(mag, data_mag)[::-1]
