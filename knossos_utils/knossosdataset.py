@@ -1166,17 +1166,21 @@ class KnossosDataset(object):
                         raise Exception(f'Max. #tries reached. ({self.http_max_tries})')
                 else:
                     if os.path.exists(path):
-                        if from_overlay:
-                            with zipfile.ZipFile(path, 'r') as zf:
-                                snappy_cube = zf.read(zf.namelist()[0]) # seg.sz (without .zip)
-                            raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
-                            values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
-                        elif self._cube_type == KnossosDataset.CubeType.RAW:
-                            flat_shape = int(np.prod(self.cube_shape))
-                            values = np.fromfile(path, dtype=np.uint8, count=flat_shape).astype(datatype)
-                        else: # compressed
-                            values = imageio.imread(path)
-                        valid_values = True
+                        try:
+                            if from_overlay:
+                                with zipfile.ZipFile(path, 'r') as zf:
+                                    snappy_cube = zf.read(zf.namelist()[0]) # seg.sz (without .zip)
+                                raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
+                                values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                            elif self._cube_type == KnossosDataset.CubeType.RAW:
+                                flat_shape = int(np.prod(self.cube_shape))
+                                values = np.fromfile(path, dtype=np.uint8, count=flat_shape).astype(datatype)
+                            else: # compressed
+                                values = imageio.imread(path)
+                            valid_values = True
+                        except Exception as e:
+                            print(f'Reading cube failed: {path}')
+                            raise e
                     else:
                         self. _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
 
@@ -1868,23 +1872,21 @@ class KnossosDataset(object):
         dest_cube = data
         if os.path.isfile(cube_path):
             # read
-            if cube_path.endswith('.seg.sz.zip'):
-                try:
+            try:
+                if cube_path.endswith('.seg.sz.zip'):
                     with zipfile.ZipFile(cube_path, "r") as zf:
                         in_zip_name = os.path.basename(cube_path)[:-4]
                         dest_cube = np.fromstring(self.module_wide["snappy"].decompress(zf.read(in_zip_name)), dtype=np.uint64)
-                except zipfile.BadZipFile:
-                    print(cube_path, "is broken and will be overwritten")
-            elif cube_path.endswith('.seg.sz'):
-                with open(cube_path, "rb") as existing_file:
-                    dest_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
-            elif cube_path.endswith('.raw'):
-                dest_cube = np.fromfile(cube_path, dtype=np.uint8)
-            else: # png or jpg
-                try:
+                elif cube_path.endswith('.seg.sz'):
+                    with open(cube_path, "rb") as existing_file:
+                        dest_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
+                elif cube_path.endswith('.raw'):
+                    dest_cube = np.fromfile(cube_path, dtype=np.uint8)
+                else: # png or jpg
                     dest_cube = imageio.imread(cube_path)
-                except ValueError:
-                    print(cube_path, "is broken and will be overwritten")
+            except Exception as e:
+                print(f'Cube is broken and will be overwritten: {cube_path}')
+                raise e
             dest_cube = dest_cube.reshape(self.cube_shape[::-1])
 
             if overwrite_offset is not None or overwrite_limit is not None:
