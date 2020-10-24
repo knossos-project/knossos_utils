@@ -905,6 +905,7 @@ _DataScale = {1}
 _Extent = {2}
 _Description = "streaming optimized"
 _BaseExt = .jpg
+_CubeSize = {4}
 
 [Dataset]
 _BaseName = {0}
@@ -913,9 +914,10 @@ _DataScale = {1}
 _Extent = {2}
 _Description = {3}
 _BaseExt = .raw
+_CubeSize = {4}
     """.format(self._experiment_name, scales,
                ','.join([str(int(el)) for el in self.boundary]),
-               descriptions['raw'])
+               descriptions['raw'], ','.join([str(int(el)) for el in self.cube_shape]))
 
         if include_overlay:
             config_str += """\n\n[Dataset]
@@ -925,9 +927,10 @@ _DataScale = {}
 _Extent = {}
 _Description = {}
 _BaseExt = .seg.sz.zip
+_CubeSize = {}
     """.format(self._experiment_name, scales,
                ','.join([str(int(el)) for el in self.boundary]),
-               descriptions['overlay'])
+               descriptions['overlay'], ','.join([str(int(el)) for el in self.cube_shape]))
         with open(path_to_pyknossos_conf, "w") as f:
             f.write(config_str)
 
@@ -1359,7 +1362,8 @@ _BaseExt = .seg.sz.zip
                 for x in range(start[0], end[0]):
                     cube_coordinates.append([x, y, z])
 
-        with ThreadPoolExecutor(max_workers=min(32, os.cpu_count() + 4)) as pool:
+        # with ThreadPoolExecutor(max_workers=min(32, os.cpu_count() + 4)) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
 
         if results.count(None) < len(results):
@@ -2285,7 +2289,8 @@ _BaseExt = .seg.sz.zip
 
                         multithreading_params.append(this_cube_info)
 
-            with ThreadPoolExecutor(max_workers=min(32, os.cpu_count() + 4)) as pool:
+            # with ThreadPoolExecutor(max_workers=min(32, os.cpu_count() + 4)) as pool:
+            with ThreadPoolExecutor(max_workers=4) as pool:
                 list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
     def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
