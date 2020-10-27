@@ -472,14 +472,8 @@ class Skeleton:
         return max(high_ids)
 
     def toNml(self, filename, save_empty=True):
-        try:
-            f = open(filename, "w")
-            f.write(self.to_xml_string(save_empty))
-            f.close()
-        except Exception as e:
-            print("Couldn't open file for writing.")
-            print(e)
-        return
+        with open(filename, "w") as nml_file:
+            nml_file.write(self.to_xml_string(save_empty))
 
     def to_kzip(self, filename, save_empty=True, force_overwrite=False):
         """
