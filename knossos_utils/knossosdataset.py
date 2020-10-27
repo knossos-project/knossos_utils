@@ -424,7 +424,7 @@ class KnossosDataset(object):
         return (self.mag_scale(mag) / self.mag_scale(base_mag)) if self._ordinal_mags else np.array(3 * [float(mag) / base_mag])
 
     def iter(self, offset=(0, 0, 0), end=None, step=(512, 512, 512)):
-        end = np.minimum(end or self.boundary, self.boundary)
+        end = self.boundary if end is None else np.minimum(end, self.boundary)
         step = np.minimum(step, end - offset)
         return ((x, y, z) for x in range(offset[0], end[0], step[0])
                           for y in range(offset[1], end[1], step[1])
