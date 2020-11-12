@@ -2156,6 +2156,8 @@ class KnossosDataset(object):
         self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
 
     def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+        kzip_dir_path = kzip_path[:-6] if str(kzip_path).endswith('.k.zip') else kzip_path
+        assert not Path(kzip_dir_path).exists(), f'the folder used for kzip compression already exists: {kzip_dir_path}'
         self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=mags, gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
         self.compress_kzip(kzip_path=kzip_path)
 
