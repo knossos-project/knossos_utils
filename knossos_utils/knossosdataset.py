@@ -526,6 +526,7 @@ class KnossosDataset(object):
         return values
 
     def initialize_from_conf(self, path_to_conf):
+        path_to_conf = str(path_to_conf)
         if path_to_conf.endswith("ariadne.conf") or path_to_conf.endswith(".pyknossos.conf") or path_to_conf.endswith(".pyk.conf"):
             self.initialize_from_pyknossos_path(path_to_conf)
         else:
@@ -2156,7 +2157,8 @@ class KnossosDataset(object):
         self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
 
     def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
-        kzip_dir_path = kzip_path[:-6] if str(kzip_path).endswith('.k.zip') else kzip_path
+        kzip_path = str(kzip_path)
+        kzip_dir_path = kzip_path[:-6] if kzip_path.endswith('.k.zip') else kzip_path
         assert not Path(kzip_dir_path).exists(), f'the folder used for kzip compression already exists: {kzip_dir_path}'
         self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=mags, gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
         self.compress_kzip(kzip_path=kzip_path)
