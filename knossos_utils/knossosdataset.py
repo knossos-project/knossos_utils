@@ -2070,8 +2070,7 @@ class KnossosDataset(object):
             assert not as_raw, 'You have to choose between kzip and raw cubes'
             if kzip_path.endswith(".k.zip"):
                 kzip_path = kzip_path[:-6]
-            if not os.path.exists(kzip_path):
-                os.makedirs(kzip_path)
+            os.makedirs(kzip_path, exist_ok=True)
 
         # obtain clock difference between write destination and process system for correct block file age determination
         with tempfile.NamedTemporaryFile(dir=kzip_path if kzip_path else os.path.dirname(self._conf_path)) as time_file:
