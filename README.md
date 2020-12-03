@@ -40,3 +40,35 @@ out_dataset.save_raw(data=raw_chunk, data_mag=1, offset=(0, 0, 0))
 out_dataset.save_seg(data=seg_chunk, data_mag=1, offset=(0, 0, 0))
 out_dataset.save_to_kzip(data=kzip_chunk, data_mag=1, kzip_path='/write/destination.k.zip', offset=(0,0,0))
 ```
+
+# Skeleton
+
+A KNOSSOS skeleton is a graph structure with nodes and edges that are grouped into trees. This class can read skeletons from .k.zip or the legacy .nml format, but also import/export [SWC](http://www.neuronland.org/NLMorphologyConverter/MorphologyFormats/SWC/Spec.html).
+
+## Basic Usage
+
+```
+from knossos_utils.skeleton import Skeleton, SkeletonAnnotation, SkeletonNode
+
+skel = Skeleton()
+# loading from .k.zip or .nml
+skel.fromNml('/path/to/input.k.zip')
+
+# importing SWC
+skel.fromSWC('/path/to/input.swc')
+
+# iterating over nodes per tree
+for tree: SkeletonAnnotation in skel.getAnnotations():
+    for node: SkeletonNode in tree.getNodes():
+        ...
+
+# iterating over all nodes
+for node: skeletonNode in skel.getNodes():
+    ...
+
+# saving
+skel.to_kzip('/path/to/output.k.zip')
+
+# exporting to SWC. Each tree will be saved as one SWC with the specified basename, e.g. /output/folder/prefix0.swc
+skel.toSWC(basename='prefix', dest_folder='/output/folder')
+```
