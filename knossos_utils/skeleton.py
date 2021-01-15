@@ -531,15 +531,15 @@ class Skeleton:
             parameters.appendChild(edit_position)
 
         area_attributes = []
-        if self.movement_area_min:
+        if self.movement_area_min is not None:
             area_attributes += [["min.x", self.movement_area_min[0]],
                                 ["min.y", self.movement_area_min[1]],
                                 ["min.z", self.movement_area_min[2]]]
-        if self.movement_area_size:
+        if self.movement_area_size is not None:
             area_attributes += [["size.x", self.movement_area_size[0]],
                                 ["size.y", self.movement_area_size[1]],
                                 ["size.z", self.movement_area_size[2]]]
-        if self.movement_area_min and self.movement_area_size:
+        if self.movement_area_min is not None and self.movement_area_size is not None:
             area_attributes += [["max.x", self.movement_area_min[0] + self.movement_area_size[0]],
                                 ["max.y", self.movement_area_min[1] + self.movement_area_size[1]],
                                 ["max.z", self.movement_area_min[2] + self.movement_area_size[2]]]
