@@ -82,7 +82,7 @@ def create_prob_overlay_img(label_prob_dict, save_path, background=None,
     if np.max(background) <= 1:
         background *= 255.
     else:
-        background = np.array(background, dtype=np.float)
+        background = np.array(background, dtype=np.float32)
 
     comp = alpha_composite(comp, background)
 
@@ -207,7 +207,7 @@ def multi_dilation(overlay, n_dilations):
     for ix in unique_ixs:
         if ix == 0:
             continue
-        binary_mask = (overlay == ix).astype(np.int)
+        binary_mask = (overlay == ix).astype(np.int32)
         binary_mask = binary_dilation(binary_mask, iterations=n_dilations)
         overlay[binary_mask == 1] = ix
     return overlay

@@ -156,8 +156,8 @@ class Skeleton:
         self.annotations.add(annotation)
 
     def add_movement_area(self, area_min, area_max):
-        self.movement_area_min = np.array(area_min, dtype=np.int)
-        self.movement_area_max = np.array(area_max, dtype=np.int)
+        self.movement_area_min = np.array(area_min, dtype=np.int32)
+        self.movement_area_max = np.array(area_max, dtype=np.int32)
 
     def toSWC(self, basename, px=False, dest_folder=''):
         """

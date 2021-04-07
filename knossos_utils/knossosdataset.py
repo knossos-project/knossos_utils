@@ -146,9 +146,9 @@ def _as_shapearray(x, dim=3):
         Shape array
     """
     try:
-        array = np.fromiter(x, dtype=np.int, count=dim)
+        array = np.fromiter(x, dtype=int, count=dim)
     except TypeError:
-        array = np.full(dim, x, dtype=np.int)
+        array = np.full(dim, x, dtype=int)
     return array
 
 
@@ -191,9 +191,9 @@ def cut_matrix(data, offset_start, offset_end, cube_shape, start, end):
     """ Helper for cutting matrices extracted from cubes to a required size """
     cube_shape = _as_shapearray(cube_shape)
 
-    cut_start = np.array(offset_start, dtype=np.int)
+    cut_start = np.array(offset_start, dtype=np.int32)
     number_cubes = np.array(end) - np.array(start)
-    cut_end = np.array(number_cubes * cube_shape - offset_end, dtype=np.int)
+    cut_end = np.array(number_cubes * cube_shape - offset_end, dtype=np.int32)
 
     return data[cut_start[2]: cut_end[2],
                 cut_start[1]: cut_end[1],
@@ -322,11 +322,11 @@ class KnossosDataset(object):
         self._experiment_name = None
         self._name_mag_folder = None
         self._ordinal_mags = False
-        self._boundary = np.zeros(3, dtype=np.int)
-        self._scale = np.ones(3, dtype=np.float)
+        self._boundary = np.zeros(3, dtype=np.int32)
+        self._scale = np.ones(3, dtype=np.float32)
         self.scales = []
         self._number_of_cubes = np.zeros(3)
-        self._cube_shape = np.full(3, 128, dtype=np.int)
+        self._cube_shape = np.full(3, 128, dtype=np.int32)
         self._cube_type = KnossosDataset.CubeType.RAW
         self._raw_ext = 'raw'
         self.raw_dtype = np.uint8  # changed from None to np.uint8 on 27Sep2019 PS
@@ -680,8 +680,8 @@ class KnossosDataset(object):
             self._experiment_name = self._experiment_name[:-5]
 
         self._number_of_cubes = \
-            np.array(np.ceil(self.boundary.astype(np.float) /
-                             self.cube_shape), dtype=np.int)
+            np.array(np.ceil(self.boundary.astype(np.float32) /
+                             self.cube_shape), dtype=np.int32)
 
         if 'png' in parsed_dict:
             self._cube_type = KnossosDataset.CubeType.COMPRESSED
@@ -835,7 +835,7 @@ class KnossosDataset(object):
         self._experiment_name = experiment_name
 
         self._number_of_cubes = np.array(np.ceil(
-            self.boundary.astype(np.float) / self.cube_shape), dtype=np.int)
+            self.boundary.astype(np.float32) / self.cube_shape), dtype=np.int32)
 
         if create_knossos_conf:
             all_mag_folders = our_glob(path+"*mag*")
@@ -989,9 +989,9 @@ _CubeSize = {}
             data = load_from_h5py(data_path, hdf5_names, False)[0]
 
         if offset is None:
-            offset = np.array([0, 0, 0], dtype=np.int)
+            offset = np.array([0, 0, 0], dtype=np.int32)
         else:
-            offset = np.array(offset, dtype=np.int)
+            offset = np.array(offset, dtype=np.int32)
 
         if boundary is None:
             boundary = np.array(data.shape) + offset
@@ -1165,7 +1165,7 @@ _CubeSize = {}
         :return: array of int
             array of voxel values corresponding to vx_list
         """
-        vx_list = np.array(vx_list, dtype=np.int)
+        vx_list = np.array(vx_list, dtype=np.int32)
         boundary_box = [np.min(vx_list, axis=0),
                         np.max(vx_list, axis=0)]
         size = boundary_box[1] - boundary_box[0] + np.array([1, 1, 1])
@@ -1312,16 +1312,16 @@ _CubeSize = {}
         if expand_area_to_mag:
             # mag1 coords rounded such that when converting back from target mag to mag1 the specified offset and size can be extracted.
             # i.e. for higher mags the matrix will be larger rather than smaller
-            boundary = np.ceil(np.array(self.boundary, dtype=np.int) / ratio).astype(int)
+            boundary = np.ceil(np.array(self.boundary, dtype=np.int32) / ratio).astype(int)
             end = np.ceil(np.add(offset, size) / ratio) * ratio
-            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            offset = np.floor(np.array(offset, dtype=np.int32) / ratio) * ratio
             # offset and size in target mag
             size = ((end - offset) // ratio).astype(int)
             offset = (offset // ratio).astype(int)
         else:
-            size = (np.array(size, dtype=np.int) // ratio).astype(int)
-            offset = (np.array(offset, dtype=np.int) // ratio).astype(int)
-            boundary = (np.array(self.boundary, dtype=np.int) // ratio).astype(int)
+            size = (np.array(size, dtype=np.int32) // ratio).astype(int)
+            offset = (np.array(offset, dtype=np.int32) // ratio).astype(int)
+            boundary = (np.array(self.boundary, dtype=np.int32) // ratio).astype(int)
         orig_size = np.copy(size)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
@@ -1435,8 +1435,8 @@ _CubeSize = {}
             offset = offset[::-1]
             size = size[::-1]
         ratio = self.scale_ratio(mag, 1)
-        size = (np.array(size) * ratio).astype(np.int)
-        offset = (np.array(offset) * ratio).astype(np.int)
+        size = (np.array(size) * ratio).astype(np.int32)
+        offset = (np.array(offset) * ratio).astype(np.int32)
 
         from_overlay = mode == 'overlay'
         padding = 'symmetric' if mirror_oob else 0
@@ -1605,8 +1605,8 @@ _CubeSize = {}
         self.background_label = empty_cube_label
 
         ratio = self.scale_ratio(mag, 1)
-        size = (np.array(size) * ratio).astype(np.int)
-        offset = (np.array(offset) * ratio).astype(np.int)
+        size = (np.array(size) * ratio).astype(np.int32)
+        offset = (np.array(offset) * ratio).astype(np.int32)
 
         data = self._load_kzip_seg(path, offset, size, mag, datatype, apply_mergelist, return_dataset_cube_if_nonexistent, expand_area_to_mag)
 
@@ -1647,12 +1647,12 @@ _CubeSize = {}
         ratio = self.scale_ratio(mag, 1)
         if expand_area_to_mag:
             end = np.ceil(np.add(offset, size) / ratio) * ratio
-            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            offset = np.floor(np.array(offset, dtype=np.int32) / ratio) * ratio
             size = (end - offset) // ratio
             offset = offset // ratio
         else:
-            size = np.array(size, dtype=np.int)//ratio
-            offset = np.array(offset, dtype=np.int)//ratio
+            size = np.array(size, dtype=np.int32)//ratio
+            offset = np.array(offset, dtype=np.int32)//ratio
 
         start = np.array([get_first_block(dim, offset, self._cube_shape)
                           for dim in range(3)])
@@ -2199,9 +2199,9 @@ _CubeSize = {}
             start_mag = 1 if upsample else data_mag
             end_mag = self.highest_mag if downsample else data_mag
             if self._ordinal_mags:
-                mags = np.arange(start_mag, end_mag, dtype=np.int)
+                mags = np.arange(start_mag, end_mag, dtype=np.int32)
             else: # power of 2 mags (KNOSSOS style)
-                mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=np.int))
+                mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=np.int32))
         self._print(f'mags to write: {mags}')
 
         if kzip_path is not None:
@@ -2231,7 +2231,7 @@ _CubeSize = {}
                 data_inter = skimage.transform.rescale(data, inv_mag_ratio, multichannel=False, order=quality,
                                                        preserve_range=True).astype(datatype, copy=False)
             else:  # fancy seg upsampling
-                data_inter = np.zeros(shape=(inv_mag_ratio * np.array(data.shape)).astype(np.int), dtype=datatype)
+                data_inter = np.zeros(shape=(inv_mag_ratio * np.array(data.shape)).astype(np.int32), dtype=datatype)
                 for value in np.unique(data):
                     if value == 0: continue  # no 0 upsampling
                     # keep fancy scipy upsampling for overlays
@@ -2239,8 +2239,8 @@ _CubeSize = {}
                     # up_chunk_channel = skimage.transform.rescale(
                     #     (data == value).astype(np.uint8), inv_mag_ratio, order=0, multichannel=False, preserve_range=True)
                     data_inter += (up_chunk_channel * value).astype(datatype, copy=False)
-            offset_mag = np.array(offset, dtype=np.int) // self.scale_ratio(mag, 1)
-            size_mag = np.array(data_inter.shape[::-1], dtype=np.int)
+            offset_mag = np.array(offset, dtype=np.int32) // self.scale_ratio(mag, 1)
+            size_mag = np.array(data_inter.shape[::-1], dtype=np.int32)
 
             self._print(f'mag: {mag}')
             self._print(f'box_offset: {offset_mag}')
@@ -2282,10 +2282,10 @@ _CubeSize = {}
                         start_coord = cube_coords - offset_mag + cube_offset
                         end_coord = cube_limit - cube_offset
 
-                        this_cube_info.append(cube_offset.astype(np.int))
-                        this_cube_info.append(cube_limit.astype(np.int))
-                        this_cube_info.append(start_coord.astype(np.int))
-                        this_cube_info.append(end_coord.astype(np.int))
+                        this_cube_info.append(cube_offset.astype(np.int32))
+                        this_cube_info.append(cube_limit.astype(np.int32))
+                        this_cube_info.append(start_coord.astype(np.int32))
+                        this_cube_info.append(end_coord.astype(np.int32))
 
                         multithreading_params.append(this_cube_info)
 
@@ -2485,8 +2485,8 @@ _CubeSize = {}
         assert np.all(kd_raw._cube_shape == kd_overlay._cube_shape), "Cube shapes of KDs have to be equal."
         assert np.all(kd_raw.boundary == kd_overlay.boundary), "Boundary of KDs have to be equal."
         mode = "composite"
-        starting_offset = np.array(bounding_box[0], dtype=np.int)
-        size = np.array(bounding_box[1], dtype=np.int)
+        starting_offset = np.array(bounding_box[0], dtype=np.int32)
+        size = np.array(bounding_box[1], dtype=np.int32)
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 

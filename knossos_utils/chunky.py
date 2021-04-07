@@ -425,11 +425,11 @@ class ChunkDataset(object):
         if not isinstance(coordinates, list):
             coordinates = coordinates.tolist()
         chunk_rep = []
-        chunk_size = np.array(self.chunk_size, dtype=np.int)
+        chunk_size = np.array(self.chunk_size, dtype=np.int32)
         if self.box_coords is not None:
             for coordinate in coordinates:
-                chunk_coordinate = np.array(np.array(coordinate, np.int) / #d (explicitly rounded to int, so type doesn't matter)
-                                            chunk_size, dtype=np.int) * chunk_size
+                chunk_coordinate = np.array(np.array(coordinate, np.int32) / #d (explicitly rounded to int, so type doesn't matter)
+                                            chunk_size, dtype=np.int32) * chunk_size
                 chunk_rep.append(self.coord_dict[tuple(chunk_coordinate)])
         else:
             for coordinate in coordinates:
@@ -514,7 +514,7 @@ class ChunkDataset(object):
                               binary=False,
                               interpolated_data=np.ones(3),
                               show_progress=False):
-        interpolated_data = np.array(interpolated_data, dtype=np.int)
+        interpolated_data = np.array(interpolated_data, dtype=np.int32)
 
         dataset_offset = np.array(self.box_coords, dtype=np.uint32)
         start = [knossosdataset.get_first_block(dim,
@@ -600,7 +600,7 @@ class ChunkDataset(object):
                         if binary:
                             values = np.array(values > 0, dtype=np.uint8)
 
-                        offset = np.zeros(3, dtype=np.int)
+                        offset = np.zeros(3, dtype=np.int32)
                         for dim in range(3):
                             if values.shape[dim] != self.chunk_size[dim] * interpolated_data[dim]:
                                 offset[dim] = \
@@ -610,7 +610,7 @@ class ChunkDataset(object):
                                         offset[1]: values.shape[1] - offset[1],
                                         offset[2]: values.shape[2] - offset[2]]
 
-                        offset = np.zeros(3, dtype=np.int)
+                        offset = np.zeros(3, dtype=np.int32)
                         for dim in range(3):
                             if values.shape[dim] != self.chunk_size[dim] * \
                                     interpolated_data[dim]:
@@ -701,15 +701,15 @@ class ChunkDataset(object):
         if datatype is None:
             datatype = data.dtype
 
-        chunk_offset = np.array(chunk_offset, dtype=np.int)
+        chunk_offset = np.array(chunk_offset, dtype=np.int32)
 
         start = np.floor(np.array([(offset[dim] - chunk_offset[dim]) /
                                    float(self.chunk_size[dim])
                                    for dim in range(3)]))
-        start = start.astype(np.int)
+        start = start.astype(np.int32)
         end = np.floor(np.array([(offset[dim] + chunk_offset[dim] + data.shape[dim] - 1) /
                                  float(self.chunk_size[dim]) for dim in range(3)]))
-        end = end.astype(np.int)
+        end = end.astype(np.int32)
 
         current = np.copy(start)
 
@@ -734,7 +734,7 @@ class ChunkDataset(object):
 
                         high = low + np.array(data.shape) - low_cut - \
                                self.chunk_size - 2 * chunk_offset
-                        high = high.astype(np.int)
+                        high = high.astype(np.int32)
                         high_cut = np.array(data.shape)
                         high_cut[high > 0] -= high[high > 0]
                         high[high > 0] = 0
@@ -794,7 +794,7 @@ class ChunkDataset(object):
                           unified_labels=False, orig_dtype=np.uint8,
                           target_mags=None):
         if coordinate is None or size is None:
-            coordinate = np.zeros(3, dtype=np.int)
+            coordinate = np.zeros(3, dtype=np.int32)
             size = np.copy(kd.boundary)
 
         multi_params = []
@@ -893,9 +893,9 @@ class Chunk(object):
             overlap = self.overlap
 
         size = np.array(np.array(self.size) + 2 * np.array(overlap),
-                        dtype=np.int)
+                        dtype=np.int32)
         coords = np.array(np.array(self.coordinates) -
-                          np.array(overlap), dtype=np.int)
+                          np.array(overlap), dtype=np.int32)
         data = self.dataset.load_raw(offset=coords, size=size,
                                      mag=1, padding=0)
         if invert_raw:
@@ -922,15 +922,15 @@ class Chunk(object):
         """
         if with_overlap:
             size = np.array(np.array(self.size) + 2 * np.array(self.overlap),
-                            dtype=np.int)
+                            dtype=np.int32)
             coords = np.array(
                 np.array(self.coordinates) - np.array(self.overlap),
-                dtype=np.int)
+                dtype=np.int32)
         else:
             size = np.array(np.array(self.size),
-                            dtype=np.int)
+                            dtype=np.int32)
             coords = np.array(np.array(self.coordinates),
-                              dtype=np.int)
+                              dtype=np.int32)
         data = self.dataset.load_seg(offset=coords, size=size, mag=1, padding=0,
                                      datatype=dtype_opt)
         if invert_seg:
