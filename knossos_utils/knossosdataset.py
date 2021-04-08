@@ -1250,14 +1250,14 @@ _CubeSize = {}
                             request.raise_for_status()
                             if not from_overlay:
                                 if self._raw_ext == 'raw':
-                                    values = np.fromstring(request.content, dtype=self.raw_dtype).astype(datatype)
+                                    values = np.frombuffer(request.content, dtype=self.raw_dtype).astype(datatype)
                                 else:
                                     values = imageio.imread(request.content)
                             else:
                                 with zipfile.ZipFile(BytesIO(request.content), 'r') as zf:
                                     snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
                                     raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
-                                    values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                                    values = np.frombuffer(raw_cube, dtype=np.uint64).astype(datatype)
                             try:# check if requested values match shape
                                 values.reshape(self.cube_shape)
                                 valid_values = True
@@ -1281,7 +1281,7 @@ _CubeSize = {}
                             with zipfile.ZipFile(path, 'r') as zf:
                                 snappy_cube = zf.read(os.path.basename(path[:-4])) # seg.sz (without .zip)
                             raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
-                            values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                            values = np.frombuffer(raw_cube, dtype=np.uint64).astype(datatype)
                         elif self._cube_type == KnossosDataset.CubeType.RAW:
                             flat_shape = int(np.prod(self.cube_shape))
                             values = np.fromfile(path, dtype=self.raw_dtype, count=flat_shape).astype(datatype)
@@ -1682,7 +1682,7 @@ _CubeSize = {}
                                       f'{self._experiment_name}_mag1_mag{mag}x{x}y{y}z{z}.seg.sz']:
                         try:
                             scube = archive.read(this_path)
-                            values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
+                            values = np.frombuffer(module_wide["snappy"].decompress(scube), dtype=np.uint64).copy()
                             self._print(f'{current}: loaded from .k.zip')
                             break
                         except KeyError:
@@ -2007,12 +2007,14 @@ _CubeSize = {}
                 try:
                     with zipfile.ZipFile(cube_path, "r") as zf:
                         in_zip_name = os.path.basename(cube_path)[:-4]
-                        dest_cube = np.fromstring(self.module_wide["snappy"].decompress(zf.read(in_zip_name)), dtype=np.uint64)
+                        dest_cube = np.frombuffer(self.module_wide["snappy"].decompress(zf.read(in_zip_name)),
+                                                  dtype=np.uint64).copy()
                 except zipfile.BadZipFile:
                     print(cube_path, "is broken and will be overwritten")
             elif cube_path.endswith('.seg.sz'):
                 with open(cube_path, "rb") as existing_file:
-                    dest_cube = np.fromstring(self.module_wide["snappy"].decompress(existing_file.read()), dtype=np.uint64)
+                    dest_cube = np.frombuffer(self.module_wide["snappy"].decompress(existing_file.read()),
+                                              dtype=np.uint64).copy()
             elif cube_path.endswith('.raw'):
                 dest_cube = np.fromfile(cube_path, dtype=np.uint8)
             else: # png or jpg
