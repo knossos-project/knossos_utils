@@ -1283,6 +1283,18 @@ class KnossosDataset(object):
 
         return output
 
+    def preferred_raw_layer(self):
+        # preference raw → png → jpg
+        preferred_raw_layer = None
+        for layer in self.layers:
+            if layer._raw_ext is None:
+                continue
+            if layer._raw_ext == 'raw' or layer._raw_ext == 'png':
+                preferred_raw_layer = layer
+                break
+            preferred_raw_layer = layer
+        return preferred_raw_layer
+
     def load_raw(self, **kwargs):
         """from_cubes_to_matrix wrapper with mode=raw.
 
@@ -1306,15 +1318,7 @@ class KnossosDataset(object):
         if 'datatype' not in kwargs:
             kwargs.update({'datatype': np.uint8})
 
-        # preference raw → png → jpg
-        preferred_raw_layer = None
-        for layer in self.layers:
-            if layer._raw_ext is None:
-                continue
-            if layer._raw_ext == 'raw' or layer._raw_ext == 'png':
-                preferred_raw_layer = layer
-                break
-            preferred_raw_layer = layer
+        preferred_raw_layer = self.preferred_raw_layer()
 
         assert preferred_raw_layer is not None, 'Tried to load raw data, but the loaded dataset configuration contains no raw layer.'
 
@@ -2121,7 +2125,13 @@ class KnossosDataset(object):
                         this_cube_info.append(path)
 
                         if kzip_path is None:
-                            path += f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}.{self._raw_ext if as_raw else "seg.sz"}'
+                            if as_raw:
+                                save_layer = self.preferred_raw_layer()
+                                ext = save_layer._raw_ext
+                            else:
+                                save_layer = self
+                                ext = 'seg.sz'
+                            path += f'{save_layer.experiment_name}_{save_layer.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}.{ext}'
                         else:
                             path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
                         this_cube_info.append(path)
