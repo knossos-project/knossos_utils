@@ -1399,7 +1399,13 @@ def write_skeleton(path, new_annos, update=True):
         return
 
     if os.path.exists(path) and update:
-        annos = load_skeleton(path)
+        try:
+            annos = load_skeleton(path)
+        except Exception as e:
+            if 'k.zip file does not contain annotation.xml' in str(e):
+                annos = dict()
+            else:
+                raise Exception from e
         annos.update(new_annos)
     else:
         annos = new_annos
