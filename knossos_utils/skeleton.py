@@ -1603,7 +1603,7 @@ def id_lookup_in_one_chunk_thread(args):
             z_obj.append(obj_coord[2])
 
     f = h5py.File(chunk.folder + name + ".h5", "r")
-    data = f[hdf5_name].value
+    data = f[hdf5_name][()]
     f.close()
 
     x = []
