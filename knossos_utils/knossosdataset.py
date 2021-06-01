@@ -1112,7 +1112,9 @@ class KnossosDataset(object):
         :param mag: int
             magnification of the requested data block
             Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
-        :param expand_area_to_mag: bool
+        :param expand_area_to_mag: bool, int
+            Enlarges area to true voxels of specified mag in case offset and size don’t exist in that mag.
+            False: no expansion, True: expansion to ``mag``, int: expansion to ``expand_area_to_mag``
         :param padding: str or int
             Pad mode for matrix parts outside the dataset. See https://www.pydoc.io/pypi/numpy-1.9.3/autoapi/numpy/lib/arraypad/index.html?highlight=pad#numpy.lib.arraypad.pad
             When passing an it, will pad with that int in 'constant' mode
@@ -1204,11 +1206,14 @@ class KnossosDataset(object):
 
         ratio = self.scale_ratio(mag, 1)
         if expand_area_to_mag:
+            if expand_area_to_mag is True:
+                expand_area_to_mag = mag
+            expand_ratio = self.scale_ratio(expand_area_to_mag, 1)
             # mag1 coords rounded such that when converting back from target mag to mag1 the specified offset and size can be extracted.
             # i.e. for higher mags the matrix will be larger rather than smaller
-            boundary = np.ceil(np.array(self.boundary, dtype=np.int) / ratio).astype(int)
-            end = np.ceil(np.add(offset, size) / ratio) * ratio
-            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            boundary = np.ceil(np.array(self.boundary, dtype=np.int) / expand_ratio).astype(int)
+            end = np.ceil(np.add(offset, size) / expand_ratio) * expand_ratio
+            offset = np.floor(np.array(offset, dtype=np.int) / expand_ratio) * expand_ratio
             # offset and size in target mag
             size = ((end - offset) // ratio).astype(int)
             offset = (offset // ratio).astype(int)
@@ -1584,8 +1589,9 @@ class KnossosDataset(object):
             typically np.uint8
         :param apply_mergelist: bool
             True: Merges IDs based on the kzip mergelist
-        :param expand_area_to_mag: bool
-            Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
+        :param expand_area_to_mag: bool, int
+            Enlarges area to true voxels of specified mag in case offset and size don’t exist in that mag.
+            False: no expansion, True: expansion to ``mag``, int: expansion to ``expand_area_to_mag``
         :param return_empty_cube_if_nonexistent: bool
             True: if kzip doesn't contain specified cube,
             an empty cube (cube filled with empty_cube_label) is returned.
@@ -1602,8 +1608,11 @@ class KnossosDataset(object):
 
         ratio = self.scale_ratio(mag, 1)
         if expand_area_to_mag:
-            end = np.ceil(np.add(offset, size) / ratio) * ratio
-            offset = np.floor(np.array(offset, dtype=np.int) / ratio) * ratio
+            if expand_area_to_mag is True:
+                expand_area_to_mag = mag
+            expand_ratio = self.scale_ratio(expand_area_to_mag, 1)
+            end = np.ceil(np.add(offset, size) / expand_ratio) * expand_ratio
+            offset = np.floor(np.array(offset, dtype=np.int) / expand_ratio) * expand_ratio
             size = (end - offset) // ratio
             offset = offset // ratio
         else:
