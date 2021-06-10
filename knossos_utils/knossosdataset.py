@@ -1989,7 +1989,7 @@ _CubeSize = {}
         pbar.close()
         return
 
-    def save_cube(self, cube_path, data, overwrite_offset=None, overwrite_limit=None):
+    def save_cube(self, cube_path, data, overwrite_offset=None, overwrite_limit=None, compresslevel=None):
         """
         Helper function for from_matrix_to_cubes. Can also be used independently to overwrite individual cubes.
         Expects data, offset and limit in xyz and data.shape == self.cube_shape.
@@ -1997,6 +1997,7 @@ _CubeSize = {}
         :param data: data to be written to the cube
         :param overwrite_offset: overwrite area offset. Defaults to (0, 0, 0) if overwrite_limit is set.
         :param overwrite_limit: overwrite area offset. Defaults to self.cube_shape if overwrite_offset is set.
+        :param compresslevel: Compression level in case zipfile is used for writing (file ends with seg.sz.zip)
         """
         assert np.array_equal(data.shape, self.cube_shape), 'Can only save cubes of shape self.cube_shape ({}). found shape {}'.format(self.cube_shape, data.shape)
         data = data.reshape(np.prod(self.cube_shape))
@@ -2045,7 +2046,8 @@ _CubeSize = {}
             if cube_path.endswith('.seg.sz.zip'):
                 in_zip_name = os.path.basename(cube_path)[:-4]
                 with zipfile.ZipFile(cube_path, "w") as zf:
-                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube), compress_type=zipfile.ZIP_DEFLATED)
+                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube), compress_type=zipfile.ZIP_DEFLATED,
+                                compresslevel=compresslevel)
             elif cube_path.endswith('.seg.sz'):
                 with open(cube_path, "wb") as dest_file:
                     dest_file.write(self.module_wide["snappy"].compress(dest_cube))
@@ -2135,7 +2137,8 @@ _CubeSize = {}
         else:
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
-    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling):
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling,
+              compresslevel=None):
         datatype = np.uint8 if as_raw else np.uint64
         overwrite = True
 
@@ -2180,7 +2183,8 @@ _CubeSize = {}
 
                 self.save_cube(cube_path=path if as_raw else path + '.zip', data=cube,
                                overwrite_offset=cube_offset if overwrite else None,
-                               overwrite_limit=cube_limit if overwrite else None)
+                               overwrite_limit=cube_limit if overwrite else None,
+                               compresslevel=compresslevel)
 
                 try:
                     os.rmdir(block_path)   # ------------------------------
@@ -2189,8 +2193,9 @@ _CubeSize = {}
                     pass
             else:
                 self.save_cube(cube_path=path, data=cube,
-                                overwrite_offset=cube_offset if overwrite else None,
-                                overwrite_limit=cube_limit if overwrite else None)
+                               overwrite_offset=cube_offset if overwrite else None,
+                               overwrite_limit=cube_limit if overwrite else None,
+                               compresslevel=compresslevel)
 
         # Main Function
         assert self.initialized, 'Dataset is not initialized'
@@ -2296,23 +2301,33 @@ _CubeSize = {}
                 list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
     def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None,
+                   upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
 
-    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True,
+                 compresslevel=None):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None,
+                   upsample=upsample, downsample=downsample, fast_resampling=fast_resampling,
+                   compresslevel=compresslevel)
 
-    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
-        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=[], gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None,
+                     upsample=True, downsample=True, fast_resampling=True):
+        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=[],
+                                    gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample,
+                                    downsample=downsample, fast_resampling=fast_resampling)
         self.compress_kzip(kzip_path=kzip_path)
 
-    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None,
+                               upsample=True, downsample=True, fast_resampling=True):
         if kzip_path.endswith('.k.zip'):
             kzip_path = kzip_path[:-6]
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path,
+                   upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
         if gen_mergelist:
             with open(os.path.join(kzip_path, 'mergelist.txt'), 'w') as mergelist:
                 start = time.time();
-                mergelist.write(mergelist_tools.gen_mergelist_from_segmentation(data, offsets=np.array(offset, dtype=np.uint64)))
+                mergelist.write(mergelist_tools.gen_mergelist_from_segmentation(
+                    data, offsets=np.array(offset, dtype=np.uint64)))
                 self._print('gen mergelist', time.time() - start)
         if annotation_str is not None:
             with open(os.path.join(kzip_path, 'annotation.xml'), 'w') as annotation:
