@@ -797,6 +797,8 @@ class KnossosDataset(object):
                                         all_mag_folders[0][:-1])[-1] + str(mag))
                         else:
                             os.makedirs(path+"/mag"+str(mag))
+        else:
+            assert(len(all_mag_folders) > 0)
 
         mag_folder = our_glob(path+"/*mag*")[0].split("/")
         if len(mag_folder[-1]) > 1:
