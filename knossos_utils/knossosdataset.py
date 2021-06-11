@@ -781,7 +781,7 @@ class KnossosDataset(object):
         """
 
         self._knossos_path = path
-        all_mag_folders = our_glob(path+"*mag*")
+        all_mag_folders = our_glob(path+"/*mag*")
 
         if not mags is None:
             if make_mag_folders:
@@ -798,7 +798,7 @@ class KnossosDataset(object):
                         else:
                             os.makedirs(path+"/mag"+str(mag))
 
-        mag_folder = our_glob(path+"*mag*")[0].split("/")
+        mag_folder = our_glob(path+"/*mag*")[0].split("/")
         if len(mag_folder[-1]) > 1:
             mag_folder = mag_folder[-1]
         else:
@@ -815,7 +815,7 @@ class KnossosDataset(object):
             self.boundary.astype(np.float) / self.cube_shape), dtype=np.int)
 
         if create_knossos_conf:
-            all_mag_folders = our_glob(path+"*mag*")
+            all_mag_folders = our_glob(path+"/*mag*")
             for mag_folder in all_mag_folders:
                 this_mag = re.findall("[\d]+", mag_folder)[-1]
                 with open(mag_folder+"/knossos.conf", "w") as f:
