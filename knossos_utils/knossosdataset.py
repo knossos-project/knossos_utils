@@ -787,15 +787,15 @@ class KnossosDataset(object):
             for mag in mags:
                 exists = False
                 for mag_folder in all_mag_folders:
-                    if "mag"+str(mag) in mag_folder:
+                    if mag_folder.endswith(f'mag{mag}'):
                         exists = True
                         break
                 if not exists:
                     if len(all_mag_folders) > 0:
-                        os.makedirs(path+"/"+ re.findall('[a-zA-Z0-9,_ -]+',
-                                    all_mag_folders[0][:-1])[-1] + str(mag))
+                        assert(not re.match('.*mag\d+$', all_mag_folders[0]) is None)
+                        os.makedirs(re.sub('mag\d+$', f'mag{mag}', all_mag_folders[0]))
                     else:
-                            os.makedirs(path+"/mag"+str(mag))
+                        os.makedirs(path+"/mag"+str(mag))
         else:
             assert(len(all_mag_folders) > 0)
 
