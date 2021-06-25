@@ -783,19 +783,18 @@ class KnossosDataset(object):
         self._knossos_path = path
         all_mag_folders = our_glob(path+"/*mag*")
 
-        if not mags is None:
-            if make_mag_folders:
-                for mag in mags:
-                    exists = False
-                    for mag_folder in all_mag_folders:
-                        if "mag"+str(mag) in mag_folder:
-                            exists = True
-                            break
-                    if not exists:
-                        if len(all_mag_folders) > 0:
-                            os.makedirs(path+"/"+ re.findall('[a-zA-Z0-9,_ -]+',
-                                        all_mag_folders[0][:-1])[-1] + str(mag))
-                        else:
+        if not mags is None and make_mag_folders:
+            for mag in mags:
+                exists = False
+                for mag_folder in all_mag_folders:
+                    if "mag"+str(mag) in mag_folder:
+                        exists = True
+                        break
+                if not exists:
+                    if len(all_mag_folders) > 0:
+                        os.makedirs(path+"/"+ re.findall('[a-zA-Z0-9,_ -]+',
+                                    all_mag_folders[0][:-1])[-1] + str(mag))
+                    else:
                             os.makedirs(path+"/mag"+str(mag))
         else:
             assert(len(all_mag_folders) > 0)
