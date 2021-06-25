@@ -816,25 +816,22 @@ class KnossosDataset(object):
             np.array(self.boundary).astype(np.float) / self.cube_shape), dtype=np.int)
 
         if create_knossos_conf:
-            all_mag_folders = our_glob(path+"/*mag*")
-            for mag_folder in all_mag_folders:
-                this_mag = re.findall("[\d]+", mag_folder)[-1]
-                with open(mag_folder+"/knossos.conf", "w") as f:
-                    f.write('experiment name "%s_mag%s";\n' %(experiment_name,
-                                                              this_mag))
-                    f.write('boundary x %d;\n' % boundary[0])
-                    f.write('boundary y %d;\n' % boundary[1])
-                    f.write('boundary z %d;\n' % boundary[2])
-                    f.write('scale x %.2f;\n' % scale[0])
-                    f.write('scale y %.2f;\n' % scale[1])
-                    f.write('scale z %.2f;\n' % scale[2])
-                    f.write('magnification %s;' % this_mag)
+            self._conf_path = self.knossos_path + "/knossos.conf"
+            with open(self.conf_path, "w") as f:
+                f.write('experiment name "%s_mag%s";\n' %(experiment_name,
+                                                            sorted(mags)[0]))
+                f.write('boundary x %d;\n' % boundary[0])
+                f.write('boundary y %d;\n' % boundary[1])
+                f.write('boundary z %d;\n' % boundary[2])
+                f.write('scale x %.2f;\n' % scale[0])
+                f.write('scale y %.2f;\n' % scale[1])
+                f.write('scale z %.2f;\n' % scale[2])
+                f.write('magnification %s;' % sorted(mags)[0])
+
         if verbose:
-            print(sorted(Path(path).glob('*')))
             _print("Initialization finished successfully")
 
         self._initialize_cache(cache_size)
-        print(sorted(Path(path).glob('*')))
         self._initialized = True
 
     def initialize_from_matrix(self, path, scale, experiment_name,
