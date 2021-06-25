@@ -26,9 +26,14 @@ def test_KnossosDataset_initialize_without_conf__conf_exist(tmp_path):
   kd.initialize_without_conf(str(tmp_path), boundary=(7, 9, 10), scale=(1, 1, 1), experiment_name='test', mags=[1], verbose=True)
   assert(Path(kd.conf_path).is_file())
 
-def test_Knossosdataset__initalize_without_conf__robust_magfolder_detection(tmp_path):
-  (tmp_path / 'test_mag16').mkdir()
+@pytest.mark.parametrize('existing_mag,expected_mag', [
+  ('test_mag16', 'test_mag1'),
+  ('test_mag1', 'test_mag1'),
+  ('mag16', 'mag1'),
+  ('mag1', 'mag1')])
+def test_Knossosdataset__initalize_without_conf__robust_magfolder_detection(tmp_path, existing_mag, expected_mag):
+  (tmp_path / existing_mag).mkdir()
   kd = KnossosDataset()
   kd.initialize_without_conf(str(tmp_path), boundary=(7, 9, 10), scale=(1, 1, 1), experiment_name='test', mags=[1], verbose=True)
-  assert((tmp_path / 'test_mag1').is_dir())
+  assert((tmp_path / expected_mag).is_dir())
 

@@ -787,15 +787,15 @@ class KnossosDataset(object):
             for mag in mags:
                 exists = False
                 for mag_folder in all_mag_folders:
-                    if "mag"+str(mag) in mag_folder:
+                    if mag_folder.endswith(f'mag{mag}'):
                         exists = True
                         break
                 if not exists:
                     if len(all_mag_folders) > 0:
-                        os.makedirs(path+"/"+ re.findall('[a-zA-Z0-9,_ -]+',
-                                    all_mag_folders[0][:-1])[-1] + str(mag))
+                        assert(not re.match('.*mag\d+$', all_mag_folders[0]) is None)
+                        os.makedirs(re.sub('mag\d+$', f'mag{mag}', all_mag_folders[0]))
                     else:
-                            os.makedirs(path+"/mag"+str(mag))
+                        os.makedirs(path+"/mag"+str(mag))
         else:
             assert(len(all_mag_folders) > 0)
 
@@ -830,10 +830,11 @@ class KnossosDataset(object):
                     f.write('scale z %.2f;\n' % scale[2])
                     f.write('magnification %s;' % this_mag)
         if verbose:
+            print(sorted(Path(path).glob('*')))
             _print("Initialization finished successfully")
 
         self._initialize_cache(cache_size)
-
+        print(sorted(Path(path).glob('*')))
         self._initialized = True
 
     def initialize_from_matrix(self, path, scale, experiment_name,
@@ -2085,6 +2086,8 @@ class KnossosDataset(object):
             if kzip_path.endswith(".k.zip"):
                 kzip_path = kzip_path[:-6]
             os.makedirs(kzip_path, exist_ok=True)
+
+        print(self._conf_path)
 
         # obtain clock difference between write destination and process system for correct block file age determination
         with tempfile.NamedTemporaryFile(dir=kzip_path if kzip_path else os.path.dirname(self._conf_path)) as time_file:
