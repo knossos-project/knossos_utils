@@ -770,7 +770,7 @@ class KnossosDataset(object):
                                 mags=None, make_mag_folders=True,
                                 create_knossos_conf=True, verbose=False, cache_size=0,
                                 raw_dtype=np.uint8, create_pyk_conf=False,
-                                descriptions=None):
+                                descriptions=None, server_format='pyknossos'):
         """ Initializes the dataset without a knossos.conf
 
             This function creates mag folders and knossos.conf's if requested.
@@ -799,6 +799,8 @@ class KnossosDataset(object):
         :param descriptions:
             Dict[str, str] with keys 'raw' and 'overlay' passed to
             :func:`~write_pyknossos_conf`.
+        :param server_format:
+            Which type of mag format to use (either 'knossos' (ordinal) or 'pyknossos').
         :return:
             nothing
         """
@@ -855,7 +857,8 @@ class KnossosDataset(object):
                         f.write('16bit;\n')
         if create_pyk_conf:
             self.write_pyknossos_conf('{}/{}.pyk.conf'.format(path, experiment_name),
-                                      include_overlay=True, descriptions=descriptions)
+                                      include_overlay=True, descriptions=descriptions,
+                                      server_format=server_format)
         elif descriptions is not None:
             print('WARNING: Descriptions was set but pyk conf generation was '
                   'dsiabled.')
@@ -867,7 +870,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     def write_pyknossos_conf(self, path_to_pyknossos_conf,
-                             include_overlay=True, descriptions=None):
+                             include_overlay=True, descriptions=None, server_format='pyknossos'):
         """ Write a pyknossos conf
 
         TODO: refactor '_BaseExt' settings.
@@ -876,6 +879,8 @@ class KnossosDataset(object):
         :param include_overlay: bool
         :param descriptions: Optional, dict with keys: 'raw' and 'overlay' and
             description strings as values.
+        :param server_format:
+
         :return:
             nothing
         """
@@ -900,7 +905,7 @@ class KnossosDataset(object):
         scales = ', '.join([','.join([str(int(el)) for el in sc]) for sc in self.scales])
         config_str = """[Dataset]
 _BaseName = {0}
-_ServerFormat = pyknossos
+_ServerFormat = {5}
 _DataScale = {1}
 _Extent = {2}
 _Description = "streaming optimized"
@@ -909,7 +914,7 @@ _CubeSize = {4}
 
 [Dataset]
 _BaseName = {0}
-_ServerFormat = pyknossos
+_ServerFormat = {5}
 _DataScale = {1}
 _Extent = {2}
 _Description = {3}
@@ -917,18 +922,19 @@ _BaseExt = .raw
 _CubeSize = {4}
     """.format(self._experiment_name, scales,
                ','.join([str(int(el)) for el in self.boundary]),
-               descriptions['raw'], ','.join([str(int(el)) for el in self.cube_shape]))
+               descriptions['raw'], ','.join([str(int(el)) for el in self.cube_shape]),
+               server_format)
 
         if include_overlay:
             config_str += """\n\n[Dataset]
 _BaseName = {}
-_ServerFormat = pyknossos
+_ServerFormat = {}
 _DataScale = {}
 _Extent = {}
 _Description = {}
 _BaseExt = .seg.sz.zip
 _CubeSize = {}
-    """.format(self._experiment_name, scales,
+    """.format(self._experiment_name, server_format, scales,
                ','.join([str(int(el)) for el in self.boundary]),
                descriptions['overlay'], ','.join([str(int(el)) for el in self.cube_shape]))
         with open(path_to_pyknossos_conf, "w") as f:
@@ -2045,9 +2051,8 @@ _CubeSize = {}
             dest_cube = dest_cube.reshape(np.prod(dest_cube.shape))
             if cube_path.endswith('.seg.sz.zip'):
                 in_zip_name = os.path.basename(cube_path)[:-4]
-                with zipfile.ZipFile(cube_path, "w") as zf:
-                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube), compress_type=zipfile.ZIP_DEFLATED,
-                                compresslevel=compresslevel)
+                with zipfile.ZipFile(cube_path, "w", compresslevel=compresslevel) as zf:
+                    zf.writestr(in_zip_name, self.module_wide["snappy"].compress(dest_cube), compress_type=zipfile.ZIP_DEFLATED)
             elif cube_path.endswith('.seg.sz'):
                 with open(cube_path, "wb") as dest_file:
                     dest_file.write(self.module_wide["snappy"].compress(dest_cube))
