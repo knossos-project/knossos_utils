@@ -284,8 +284,9 @@ class ChunkDataset(object):
         return kd
 
     def initialize(self, knossos_dataset_object, box_size,
-                   chunk_size, path_head_folder, overlap=np.zeros(3),
-                   list_of_coords=None, box_coords=None, fit_box_size=False):
+                   chunk_size, path_head_folder, overlap=None,
+                   box_coords=None, fit_box_size=False,
+                   mask_arr=None, mask_mag=None):
         """ Calculates the coordinates of all chunks and initializes them
 
         Parameters:
@@ -301,6 +302,11 @@ class ChunkDataset(object):
             defines the size of each chunk without overlap
         overlap: 3 sequence of int
             defines the overlap of each chunk (and also of the box)
+        mask_arr: np.ndarray
+            Mask array that can be used instead of box_size and box_coords to specify where to create chunks for the
+            dataset. Used with mask_mag.
+        mask_mag: int
+            Mag level (based on knossos_dataset_object) at which mask_arr is provided.
 
 
         Returns:
@@ -308,14 +314,34 @@ class ChunkDataset(object):
 
         nothing so far
         """
-        if list_of_coords is None:
-            list_of_coords = []
-        box_size = np.array(box_size).copy()
+
+        if all((box_coords is None, box_size is None, mask_arr is not None, mask_mag is not None)):
+            pass
+        elif all((box_coords is not None, box_size is not None, mask_arr is None, mask_mag is None)):
+            pass
+        else:
+            raise Exception('Must initialize ChunkDataset with either box_offset and box_size OR with '
+                            'mask_arr and mask_mag')
+
+        if overlap is None:
+            overlap = np.zeros(3)
+
+        if mask_arr is not None:
+            mask_scale_ratio = knossos_dataset_object.scale_ratio(mask_mag, 1)
+            chunk_size_mask_mag = np.ceil(chunk_size / mask_scale_ratio).astype(int)
+            box_coords = np.min(np.argwhere(mask_arr), axis=0) * mask_scale_ratio
+            box_max = (np.max(np.argwhere(mask_arr), axis=0) + 1) * mask_scale_ratio
+            box_size = box_max - box_coords
+
+        box_size = np.array(box_size)
         if fit_box_size:
             for dim in range(3):
                 if not box_size[dim] % chunk_size[dim] == 0:
                     box_size[dim] += (chunk_size[dim] -
                                       (box_size[dim] % chunk_size[dim]))
+
+        if False in np.equal(np.mod(box_size, chunk_size), np.zeros(3)):
+            raise Exception("box_size has to be multiple of chunk_size")
 
         self.path_head_folder = path_head_folder
         self.chunk_size = np.array(chunk_size)
@@ -323,34 +349,28 @@ class ChunkDataset(object):
         self._dataset_path = knossos_dataset_object.conf_path
         self.box_size = box_size
         self.overlap = overlap
-        # TODO: test whether this can be removed safely
-        # if not os.path.exists(self.path_head_folder):
-        #     os.makedirs(self.path_head_folder)
-        #     print('folder created at %s' % path_head_folder)
 
-        if len(list_of_coords) == 0:
-            if False in np.equal(np.mod(box_size, chunk_size), np.zeros(3)):
-                raise Exception("box_size has to be multiple of chunk_size")
-            if box_coords is None:
-                raise Exception("No box coords given")
-            multiple = box_size // chunk_size
-            for x in range(multiple[0]):
-                for y in range(multiple[1]):
-                    for z in range(multiple[2]):
-                        list_of_coords.append([x * chunk_size[0],
-                                               y * chunk_size[1],
-                                               z * chunk_size[2]])
-        else:
-            box_coords = np.zeros(3)
+        list_of_coords = []
+        multiple = box_size // chunk_size
+        for x in range(multiple[0]):
+            for y in range(multiple[1]):
+                for z in range(multiple[2]):
+                    cur_chunk_offset = [
+                        x * chunk_size[0] + box_coords[0],
+                        y * chunk_size[1] + box_coords[1],
+                        z * chunk_size[2] + box_coords[2]]
+                    if mask_arr is not None:
+                        cur_chunk_offset_mask_mag = np.floor(np.array(cur_chunk_offset) / mask_scale_ratio).astype(int)
+                        cur_chunk_mask_slices = (
+                            slice(lo, lo+sz) for lo, sz in zip(cur_chunk_offset_mask_mag, chunk_size_mask_mag))
+                        if np.sum(mask_arr[cur_chunk_mask_slices]) == 0:
+                            continue
+                    list_of_coords.append(cur_chunk_offset)
 
-        for nb_coord in range(len(list_of_coords)):
-            coord = list_of_coords[nb_coord]
+        for nb_coord, coord in enumerate(list_of_coords):
             new_chunk = Chunk()
             new_chunk.number = nb_coord
-            new_chunk.coordinates = \
-                np.array([box_coords[0] + coord[0],
-                          box_coords[1] + coord[1],
-                          box_coords[2] + coord[2]])
+            new_chunk.coordinates = coord
             new_chunk._dataset_path = knossos_dataset_object.conf_path
             new_chunk.size = chunk_size
             new_chunk.overlap = overlap
@@ -362,12 +382,6 @@ class ChunkDataset(object):
                 new_chunk.path_head_folder = path_head_folder
                 new_chunk.folder = path_head_folder + "/" + new_chunk.folder_name
                 new_chunk.box_size = box_size
-        # TODO: test whether this can be removed safely
-        # for nb_chunk in self.chunk_dict.keys():
-        #     try:
-        #         os.makedirs(self.chunk_dict[nb_chunk].folder)
-        #     except:
-        #         pass
 
     def apply_to_subset(self, function, args=[], kwargs={}, chunklist=[],
                         with_chunk=True, with_chunkclass=False):
