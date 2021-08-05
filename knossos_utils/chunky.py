@@ -22,6 +22,8 @@
 """This file provides a class representation of a KNOSSOS-dataset for
 reading and writing raw and overlay data."""
 
+from typing import Tuple, Optional
+
 import pickle as pkl
 import glob
 import h5py
@@ -31,6 +33,7 @@ import numpy as np
 import os
 import sys
 import time
+import itertools as it
 
 import scipy.misc
 
@@ -329,8 +332,8 @@ class ChunkDataset(object):
         if mask_arr is not None:
             mask_scale_ratio = knossos_dataset_object.scale_ratio(mask_mag, 1)
             chunk_size_mask_mag = np.ceil(chunk_size / mask_scale_ratio).astype(int)
-            box_coords = np.min(np.argwhere(mask_arr), axis=0) * mask_scale_ratio
-            box_max = (np.max(np.argwhere(mask_arr), axis=0) + 1) * mask_scale_ratio
+            box_coords = (np.min(np.argwhere(mask_arr), axis=0) * mask_scale_ratio).astype(int)
+            box_max = ((np.max(np.argwhere(mask_arr), axis=0) + 1) * mask_scale_ratio).astype(int)
             box_size = box_max - box_coords
 
         box_size = np.array(box_size)
@@ -361,7 +364,7 @@ class ChunkDataset(object):
                         z * chunk_size[2] + box_coords[2]]
                     if mask_arr is not None:
                         cur_chunk_offset_mask_mag = np.floor(np.array(cur_chunk_offset) / mask_scale_ratio).astype(int)
-                        cur_chunk_mask_slices = (
+                        cur_chunk_mask_slices = tuple(
                             slice(lo, lo+sz) for lo, sz in zip(cur_chunk_offset_mask_mag, chunk_size_mask_mag))
                         if np.sum(mask_arr[cur_chunk_mask_slices]) == 0:
                             continue
@@ -382,6 +385,26 @@ class ChunkDataset(object):
                 new_chunk.path_head_folder = path_head_folder
                 new_chunk.folder = path_head_folder + "/" + new_chunk.folder_name
                 new_chunk.box_size = box_size
+
+    def rechunked_space(self, stride: Tuple[int, int, int]):
+        """
+        For the chunk grid defined by stride, return every chunk for which the ChunkDataset instance also
+        contains a chunk.
+
+        Use this, for example, to write into a KnossosDataset in a cube-aligned fashion.
+        """
+
+        rechunked = set()
+        for cur_chunk in self.chunk_dict.values():
+            cur_chunk_min, cur_chunk_sz = cur_chunk.coordinates, cur_chunk.size
+            cur_chunk_max = tuple(xx + yy - 1 for xx, yy in zip(cur_chunk_min, cur_chunk_sz))
+            rechunk_lo = tuple(yy * (xx // yy) for xx, yy in zip(cur_chunk_min, stride))
+            rechunk_hi = tuple(yy * (1 + xx // yy) for xx, yy in zip(cur_chunk_max, stride))
+
+            for x, y, z in it.product(*[range(lo, hi, step) for lo, hi, step in zip(rechunk_lo, rechunk_hi, stride)]):
+                rechunked.add((x, y, z))
+
+        return list(rechunked)
 
     def apply_to_subset(self, function, args=[], kwargs={}, chunklist=[],
                         with_chunk=True, with_chunkclass=False):
