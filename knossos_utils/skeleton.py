@@ -362,7 +362,7 @@ class Skeleton:
         except IndexError:
             self.created_version = None
 
-        if read_time:
+        if read_time and self.get_version()['saved'] is not None:
             if Version(self.get_version()['saved']) >= Version(("3", "4", "2")):
                 # Has SHA256 checksums
                 if self.skeleton_time is not None and self.skeleton_idletime is not None:
@@ -622,13 +622,13 @@ class Skeleton:
     def getSkeletonTime(self):
         if self.skeleton_time == None:
             return None
-        if Version(self.get_version()['saved']) == Version(("3", "4")):
+        if self.get_version()['saved'] is not None and Version(self.get_version()['saved']) == Version(("3", "4")):
             return self.skeleton_time ^ 1347211871
         else:
             return self.skeleton_time
 
     def getIdleTime(self):
-        if Version(self.get_version()['saved']) == Version(("3", "4")):
+        if self.get_version()['saved'] is not None and Version(self.get_version()['saved']) == Version(("3", "4")):
             return self.skeleton_idletime ^ 1347211871
         else:
             return self.skeleton_idletime
