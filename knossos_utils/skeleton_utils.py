@@ -1445,7 +1445,7 @@ def load_skeleton(path, scaling=None):
     # TODO: generalize
     annotations = loadj0126NML(path, scaling=scaling)
     for anno in annotations:
-        anno_dict[anno.comment] = anno
+        anno_dict[anno.annotation_ID] = anno
 
     return anno_dict
 
