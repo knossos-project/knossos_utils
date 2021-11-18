@@ -551,7 +551,7 @@ class KnossosDataset(object):
 
         layers = []
         for line in lines:
-            tokens = re.split(" = |,|\n", line)
+            tokens = re.split(" = |,|\n", line.replace('"', ''))
             key = tokens[0]
             if re.match(r'\[Dataset[ \d]*]$', tokens[0]):
                 layer = KnossosDataset(show_progress=self.show_progress)
