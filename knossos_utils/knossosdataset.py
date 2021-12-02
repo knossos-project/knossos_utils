@@ -1655,9 +1655,9 @@ class KnossosDataset(object):
 
                     this_path = f'{experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
                     try:
+                        self._print(f'{current}: loading from .k.zip')
                         scube = archive.read(this_path)
                         values = np.fromstring(module_wide["snappy"].decompress(scube), dtype=np.uint64)
-                        self._print(f'{current}: loaded from .k.zip')
                     except KeyError:
                         self._print(f'{current}: {"dataset" if return_dataset_cube_if_nonexistent else self.background_label} cube assigned')
                         if return_dataset_cube_if_nonexistent:
