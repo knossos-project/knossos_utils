@@ -1238,7 +1238,7 @@ class KnossosDataset(object):
                 size[dim] = boundary[dim] - offset[dim]
 
             if size[dim] < 0:
-                raise Exception("Given block is totally out ouf bounds with "
+                raise Exception("Given block is totally out of bounds with "
                                 "offset: [%d, %d, %d]!" %
                                 (offset[0], offset[1], offset[2]))
 
