@@ -308,7 +308,7 @@ class KnossosDataset(object):
         self._raw_ext = 'raw'
         self._initialized = False
         self._mags = None
-        self.is_seg = True # backwards compatibility for knossos.conf
+        self.is_seg = True
         self.verbose = False
         self.show_progress = show_progress
         self.background_label = 0
