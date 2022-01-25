@@ -1904,7 +1904,7 @@ class KnossosDataset(object):
                 print(f'Cube is broken and will be overwritten: {cube_path}')
                 raise e
             dest_cube = dest_cube.reshape(self.cube_shape[::-1])
-
+            dest_cube = dest_cube.astype(data.dtype)
             if overwrite_offset is not None or overwrite_limit is not None:
                 overwrite_offset = overwrite_offset if overwrite_offset is not None else (0, 0, 0)
                 overwrite_limit = overwrite_limit if overwrite_offset is not None else self.cube_shape
@@ -2012,8 +2012,11 @@ class KnossosDataset(object):
         else:
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
-    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling):
-        datatype=np.uint8 if as_raw else np.uint64
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None):
+        datatype = datatype or (np.uint8 if as_raw else np.uint64)
+
+        if (as_raw and datatype not in {np.uint8, np.uint16}) or (not as_raw and datatype != np.uint64):
+            raise ValueError('Currently, saving only accepts destination datatypes np.uint8 or np.uint16 (raw) or np.uint64 (segmentation).')
         overwrite=True
 
         def _write_cubes(args):
@@ -2170,11 +2173,11 @@ class KnossosDataset(object):
             with ThreadPoolExecutor() as pool:
                 list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
-    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=np.uint8):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype)
 
-    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=np.uint64):
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype)
 
     def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
         kzip_path = str(kzip_path)
