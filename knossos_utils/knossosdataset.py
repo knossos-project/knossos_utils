@@ -313,6 +313,9 @@ class KnossosDataset(object):
         self.show_progress = show_progress
         self.background_label = 0
         self.http_max_tries = 5
+        self.description = ''
+        self.color = None
+        self.visible = None # unspecified
 
         if path is not None:
             self.initialize_from_conf(path)
@@ -587,12 +590,18 @@ class KnossosDataset(object):
                 layer._boundary[0] = float(tokens[1])
                 layer._boundary[1] = float(tokens[2])
                 layer._boundary[2] = float(tokens[3])
+            elif key == '_Description':
+                layer.description = tokens[1]
             elif key == '_CubeSize':
                 layer._cube_shape = [int(tokens[1]), int(tokens[2]), int(tokens[3])]
             elif key == "_BaseExt":
                 ext = tokens[1].replace('.', '', 1)
                 layer.is_seg = ext == 'seg.sz.zip'
                 layer._raw_ext = None if layer.is_seg else ext
+            elif key == '_Color':
+                layer.color = tokens[1]
+            elif key == '_Visible':
+                layer.visible = bool(int(tokens[1]))
 
         for layer in layers:
             layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
@@ -604,6 +613,37 @@ class KnossosDataset(object):
                 self.__dict__.update(layer.__dict__)
 
         self.layers = layers
+
+    def write_pyknossos_conf(self, write_path):
+        with open(write_path, 'w') as conf:
+            for layer in self.layers:
+                conf.write('[Dataset]\n')
+                if layer.url:
+                    url = urllib.parse.urlparse(layer.url)
+                    conf.write(f'_BaseURL = {url.scheme}://{url.netloc}{urllib.parse.quote(url.path)}\n')
+                if layer.http_auth:
+                    conf.write(f'_UserName = {layer.http_user}\n')
+                    conf.write(f'_Password = {layer.http_passwd}\n')
+                if not layer._ordinal_mags:
+                    conf.write('_ServerFormat = knossos\n')
+                conf.write(f'_BaseName = {layer.experiment_name}\n')
+                scale_str = ''.join([f'{sx},{sy},{sz}, ' for (sx, sy, sz) in layer.scales])
+                conf.write(f'_DataScale = {scale_str}\n')
+                #conf.write(f'_NumberOfCubes = {layer.number_of_cubes}\n') var currently holds only the mag1 number of cubes
+                conf.write(f'_CubeSize = {layer.cube_shape[0]},{layer.cube_shape[1]},{layer.cube_shape[2]}\n')
+                conf.write(f'_Extent = {layer.boundary[0]},{layer.boundary[1]},{layer.boundary[2]}\n')
+                conf.write(f'_Description = {layer.description}\n')
+                if layer.is_seg:
+                    conf.write(f'_BaseExt = .seg.sz.zip\n')
+                else:
+                    conf.write(f'_BaseExt = .{layer._raw_ext}\n')
+                    if layer._raw_ext == 'png':
+                        conf.write(f'_FileType = 2\n')
+                if self.color is not None:
+                    conf.write(f'_Color = {self.color}\n')
+                if self.visible is not None:
+                    conf.write(f'_Visible = {int(self.visible)}\n')
+                conf.write('\n')
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
