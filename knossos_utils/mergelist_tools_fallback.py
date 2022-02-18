@@ -110,3 +110,31 @@ def gen_mergelist_from_objects(objects):
         new_mergelist += "{} 0 0 {}\n".format(obj.first, sub_obj_str[:-1]) # remove trailing white space
         new_mergelist += "{} {} {}\n\n\n".format(coords[0], coords[1], coords[2])
     return new_mergelist
+
+
+def parse_mergelist(mergelist: str, return_todo=False, return_immutable=False, return_supervoxel_ids=False, return_position=False, return_color=False, return_category=False, return_comment=False):
+    import re
+    lines = mergelist.split('\n')
+    idx = 0
+    object_ids, todos, immutables, supervoxel_ids, positions, colors, categories, comments = [[] for _ in range(8)]
+    while(idx < len(lines)-1):
+        try:
+            line_split = lines[idx].split(' ')
+            obj_id, todo, immutable = (int(val) for val in line_split[:3])
+            object_ids.append(obj_id)
+            if return_todo: todos.append(todo)
+            if return_immutable: immutables.append(immutable)
+            if return_supervoxel_ids: supervoxel_ids.append([int(val) for val in line_split[3:]])
+            idx += 1;
+            hits = re.search(r'(\d+) (\d+) (\d+) ((\d+) (\d+) (\d+))?', lines[idx]).groups()
+            print(hits)
+            if return_position: positions.append(tuple(int(val) for val in hits[:3]))
+            if return_color: colors.append(None if hits[3] is None else tuple(int(val) for val in hits[4:]))
+            idx += 1;
+            if return_category: categories.append(lines[idx])
+            idx += 1;
+            if return_comment: comments.append(lines[idx])
+            idx += 1;
+        except (IndexError, ValueError) as e:
+            raise Exception(f'Parsing mergelist failed at line {idx+1}: {e}')
+    return object_ids, todos, immutables, supervoxel_ids, positions, colors, categories, comments
