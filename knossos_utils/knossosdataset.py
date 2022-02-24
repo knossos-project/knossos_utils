@@ -528,6 +528,25 @@ class KnossosDataset(object):
         self._cache_mutex.release()
         return values
 
+    def generate_scales(self, mag1_scale, ds_factor=(2,2,2)):
+        if ds_factor[0] < 2 or ds_factor[1] < 2:
+            raise ValueError('In xy only downsampling factors ≥ 2 are allowed.')
+        x, y, z = np.ceil(np.array(self.boundary) / self.cube_shape)
+        scales = []
+        scale = list(mag1_scale)
+        while True:
+            scales.append(np.array([scale[0], scale[1], scale[2]]))
+            if x < ds_factor[0] and y < ds_factor[1] and (z < ds_factor[2] or ds_factor[2] == 1):
+                break
+            x = np.ceil(x / ds_factor[0])
+            y = np.ceil(y / ds_factor[1])
+            scale[0] *= ds_factor[0]
+            scale[1] *= ds_factor[1]
+            if scale[2] < scale[0] and not ds_factor[2] == 1:
+                scale[2] *= ds_factor[2]
+                z = np.ceil(z / ds_factor[1])
+        return scales
+
     def initialize_from_conf(self, path_to_conf):
         path_to_conf = str(path_to_conf)
         if path_to_conf.endswith("ariadne.conf") or path_to_conf.endswith(".pyknossos.conf") or path_to_conf.endswith(".pyk.conf"):
