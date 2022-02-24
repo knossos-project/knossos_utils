@@ -601,6 +601,8 @@ class KnossosDataset(object):
                 layer.description = layer_conf.get('Description', layer.description)
                 layer._raw_ext = ext if ext != '.seg.sz.zip' else None
                 layer.is_seg = layer._raw_ext is None
+                layer.color = layer_conf.get('Color')
+                layer.visible = layer_conf.get('Visible')
 
         for layer in layers:
             layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
@@ -2479,6 +2481,8 @@ class LayerConfig:
     VoxelSize_nm: List[List[float]]
     CubeShape_px: List[int]
     Description: Optional[str]
+    Color: Optional[str]
+    Visible: Optional[bool]
 
     def __init__(self, layer: KnossosDataset):
         self.URL = layer.url
@@ -2489,6 +2493,8 @@ class LayerConfig:
         self.VoxelSize_nm = [scale.tolist() for scale in layer.scales]
         self.CubeShape_px = list(layer.cube_shape)
         self.Description = layer.description
+        self.Color = layer.color
+        self.Visible = layer.visible
 
     def to_toml_string(self):
         string = ''
@@ -2502,5 +2508,7 @@ class LayerConfig:
             return '[' + ', '.join([self.elem_to_toml_string(sub_elem) for sub_elem in elem]) + ']'
         elif isinstance(elem, str):
             return f"'{elem}'"
+        elif isinstance(elem, bool):
+            return str(elem).lower()
         else:
             return str(elem)
