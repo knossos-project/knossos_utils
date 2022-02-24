@@ -44,7 +44,7 @@ import shutil
 import sys
 import tempfile
 import time
-import toml
+import tomli
 from typing import List, Optional, Union
 import urllib
 import warnings
@@ -573,7 +573,8 @@ class KnossosDataset(object):
             layer._initialized = True
             layer._initialize_cache(0)
         try:
-            conf = toml.load(path_to_toml)
+            with open(path_to_toml, 'rb') as conf_file:
+                conf = tomli.load(conf_file)
         except FileNotFoundError as e:
             raise NotImplementedError("Could not read .conf: {}".format(e))
 
