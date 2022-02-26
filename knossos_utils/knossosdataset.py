@@ -625,10 +625,10 @@ class KnossosDataset(object):
             toml_file.write(string[:-1])
 
     def initialize_from_pyknossos_path(self, path_to_pyknossos_conf):
-        """ Parse a pyknossos conf
-
+        """ Parse a pyKNOSSOS conf
         :param path_to_pyknossos_conf: str
         """
+        print(f'DEPRECATION warning: The PyKNOSSOS conf format is deprecated (loaded conf: {path_to_pyknossos_conf}). Please convert this dataset to toml using save_toml("/output/path.k.toml")')
         def initialize(layer):
             layer._knossos_path = os.path.dirname(path_to_pyknossos_conf) + "/"
             layer._initialized = True
@@ -822,7 +822,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
-
+        print(f'DEPRECATION warning: The knossos.conf format is deprecated (loaded conf: {path}).\nPlease convert this dataset to toml using save_toml("/output/path.k.toml")')
         while path.endswith("/"):
             path = path[:-1]
 
