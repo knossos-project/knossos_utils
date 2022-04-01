@@ -1942,7 +1942,6 @@ class KnossosDataset(object):
                     dest_cube = imageio.imread(cube_path)
             except Exception as e:
                 print(f'Cube is broken and will be overwritten: {cube_path}')
-                raise e
             dest_cube = dest_cube.reshape(self.cube_shape[::-1])
             dest_cube = dest_cube.astype(data.dtype)
             if overwrite_offset is not None or overwrite_limit is not None:
