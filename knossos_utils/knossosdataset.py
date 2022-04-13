@@ -882,6 +882,37 @@ class KnossosDataset(object):
             _print("Initialization finished successfully")
         self._initialized = True
 
+    @staticmethod
+    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), ext='.png', description = ''):
+        conf_path = Path(path) / f'{experiment_name}.k.toml'
+        if conf_path.exists():
+            raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
+        d = KnossosDataset()
+        layer = KnossosDataset()
+        layer._knossos_path = path
+        layer.url = f'file://{layer._knossos_path}'
+        layer._experiment_name = experiment_name
+        layer._boundary = boundary
+        layer._scale = scale
+        layer._cube_shape = cube_shape
+        layer.scales = layer.generate_scales(scale, ds_factor)
+        layer._ordinal_mags = True
+        layer.description = description
+        if not ext.startswith('.'):
+            ext = f'.{ext}'
+        if ext.lower() not in {'.raw', '.png', '.jpg', '.jpeg', '.seg.sz.zip'}:
+            raise ValueError(f'Invalid extension {ext}. Supported extensions: .raw, .png, .jpg, .jpeg, .seg.sz.zip')
+        layer.is_seg = ext == '.seg.sz.zip'
+        if not layer.is_seg:
+            layer._raw_ext = ext
+        layer._initialize_cache(0)
+        layer._initialized = True
+        d.__dict__.update(layer.__dict__)
+        d.layers = [layer]
+        conf_path.parent.mkdir(exist_ok=True, parents=True)
+        d.save_toml(conf_path)
+        return d
+
     def initialize_without_conf(self, path, boundary, scale, experiment_name,
                                 mags=None, make_mag_folders=True,
                                 create_knossos_conf=True, verbose=False, cache_size=0):
@@ -909,7 +940,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
-
+        print('DEPRECATION warning: initialize_without_conf is deprecated. Please use initialize.')
         self._knossos_path = path
         all_mag_folders = our_glob(path+"/*mag*")
 
