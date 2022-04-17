@@ -658,10 +658,10 @@ class KnossosDataset(object):
                     conf.write(f'_BaseExt = .{layer._raw_ext}\n')
                     if layer._raw_ext == 'png':
                         conf.write(f'_FileType = 2\n')
-                if self.color is not None:
-                    conf.write(f'_Color = {self.color}\n')
-                if self.visible is not None:
-                    conf.write(f'_Visible = {int(self.visible)}\n')
+                if layer.color is not None:
+                    conf.write(f'_Color = {layer.color}\n')
+                if layer.visible is not None:
+                    conf.write(f'_Visible = {int(layer.visible)}\n')
                 conf.write('\n')
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
