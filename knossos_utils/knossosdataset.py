@@ -286,10 +286,6 @@ class KnossosDataset(object):
         if self.verbose:
             print(*args, **kwargs)
 
-    class CubeType(Enum):
-        RAW = 0,
-        COMPRESSED = 1
-
     def __init__(self, path=None, show_progress=True):
         moduleInit()
         global module_wide
@@ -310,11 +306,8 @@ class KnossosDataset(object):
         self.scales = []
         self._number_of_cubes = np.zeros(3)
         self._cube_shape = np.full(3, 128, dtype=np.int)
-        self._cube_type = KnossosDataset.CubeType.RAW
-        self._raw_ext = 'raw'
         self._initialized = False
         self._mags = None
-        self.is_seg = True
         self.verbose = False
         self.show_progress = show_progress
         self.background_label = 0
@@ -443,19 +436,6 @@ class KnossosDataset(object):
                             for y in range(offset[1], end[1], step[1])
                             for z in range(offset[2], end[2], step[2]))
 
-    def set_channel(self, channel):
-        if channel == 'implicit': return
-        cube_types = {
-            'raw': KnossosDataset.CubeType.RAW,
-            'png': KnossosDataset.CubeType.COMPRESSED,
-            'jpg': KnossosDataset.CubeType.COMPRESSED
-        }
-        if channel in cube_types:
-            self._cube_type = cube_types[channel]
-            self._raw_ext = channel
-        else:
-            raise ValueError(f'channel must be one of {cube_types.keys()}')
-
     def get_first_blocks(self, offset):
         return offset // self.cube_shape
 
@@ -579,10 +559,6 @@ class KnossosDataset(object):
             self.layers = [self]
 
     def initialize_from_toml(self, path_to_toml: Union[str, Path]):
-        def initialize(layer):
-            layer._knossos_path = os.path.dirname(path_to_toml) + "/"
-            layer._initialized = True
-            layer._initialize_cache(0)
         try:
             with open(path_to_toml, 'rb') as conf_file:
                 conf = tomli.load(conf_file)
@@ -591,36 +567,34 @@ class KnossosDataset(object):
 
         layers = []
         for layer_conf in conf['Layer']:
-            for ext in layer_conf['FileExtension']:
-                layer = KnossosDataset(show_progress=self.show_progress)
-                layer._conf_path = path_to_toml
-                layer._ordinal_mags = True
-                layer._cube_shape = [128, 128, 128]
-                layer.layers = [layer]
-                layers.append(layer)
-                layer._experiment_name = layer_conf['Name']
-                if 'URL' in layer_conf:
-                    layer.url = layer_conf['URL']
-                    split_url = urllib.parse.urlsplit(layer.url)
-                    layer._http_user = split_url.username
-                    layer._http_user = split_url.password
-                layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
-                layer._ordinal_mags = True
-                layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
-                layer._scale = layer.scales[0]
-                layer._boundary = layer_conf['Extent_px']
-                layer._cube_shape = layer_conf['CubeShape_px']
-                layer.description = layer_conf.get('Description', layer.description)
-                layer._raw_ext = ext if ext != '.seg.sz.zip' else None
-                layer.is_seg = layer._raw_ext is None
-                layer.color = layer_conf.get('Color')
-                layer.visible = layer_conf.get('Visible')
+            layer = KnossosDataset(show_progress=self.show_progress)
+            layer._conf_path = path_to_toml
+            layer._knossos_path = os.path.dirname(path_to_toml) + "/"
+            layer._initialized = True
+            layer._initialize_cache(0)
+            layer._ordinal_mags = True
+            layer._cube_shape = [128, 128, 128]
+            layer.layers = [layer]
+            layers.append(layer)
+            layer._experiment_name = layer_conf['Name']
+            layer.url = f'file://{layer._knossos_path}'
+            if 'URL' in layer_conf:
+                layer.url = layer_conf['URL']
+                split_url = urllib.parse.urlsplit(layer.url)
+                layer._http_user = split_url.username
+                layer._http_user = split_url.password
+            layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
+            layer._ordinal_mags = True
+            layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
+            layer._scale = layer.scales[0]
+            layer._boundary = layer_conf['Extent_px']
+            layer._cube_shape = layer_conf['CubeShape_px']
+            layer.description = layer_conf.get('Description', layer.description)
+            layer.file_extensions = layer_conf['FileExtension']
+            layer.color = layer_conf.get('Color')
+            layer.visible = layer_conf.get('Visible')
 
         for layer in layers:
-            layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
-            initialize(layer)
-            if layer.url is None:
-                layer.url = f'file://{layer._knossos_path}'
             # set to first local layer or to first remote layer if there is no local one.
             if not self._initialized or (self.in_http_mode and not layer.in_http_mode):
                 self.__dict__.update(layer.__dict__)
@@ -678,9 +652,9 @@ class KnossosDataset(object):
                     layer.scales.append(np.array([float(x), float(y), float(z)]))
                 layer._scale = layer.scales[0]
             elif key == "_FileType":
-                type_map = {'0': 'raw', '2': 'png', '3': 'jpg'}
+                type_map = {'0': '.raw', '2': '.png', '3': '.jpg'}
                 assert tokens[1] in type_map, f'unsupported _FileType ({tokens[1]})'
-                layer.raw_ext = type_map[tokens[1]]
+                layer.file_extensions = [type_map[tokens[1]]]
             elif key == "_NumberofCubes":
                 layer._number_of_cubes[0] = int(tokens[1])
                 layer._number_of_cubes[1] = int(tokens[2])
@@ -694,18 +668,13 @@ class KnossosDataset(object):
             elif key == '_CubeSize':
                 layer._cube_shape = [int(tokens[1]), int(tokens[2]), int(tokens[3])]
             elif key == "_BaseExt":
-                ext = tokens[1].replace('.', '', 1)
-                layer.is_seg = ext == 'seg.sz.zip'
-                layer._raw_ext = None if layer.is_seg else ext
+                layer.file_extensions = ['.' * (not tokens[1].startswith('.')) + tokens[1]]
             elif key == '_Color':
                 layer.color = tokens[1]
             elif key == '_Visible':
                 layer.visible = bool(int(tokens[1]))
 
         for layer in layers:
-            if layer._raw_ext is not None and not layer._raw_ext.startswith('.'):
-                layer._raw_ext = '.' + layer._raw_ext
-            layer._cube_type = KnossosDataset.CubeType.RAW if layer._raw_ext == 'raw' else KnossosDataset.CubeType.COMPRESSED
             initialize(layer)
             if layer.url is None:
                 layer.url = f'file://{layer._knossos_path}'
@@ -718,33 +687,31 @@ class KnossosDataset(object):
     def write_pyknossos_conf(self, write_path):
         with open(write_path, 'w') as conf:
             for layer in self.layers:
-                conf.write('[Dataset]\n')
-                if layer.url:
-                    url = urllib.parse.urlparse(layer.url)
-                    conf.write(f'_BaseURL = {url.scheme}://{url.netloc}{urllib.parse.quote(url.path)}\n')
-                if layer.http_auth:
-                    conf.write(f'_UserName = {layer.http_user}\n')
-                    conf.write(f'_Password = {layer.http_passwd}\n')
-                if not layer._ordinal_mags:
-                    conf.write('_ServerFormat = knossos\n')
-                conf.write(f'_BaseName = {layer.experiment_name}\n')
-                scale_str = ''.join([f'{sx},{sy},{sz}, ' for (sx, sy, sz) in layer.scales])
-                conf.write(f'_DataScale = {scale_str}\n')
-                #conf.write(f'_NumberOfCubes = {layer.number_of_cubes}\n') var currently holds only the mag1 number of cubes
-                conf.write(f'_CubeSize = {layer.cube_shape[0]},{layer.cube_shape[1]},{layer.cube_shape[2]}\n')
-                conf.write(f'_Extent = {layer.boundary[0]},{layer.boundary[1]},{layer.boundary[2]}\n')
-                conf.write(f'_Description = {layer.description}\n')
-                if layer.is_seg:
-                    conf.write(f'_BaseExt = .seg.sz.zip\n')
-                else:
-                    conf.write(f'_BaseExt = .{layer._raw_ext}\n')
-                    if layer._raw_ext == 'png':
+                for ext in layer.file_extensions:
+                    conf.write('[Dataset]\n')
+                    if layer.url:
+                        url = urllib.parse.urlparse(layer.url)
+                        conf.write(f'_BaseURL = {url.scheme}://{url.netloc}{urllib.parse.quote(url.path)}\n')
+                    if layer.http_auth:
+                        conf.write(f'_UserName = {layer.http_user}\n')
+                        conf.write(f'_Password = {layer.http_passwd}\n')
+                    if not layer._ordinal_mags:
+                        conf.write('_ServerFormat = knossos\n')
+                    conf.write(f'_BaseName = {layer.experiment_name}\n')
+                    scale_str = ''.join([f'{sx},{sy},{sz}, ' for (sx, sy, sz) in layer.scales])
+                    conf.write(f'_DataScale = {scale_str}\n')
+                    #conf.write(f'_NumberOfCubes = {layer.number_of_cubes}\n') var currently holds only the mag1 number of cubes
+                    conf.write(f'_CubeSize = {layer.cube_shape[0]},{layer.cube_shape[1]},{layer.cube_shape[2]}\n')
+                    conf.write(f'_Extent = {layer.boundary[0]},{layer.boundary[1]},{layer.boundary[2]}\n')
+                    conf.write(f'_Description = {layer.description}\n')
+                    conf.write(f'_BaseExt = {ext}\n')
+                    if ext == '.png':
                         conf.write(f'_FileType = 2\n')
-                if layer.color is not None:
-                    conf.write(f'_Color = {layer.color}\n')
-                if layer.visible is not None:
-                    conf.write(f'_Visible = {int(layer.visible)}\n')
-                conf.write('\n')
+                    if layer.color is not None:
+                        conf.write(f'_Color = {layer.color}\n')
+                    if layer.visible is not None:
+                        conf.write(f'_Visible = {int(layer.visible)}\n')
+                    conf.write('\n')
 
     def parse_knossos_conf(self, path_to_knossos_conf, verbose=False):
         """ Parse a knossos.conf
@@ -812,11 +779,9 @@ class KnossosDataset(object):
                              self.cube_shape), dtype=np.int)
 
         if 'png' in parsed_dict:
-            self._cube_type = KnossosDataset.CubeType.COMPRESSED
-            self._raw_ext = 'png'
+            self.file_extensions = ['.png']
         else:
-            self._cube_type = KnossosDataset.CubeType.RAW
-            self._raw_ext = 'raw'
+            self.file_extensions = ['.raw']
 
     def initialize_from_knossos_path(self, path, fixed_mag=None, http_max_tries=10,
                                      use_abs_path=False, verbose=False, cache_size=0):
@@ -894,7 +859,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), ext='.png', description = ''):
+    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = ''):
         conf_path = Path(path) / f'{experiment_name}.k.toml'
         if conf_path.exists():
             raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
@@ -909,13 +874,13 @@ class KnossosDataset(object):
         layer.scales = layer.generate_scales(scale, ds_factor)
         layer._ordinal_mags = True
         layer.description = description
-        if not ext.startswith('.'):
-            ext = f'.{ext}'
-        if ext.lower() not in {'.raw', '.png', '.jpg', '.jpeg', '.seg.sz.zip'}:
-            raise ValueError(f'Invalid extension {ext}. Supported extensions: .raw, .png, .jpg, .jpeg, .seg.sz.zip')
-        layer.is_seg = ext == '.seg.sz.zip'
-        if not layer.is_seg:
-            layer._raw_ext = ext
+        layer.file_extensions = []
+        for ext in file_extensions:
+            if not ext.startswith('.'):
+                ext = f'.{ext}'
+            if ext.lower() not in {'.raw', '.png', '.jpg', '.jpeg', '.seg.sz.zip'}:
+                raise ValueError(f'Invalid extension {ext}. Supported extensions: .raw, .png, .jpg, .jpeg, .seg.sz.zip')
+            layer.file_extensions.append(ext)
         layer._initialize_cache(0)
         layer._initialized = True
         d.__dict__.update(layer.__dict__)
@@ -1274,7 +1239,7 @@ class KnossosDataset(object):
         return self.from_cubes_to_list(vx_list, raw=False, datatype=datatype)
 
 
-    def _load(self, offset, size, from_overlay, mag, expand_area_to_mag=False, padding=0, datatype=None):
+    def _load(self, offset, size, from_overlay, mag, ext, expand_area_to_mag=False, padding=0, datatype=None):
         """ Extracts a 3D matrix from the KNOSSOS-dataset NOTE: You should use one of the two wrappers below
 
         :param offset: 3 sequence of ints
@@ -1286,6 +1251,8 @@ class KnossosDataset(object):
         :param mag: int
             magnification of the requested data block
             Enlarges area to true voxels of mag in case offset and size don’t exist in that mag.
+        :param ext: str
+            File extension to load
         :param expand_area_to_mag: bool, int
             Enlarges area to true voxels of specified mag in case offset and size don’t exist in that mag.
             False: no expansion, True: expansion to ``mag``, int: expansion to ``expand_area_to_mag``
@@ -1306,7 +1273,7 @@ class KnossosDataset(object):
             from_cache = values is not None
 
             if not from_cache:
-                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{cube_coord[0]:04d}_y{cube_coord[1]:04d}_z{cube_coord[2]:04d}{".seg.sz.zip" if from_overlay else self._raw_ext}'
+                filename = f'{self.experiment_name}_{self.name_mag_folder}{mag}_x{cube_coord[0]:04d}_y{cube_coord[1]:04d}_z{cube_coord[2]:04d}{ext}'
                 path = f'{self.knossos_path}/{self.name_mag_folder}{mag}/x{cube_coord[0]:04d}/y{cube_coord[1]:04d}/z{cube_coord[2]:04d}/{filename}'
 
                 if self.in_http_mode:
@@ -1315,7 +1282,7 @@ class KnossosDataset(object):
                             request = requests.get(path, auth=self.http_auth, timeout=60)
                             request.raise_for_status()
                             if not from_overlay:
-                                if self._raw_ext == 'raw':
+                                if ext == '.raw':
                                     values = np.fromstring(request.content, dtype=np.uint8).astype(datatype)
                                 else:
                                     values = imageio.imread(request.content)
@@ -1349,7 +1316,7 @@ class KnossosDataset(object):
                                     snappy_cube = zf.read(zf.namelist()[0]) # seg.sz (without .zip)
                                 raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
                                 values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
-                            elif self._cube_type == KnossosDataset.CubeType.RAW:
+                            elif ext == '.raw':
                                 flat_shape = int(np.prod(self.cube_shape))
                                 values = np.fromfile(path, dtype=np.uint8, count=flat_shape).astype(datatype)
                             else: # compressed
@@ -1463,20 +1430,29 @@ class KnossosDataset(object):
         return output
 
     def preferred_raw_layer(self):
-        # preference raw → png → jpg
-        preferred_raw_layer = None
+        # legacy
+        preferred_raw_layer = None; ext = None
         for layer in self.layers:
-            if layer._raw_ext is None:
-                continue
-            if layer._raw_ext == 'raw' or layer._raw_ext == 'png':
+            ext = layer.preferred_raw_extension()
+            if ext == '.raw' or ext == '.png':
                 preferred_raw_layer = layer
                 break
-            preferred_raw_layer = layer
-        return preferred_raw_layer
+            if ext != '.seg.sz.zip':
+                preferred_raw_layer = layer
+        return preferred_raw_layer, ext
+
+    def preferred_raw_extension(self):
+        # preference raw → png → jpg
+        preferred_raw_extension = None
+        for ext in self.file_extensions:
+            if ext == '.raw' or ext == '.png':
+                preferred_raw_extension = ext
+                break
+            preferred_raw_extension = ext
+        return preferred_raw_extension
 
     def load_raw(self, **kwargs):
-        """from_cubes_to_matrix wrapper with mode=raw.
-
+        """
         :param offset: 3 sequence of ints
             mag 1 coordinate of the corner closest to (0, 0, 0)
         :param size: 3 sequence of ints
@@ -1497,14 +1473,14 @@ class KnossosDataset(object):
         if 'datatype' not in kwargs:
             kwargs.update({'datatype': np.uint8})
 
-        preferred_raw_layer = self.preferred_raw_layer()
+        preferred_raw_layer, ext = self.preferred_raw_layer()
 
         assert preferred_raw_layer is not None, 'Tried to load raw data, but the loaded dataset configuration contains no raw layer.'
-
-        return preferred_raw_layer._load(**kwargs)
+        kwargs['ext'] = ext
+        return self._load(**kwargs)
 
     def load_seg(self, **kwargs):
-        """from_cubes_to_matrix wrapper with mode=overlay.
+        """
         :param offset: 3 sequence of ints
             mag 1 coordinate of the corner closest to (0, 0, 0)
         :param size: 3 sequence of ints
@@ -1522,14 +1498,15 @@ class KnossosDataset(object):
         """
         assert 'from_overlay' not in kwargs, 'Don’t pass from_overlay, from_overlay is automatically set to True here.'
         kwargs.update({'from_overlay': True})
+        kwargs['ext'] = '.seg.sz.zip'
         if 'datatype' not in kwargs:
             kwargs.update({'datatype': np.uint64})
 
         for layer in self.layers: # prefer local seg
-            if not layer.in_http_mode and layer.is_seg:
+            if not layer.in_http_mode and '.seg.sz.zip' in layer.file_extensions:
                 return self._load(**kwargs)
         for layer in self.layers:
-            if layer.is_seg:
+            if '.seg.sz.zip' in layer.file_extensions:
                 return layer._load(**kwargs)
         raise Exception("Tried to load segmentation but the loaded dataset configuration contains no segmentation layer.")
 
@@ -2183,7 +2160,7 @@ class KnossosDataset(object):
         else:
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
-    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None):
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None, ext=None):
         datatype = datatype or (np.uint8 if as_raw else np.uint64)
 
         if (as_raw and datatype not in {np.uint8, np.uint16}) or (not as_raw and datatype != np.uint64):
@@ -2192,7 +2169,7 @@ class KnossosDataset(object):
 
         def _write_cubes(args):
             """ Helper function for multithreading """
-            folder_path, path, cube_offset, cube_limit, start, end = args
+            folder_path, path, file_extensions, cube_offset, cube_limit, start, end = args
 
             cube = np.zeros(self.cube_shape[::-1], dtype=datatype)
             cube[cube_offset[2]: cube_limit[2],
@@ -2229,10 +2206,10 @@ class KnossosDataset(object):
                             os.rmdir(block_path)
                     except FileNotFoundError:
                         pass # folder was removed by another worker in the meantime
-
-            self.save_cube(cube_path=path if as_raw or kzip_path else path + '.zip', data=cube,
-                            overwrite_offset=cube_offset if overwrite else None,
-                            overwrite_limit=cube_limit if overwrite else None)
+            for ext in file_extensions:
+                self.save_cube(cube_path=f'{path}{ext}' if as_raw or kzip_path else f'{path}{ext}.zip', data=cube,
+                                overwrite_offset=cube_offset if overwrite else None,
+                                overwrite_limit=cube_limit if overwrite else None)
 
             try:
                 os.rmdir(block_path)   # ------------------------------
@@ -2309,18 +2286,17 @@ class KnossosDataset(object):
                         path = f'{conf_folder}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
                         this_cube_info.append(path)
 
+                        extensions = ['.seg.sz']
                         if kzip_path is None:
                             if as_raw:
-                                save_layer = self.preferred_raw_layer()
-                                ext = save_layer._raw_ext
+                                save_layer, _ = self.preferred_raw_layer()
+                                extensions = save_layer.file_extensions
                             else:
                                 save_layer = self
-                                ext = '.seg.sz'
-                            path += f'{save_layer.experiment_name}_{save_layer.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}{ext}'
+                            path += f'{save_layer.experiment_name}_{save_layer.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}'
                         else:
-                            path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}.seg.sz'
-                        this_cube_info.append(path)
-
+                            path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}'
+                        this_cube_info.extend([path, extensions])
                         cube_coords = current * self.cube_shape
                         cube_offset = np.zeros(3)
                         cube_limit = np.ones(3) * self.cube_shape
@@ -2485,21 +2461,22 @@ class KnossosDataset(object):
         """
         multi_params = []
         for mag in range(32):
-            if os.path.exists(self.knossos_path+self._name_mag_folder +
-                              str(2**mag)):
-                for x_cube in range(int(self._number_of_cubes[0] // 2**mag+1)):
-                    if raw:
-                        glob_input = self.knossos_path + \
-                                     self._name_mag_folder + \
-                                     str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
-                                     self._experiment_name + "*" + self._raw_ext
-                    else:
-                        glob_input = self.knossos_path + \
-                                     self._name_mag_folder + \
-                                     str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
-                                     self._experiment_name + "*seg*"
+            for ext in self.file_extensions:
+                if os.path.exists(self.knossos_path+self._name_mag_folder +
+                                str(2**mag)):
+                    for x_cube in range(int(self._number_of_cubes[0] // 2**mag+1)):
+                        if raw:
+                            glob_input = self.knossos_path + \
+                                        self._name_mag_folder + \
+                                        str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
+                                        self._experiment_name + "*" + ext
+                        else:
+                            glob_input = self.knossos_path + \
+                                        self._name_mag_folder + \
+                                        str(2**mag) + "/x%04d/y*/z*/" % x_cube + \
+                                        self._experiment_name + "*seg*"
 
-                    multi_params.append([glob_input, verbose])
+                        multi_params.append([glob_input, verbose])
 
         if not self.initialized:
             raise Exception("Dataset is not initialized")
@@ -2529,9 +2506,13 @@ class LayerConfig:
 
     def __init__(self, layer: KnossosDataset):
         self.URL = layer.url
+        if layer.http_auth is not None:
+            parsed_url = urllib.parse.urlparse(layer.url)
+            if parsed_url.username is None:
+                self.URL = layer.url.replace(f'{parsed_url.scheme}://', f'{parsed_url.scheme}://{layer.http_user}:{layer.http_passwd}@')
         self.Name = layer.experiment_name
         self.ServerFormat = layer.server_format
-        self.FileExtension = ['.seg.sz.zip' if layer.is_seg else layer._raw_ext]
+        self.FileExtension = layer.file_extensions
         self.Extent_px = list(layer.boundary)
         self.VoxelSize_nm = [scale.tolist() for scale in layer.scales]
         self.CubeShape_px = list(layer.cube_shape)
