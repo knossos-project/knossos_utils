@@ -127,7 +127,6 @@ def parse_mergelist(mergelist: str, return_todo=False, return_immutable=False, r
             if return_supervoxel_ids: supervoxel_ids.append([int(val) for val in line_split[3:]])
             idx += 1;
             hits = re.search(r'(\d+) (\d+) (\d+) ((\d+) (\d+) (\d+))?', lines[idx]).groups()
-            print(hits)
             if return_position: positions.append(tuple(int(val) for val in hits[:3]))
             if return_color: colors.append(None if hits[3] is None else tuple(int(val) for val in hits[4:]))
             idx += 1;
