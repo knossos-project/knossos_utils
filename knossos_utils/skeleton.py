@@ -483,12 +483,13 @@ class Skeleton:
         :param force_overwrite: overwrite existing .k.zip
         :return:
         """
-        if os.path.isfile(filename) and not force_overwrite:
-            remove_from_zip(filename, 'annotation.xml')
-            with zipfile.ZipFile(filename, "a", zipfile.ZIP_DEFLATED) as zf:
+        kzip_path = filename if filename.endswith('.k.zip') else filename + '.k.zip'
+        if os.path.isfile(kzip_path) and not force_overwrite:
+            remove_from_zip(kzip_path, 'annotation.xml')
+            with zipfile.ZipFile(kzip_path, "a", zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr('annotation.xml', self.to_xml_string(save_empty))
         else:
-            with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(kzip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr('annotation.xml', self.to_xml_string(save_empty))
 
 
