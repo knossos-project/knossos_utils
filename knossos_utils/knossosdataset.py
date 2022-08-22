@@ -581,7 +581,7 @@ class KnossosDataset(object):
             key = tokens[0]
             if re.match(r'\[Dataset[ \d]*]$', tokens[0]):
                 layer = KnossosDataset(show_progress=self.show_progress)
-                layer._conf_path = path_to_pyknossos_conf
+                layer._conf_path = str(Path(path_to_pyknossos_conf).resolve())
                 layer._ordinal_mags = True # pyk.conf is ordinal by default
                 layer._cube_shape = [128, 128, 128] # default cube shape
                 layer.layers = [layer]
@@ -686,7 +686,7 @@ class KnossosDataset(object):
         except FileNotFoundError:
             raise NotImplementedError("Could not find/read *mag1/knossos.conf")
 
-        self._conf_path = path_to_knossos_conf
+        self._conf_path = str(Path(path_to_knossos_conf).resolve())
 
         parsed_dict = {}
         for line in lines:
