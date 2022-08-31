@@ -69,6 +69,8 @@ class Skeleton:
         self.dataset_path = None
         self.movement_area_min = None
         self.movement_area_size = None
+        self.segmentation_background_id = 0
+        self.segmentation_lock_new_objects = False
 
     def set_edit_position(self, edit_position):
         self.edit_position = edit_position
@@ -294,6 +296,11 @@ class Skeleton:
             self.dataset_path = parse_attributes(dataset, [["path", str]])[0]
         except IndexError:
             self.dataset_path = None
+        try: # segmentation
+            segmentation = doc.getElementsByTagName("parameters")[0].getElementsByTagName("segmentation")[0]
+            self.segmentation_background_id, self.segmentation_lock_new_objects = parse_attributes(segmentation, [["backgroundId", int], ["lockNewObjects", int]])
+        except IndexError:
+            pass
         try: # movement area
             movement_area = doc.getElementsByTagName("parameters")[0].getElementsByTagName("MovementArea")[0]
             self.movement_area_min = np.array(parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]]), dtype=np.int)
@@ -530,6 +537,10 @@ class Skeleton:
                  ["y", self.edit_position[1]],
                  ["z", self.edit_position[2]], ])
             parameters.appendChild(edit_position)
+
+        seg_elem = doc.createElement('segmentation')
+        build_attributes(seg_elem, [['backgroundId', self.segmentation_background_id], ['lockNewObjects', int(self.segmentation_lock_new_objects)]])
+        parameters.appendChild(seg_elem)
 
         area_attributes = []
         if self.movement_area_min is not None:
