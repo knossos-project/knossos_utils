@@ -52,7 +52,7 @@ setup(
     version="0.1",
     description="Tools for generating or manipulating knossos datasets and annotation files",
     author="Sven Dorkenwald, KNOSSOS team",
-    author_email="knossos-team@mpimf-heidelberg.mpg.de",
+    author_email="knossosteam@gmail.com",
     url="https://github.com/knossos-project/knossos_utils",
     license="GPL",
     long_description=read("README.md"),
