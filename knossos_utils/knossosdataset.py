@@ -57,6 +57,7 @@ from multiprocessing import Pool
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from threading import Lock
+from typing import Optional, Sequence
 from xml.etree import ElementTree as ET
 import warnings
 
@@ -865,6 +866,7 @@ class KnossosDataset(object):
             raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
         d = KnossosDataset()
         layer = KnossosDataset()
+        layer._conf_path = conf_path
         layer._knossos_path = path
         layer.url = f'file://{layer._knossos_path}'
         layer._experiment_name = experiment_name
@@ -974,11 +976,37 @@ class KnossosDataset(object):
 
         self._initialized = True
 
+    @staticmethod
+    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[Sequence[int]], ds_factor: Sequence[int], file_extensions: Sequence[str] = ('.png'), channels: Optional[Sequence[str]] = ('',), write_path: str ='.'):
+        write_path = os.path.abspath(write_path)
+        conf_path = f'{write_path}/{experiment_name}.k.toml'
+        if Path(conf_path).exists():
+            raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
+        if len(channels) > 1 and (data.ndim < len(cube_shape) + 1 or data.shape[-1] != len(channels)):
+            raise ValueError(f'Cube shape: {cube_shape}, channels: {channels}.  Expected data.shape == {(*cube_shape, len(channels))}, found actual shape {data.shape}.')
+        boundary = data.shape[:-1][::-1] if len(channels) > 1 else data.shape[::-1]
+        d = KnossosDataset()
+        layers = []
+        for channel in channels:
+            layer = KnossosDataset.initialize(f'{write_path}/{channel}', experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel)
+            layers.append(layer)
+        d.__dict__.update(layers[0].__dict__)
+        d._conf_path = conf_path
+        d._knossos_path = str(Path(conf_path).parent)
+        d.layers = layers
+        d.save_toml(d._conf_path)
+        for idx, layer in enumerate(layers):
+            layer.save_raw(data[...,idx], offset=(0, 0, 0), data_mag=1)
+            layer._conf_path = d._conf_path
+            layer._knossos_path = d._knossos_path
+        return d
+
     def initialize_from_matrix(self, path, scale, experiment_name,
                                offset=None, boundary=None, fast_downsampling=True,
                                data=None, data_path=None, hdf5_names=None,
                                mags=None, verbose=False, cache_size=0):
-        """ Initializes the dataset with matrix
+        """
+            Initializes the dataset with matrix
             Only for use with "small" matrices (~10^3 edgelength)
 
             This function creates mag folders and knossos.conf's.
@@ -1012,6 +1040,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
+        print('DEPRECATION warning: initialize_from_matrix is deprecated. Please use initialize_from_array.')
 
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
