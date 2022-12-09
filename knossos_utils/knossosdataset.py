@@ -1756,7 +1756,7 @@ class KnossosDataset(object):
 
         return data.swapaxes(0, 2)
 
-    def _load_kzip_seg(self, path, offset, size, mag, datatype=np.uint64, padding=0, apply_mergelist=True, return_dataset_cube_if_nonexistent=False, expand_area_to_mag=False):
+    def _load_kzip_seg(self, path, offset, size, mag, datatype=np.uint64, padding=0, apply_mergelist=True, return_dataset_cube_if_nonexistent=False, expand_area_to_mag=False, kzip_experiment_name=None):
         """ Extracts a 3D matrix from a kzip file
 
         :param path: str
@@ -1814,7 +1814,7 @@ class KnossosDataset(object):
         current = np.array([start[dim] for dim in range(3)])
         cnt = 1
         nb_cubes_to_process = (end - start).prod()
-        experiment_name = self.experiment_name
+        experiment_name = kzip_experiment_name or self.experiment_name
         for file in archive.namelist():
             if file.endswith('.seg.sz'):
                 match = re.search(r'_mag\d+x\d+y\d+z\d+.seg.sz', file)
