@@ -1,7 +1,6 @@
 from __future__ import absolute_import, division, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
-from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
-from functools import reduce
+from builtins import range, int
 import warnings
 import numpy as np
 
@@ -19,7 +18,10 @@ def subobject_map_from_mergelist(mergelist_content):
         if len(elems) > 0:
             object_id = elems[0]
             for subobject_id in elems[3:]:
-                subobjects_map[np.uint64(subobject_id)] = np.uint64(object_id)
+                if (len(elems) > 4):
+                    subobjects_map[np.uint64(subobject_id)] = np.uint64(object_id)
+                elif not np.uint64(subobject_id) in subobjects_map:
+                    subobjects_map[np.uint64(subobject_id)] = np.uint64(object_id)
     return subobjects_map
 
 

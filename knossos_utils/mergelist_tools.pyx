@@ -46,7 +46,11 @@ def subobject_map_from_mergelist(mergelist_content):
         if len(elems) > 0:
             object_id = elems[0]
             for subobject_id in elems[3:]:
-                subobjects_to_objects_map[subobject_id] = object_id
+                if (len(elems) > 4):
+                    subobjects_to_objects_map[subobject_id] = object_id
+                else:
+                    # this should only insert it when the key (subobject_id) is not there yet
+                    subobjects_to_objects_map.insert(pair[np.uint64_t, np.uint64_t](subobject_id, object_id))
     return subobjects_to_objects_map
 
 
