@@ -127,9 +127,9 @@ def _as_shapearray(x, dim=3):
         Shape array
     """
     try:
-        array = np.fromiter(x, dtype=np.int, count=dim)
+        array = np.fromiter(x, dtype=int, count=dim)
     except TypeError:
-        array = np.full(dim, x, dtype=np.int)
+        array = np.full(dim, x, dtype=int)
     return array
 
 
@@ -172,9 +172,9 @@ def cut_matrix(data, offset_start, offset_end, cube_shape, start, end):
     """ Helper for cutting matrices extracted from cubes to a required size """
     cube_shape = _as_shapearray(cube_shape)
 
-    cut_start = np.array(offset_start, dtype=np.int)
+    cut_start = np.array(offset_start, dtype=int)
     number_cubes = np.array(end) - np.array(start)
-    cut_end = np.array(number_cubes * cube_shape - offset_end, dtype=np.int)
+    cut_end = np.array(number_cubes * cube_shape - offset_end, dtype=int)
 
     return data[cut_start[2]: cut_end[2],
                 cut_start[1]: cut_end[1],
@@ -302,11 +302,11 @@ class KnossosDataset(object):
         self.layers = []
         self._name_mag_folder = 'mag'
         self._ordinal_mags = False
-        self._boundary = np.zeros(3, dtype=np.int)
-        self._scale = np.ones(3, dtype=np.float)
+        self._boundary = np.zeros(3, dtype=int)
+        self._scale = np.ones(3, dtype=float)
         self.scales = []
         self._number_of_cubes = np.zeros(3)
-        self._cube_shape = np.full(3, 128, dtype=np.int)
+        self._cube_shape = np.full(3, 128, dtype=int)
         self._initialized = False
         self._mags = None
         self.verbose = False
@@ -838,7 +838,7 @@ class KnossosDataset(object):
                     mag_folder = mag_folder[-2]
 
                 self._name_mag_folder = \
-                    mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
+                    mag_folder[:-len(re.findall(r"[\d]+", mag_folder)[-1])]
 
             if not os.path.isfile(path):
                 warnings.warn(
@@ -931,8 +931,8 @@ class KnossosDataset(object):
                         break
                 if not exists:
                     if len(all_mag_folders) > 0:
-                        assert(not re.match('.*mag\d+$', all_mag_folders[0]) is None)
-                        os.makedirs(re.sub('mag\d+$', f'mag{mag}', all_mag_folders[0]))
+                        assert(not re.match(r'.*mag\d+$', all_mag_folders[0]) is None)
+                        os.makedirs(re.sub(r'mag\d+$', f'mag{mag}', all_mag_folders[0]))
                     else:
                         os.makedirs(path+"/mag"+str(mag))
         else:
@@ -945,14 +945,14 @@ class KnossosDataset(object):
             mag_folder = mag_folder[-2]
 
         self._name_mag_folder = \
-            mag_folder[:-len(re.findall("[\d]+", mag_folder)[-1])]
+            mag_folder[:-len(re.findall(r"[\d]+", mag_folder)[-1])]
 
         self._scale = scale
         self._boundary = boundary
         self._experiment_name = experiment_name
 
         self._number_of_cubes = np.array(np.ceil(
-            np.array(self.boundary).astype(np.float) / self.cube_shape), dtype=np.int)
+            np.array(self.boundary).astype(float) / self.cube_shape), dtype=int)
 
         if create_knossos_conf:
             for mag_folder in our_glob(path + '/*mag*'): # need (empty) knossos.conf files for mag discovery when streaming
@@ -1049,9 +1049,9 @@ class KnossosDataset(object):
             data = load_from_h5py(data_path, hdf5_names, False)[0]
 
         if offset is None:
-            offset = np.array([0, 0, 0], dtype=np.int)
+            offset = np.array([0, 0, 0], dtype=int)
         else:
-            offset = np.array(offset, dtype=np.int)
+            offset = np.array(offset, dtype=int)
 
         if boundary is None:
             boundary = np.array(data.shape) + offset
@@ -1222,7 +1222,7 @@ class KnossosDataset(object):
             array of voxel values corresponding to vx_list
         """
 
-        vx_list = np.array(vx_list, dtype=np.int)
+        vx_list = np.array(vx_list, dtype=int)
         boundary_box = [np.min(vx_list, axis=0),
                         np.max(vx_list, axis=0)]
         size = boundary_box[1] - boundary_box[0] + np.array([1, 1, 1])
@@ -1381,16 +1381,16 @@ class KnossosDataset(object):
             expand_ratio = self.scale_ratio(expand_area_to_mag, 1)
             # mag1 coords rounded such that when converting back from target mag to mag1 the specified offset and size can be extracted.
             # i.e. for higher mags the matrix will be larger rather than smaller
-            boundary = np.ceil(np.array(self.boundary, dtype=np.int) / expand_ratio).astype(int)
+            boundary = np.ceil(np.array(self.boundary, dtype=int) / expand_ratio).astype(int)
             end = np.ceil(np.add(offset, size) / expand_ratio) * expand_ratio
-            offset = np.floor(np.array(offset, dtype=np.int) / expand_ratio) * expand_ratio
+            offset = np.floor(np.array(offset, dtype=int) / expand_ratio) * expand_ratio
             # offset and size in target mag
             size = ((end - offset) // ratio).astype(int)
             offset = (offset // ratio).astype(int)
         else:
-            size = (np.array(size, dtype=np.int) // ratio).astype(int)
-            offset = (np.array(offset, dtype=np.int) // ratio).astype(int)
-            boundary = (np.array(self.boundary, dtype=np.int) // ratio).astype(int)
+            size = (np.array(size, dtype=int) // ratio).astype(int)
+            offset = (np.array(offset, dtype=int) // ratio).astype(int)
+            boundary = (np.array(self.boundary, dtype=int) // ratio).astype(int)
         orig_size = np.copy(size)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]
@@ -1554,8 +1554,8 @@ class KnossosDataset(object):
             offset = offset[::-1]
             size = size[::-1]
         ratio = self.scale_ratio(mag, 1)
-        size = (np.array(size) * ratio).astype(np.int)
-        offset = (np.array(offset) * ratio).astype(np.int)
+        size = (np.array(size) * ratio).astype(int)
+        offset = (np.array(offset) * ratio).astype(int)
 
         from_overlay = mode == 'overlay'
         padding = 'symmetric' if mirror_oob else 0
@@ -1746,8 +1746,8 @@ class KnossosDataset(object):
         self.background_label = empty_cube_label
 
         ratio = self.scale_ratio(mag, 1)
-        size = (np.array(size) * ratio).astype(np.int)
-        offset = (np.array(offset) * ratio).astype(np.int)
+        size = (np.array(size) * ratio).astype(int)
+        offset = (np.array(offset) * ratio).astype(int)
 
         data = self._load_kzip_seg(path, offset, size, mag, datatype, apply_mergelist, return_dataset_cube_if_nonexistent, expand_area_to_mag)
 
@@ -1792,12 +1792,12 @@ class KnossosDataset(object):
                 expand_area_to_mag = mag
             expand_ratio = self.scale_ratio(expand_area_to_mag, 1)
             end = np.ceil(np.add(offset, size) / expand_ratio) * expand_ratio
-            offset = np.floor(np.array(offset, dtype=np.int) / expand_ratio) * expand_ratio
+            offset = np.floor(np.array(offset, dtype=int) / expand_ratio) * expand_ratio
             size = (end - offset) // ratio
             offset = offset // ratio
         else:
-            size = np.array(size, dtype=np.int) // ratio
-            offset = np.array(offset, dtype=np.int) // ratio
+            size = np.array(size, dtype=int) // ratio
+            offset = np.array(offset, dtype=int) // ratio
         offset = offset.astype(np.int64)
         size = size.astype(np.int64)
 
@@ -2255,9 +2255,9 @@ class KnossosDataset(object):
             start_mag = 1 if upsample else data_mag
             end_mag = self.highest_mag if downsample else data_mag
             if self._ordinal_mags:
-                mags = np.arange(start_mag, end_mag, dtype=np.int)
+                mags = np.arange(start_mag, end_mag, dtype=int)
             else: # power of 2 mags (KNOSSOS style)
-                mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=np.int))
+                mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=int))
         self._print(f'mags to write: {mags}')
 
         if kzip_path is not None:
@@ -2285,14 +2285,14 @@ class KnossosDataset(object):
                 quality = 3 if mag > data_mag else 1
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=quality).astype(datatype, copy=False)
             else: # fancy seg upsampling
-                data_inter = np.zeros(shape=(inv_mag_ratio * np.array(data.shape)).astype(np.int), dtype=datatype)
+                data_inter = np.zeros(shape=(inv_mag_ratio * np.array(data.shape)).astype(int), dtype=datatype)
                 for value in np.unique(data):
                     if value == 0: continue # no 0 upsampling
                     up_chunk_channel = scipy.ndimage.zoom((data == value).astype(np.uint8), inv_mag_ratio, order=1)
                     data_inter += (up_chunk_channel * value).astype(datatype, copy=False)
 
-            offset_mag = np.array(offset, dtype=np.int) // self.scale_ratio(mag, 1)
-            size_mag = np.array(data_inter.shape[::-1], dtype=np.int)
+            offset_mag = np.array(offset, dtype=int) // self.scale_ratio(mag, 1)
+            size_mag = np.array(data_inter.shape[::-1], dtype=int)
 
             self._print(f'mag: {mag}')
             self._print(f'box_offset: {offset_mag}')
@@ -2339,10 +2339,10 @@ class KnossosDataset(object):
                         start_coord = cube_coords - offset_mag + cube_offset
                         end_coord = cube_limit - cube_offset
 
-                        this_cube_info.append(cube_offset.astype(np.int))
-                        this_cube_info.append(cube_limit.astype(np.int))
-                        this_cube_info.append(start_coord.astype(np.int))
-                        this_cube_info.append(end_coord.astype(np.int))
+                        this_cube_info.append(cube_offset.astype(int))
+                        this_cube_info.append(cube_limit.astype(int))
+                        this_cube_info.append(start_coord.astype(int))
+                        this_cube_info.append(end_coord.astype(int))
 
                         multithreading_params.append(this_cube_info)
 
