@@ -32,6 +32,7 @@
 reading and writing raw and overlay data."""
 
 
+from __future__ import annotations
 import collections
 import dataclasses
 from dataclasses import dataclass
@@ -559,18 +560,25 @@ class KnossosDataset(object):
             self.initialize_from_knossos_path(path_to_conf)
             self.layers = [self]
 
+    @staticmethod
+    def from_toml_string(toml_str: str) -> KnossosDataset:
+        ds = KnossosDataset()
+        return ds._initialize_from_dict(tomli.loads(toml_str))
+
     def initialize_from_toml(self, path_to_toml: Union[str, Path]):
         try:
             with open(path_to_toml, 'rb') as conf_file:
                 conf = tomli.load(conf_file)
         except FileNotFoundError as e:
             raise NotImplementedError("Could not read .conf: {}".format(e))
+        self._initialize_from_dict(conf, path_to_toml)
 
+    def _initialize_from_dict(self, conf: dict, conf_path: Optional[str] = None):
         layers = []
         for layer_conf in conf['Layer']:
             layer = KnossosDataset(show_progress=self.show_progress)
-            layer._conf_path = path_to_toml
-            layer._knossos_path = os.path.dirname(path_to_toml) + "/"
+            layer._conf_path = conf_path
+            layer._knossos_path = os.path.dirname(conf_path) + "/" if conf_path is not None else None
             layer._initialized = True
             layer._initialize_cache(0)
             layer._ordinal_mags = True
