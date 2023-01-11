@@ -288,7 +288,14 @@ class KnossosDataset(object):
         if self.verbose:
             print(*args, **kwargs)
 
-    def __init__(self, path=None, show_progress=True):
+    def __init__(self, path: str=None, show_progress: bool=True, reentrant: bool=True):
+        '''
+        Args:
+            path: Path to KnossosDataset streaming configuration file
+            show_progress: Output speed and progress when loading cubes
+            reentrant: If True, multiple parallel calls for cube writing are safe.
+                Should not be turned off if calling save_raw/save_seg/save_to_kzip for the same destination in parallel.
+        '''
         moduleInit()
         global module_wide
         self.module_wide = module_wide
@@ -300,6 +307,7 @@ class KnossosDataset(object):
         self.server_format = None
         self._experiment_name = None
         self.description = None
+        self.reentrant = reentrant
         self.layers = []
         self._name_mag_folder = 'mag'
         self._ordinal_mags = False
@@ -2231,16 +2239,17 @@ class KnossosDataset(object):
                         pass
 
             block_path = f'{path}-block'
-            while True:
+            while self.reentrant:
                 try:
                     os.makedirs(block_path)    # file lock -------------
                     break
                 except (FileExistsError, PermissionError):
                     try:
-                        if time.time() - filesystem_process_time_diff - os.stat(block_path).st_mtime <= 30:
+                        tdelta = time.time() - filesystem_process_time_diff - os.stat(block_path).st_mtime
+                        if tdelta <= 30:
                             time.sleep(random.uniform(0.1, 1.0)) # wait for other workers to finish
                         else:
-                            print(f'had to remove block folder {block_path} that wasn’t accessed recently {os.stat(block_path).st_mtime}')
+                            print(f'had to remove block folder {block_path} that wasn’t accessed recently {tdelta}')
                             os.rmdir(block_path)
                     except FileNotFoundError:
                         pass # folder was removed by another worker in the meantime
@@ -2249,11 +2258,12 @@ class KnossosDataset(object):
                                 overwrite_offset=cube_offset if overwrite else None,
                                 overwrite_limit=cube_limit if overwrite else None)
 
-            try:
-                os.rmdir(block_path)   # ------------------------------
-            except FileNotFoundError:
-                print(f'another worker removed our semaphore {block_path}')
-                pass
+            if self.reentrant:
+                try:
+                    os.rmdir(block_path)   # ------------------------------
+                except FileNotFoundError:
+                    print(f'another worker removed our semaphore {block_path}')
+                    pass
 
         # Main Function
         assert self.initialized, 'Dataset is not initialized'
@@ -2276,9 +2286,10 @@ class KnossosDataset(object):
                 kzip_path = kzip_path[:-6]
             os.makedirs(kzip_path, exist_ok=True)
 
-        # obtain clock difference between write destination and process system for correct block file age determination
-        with tempfile.NamedTemporaryFile(dir=kzip_path if kzip_path else os.path.dirname(self._conf_path)) as time_file:
-            filesystem_process_time_diff = time.time() - os.stat(time_file.name).st_mtime
+        if self.reentrant:
+            # obtain clock difference between write destination and process system for correct block file age determination
+            with tempfile.NamedTemporaryFile(dir=kzip_path if kzip_path else os.path.dirname(self._conf_path)) as time_file:
+                filesystem_process_time_diff = time.time() - os.stat(time_file.name).st_mtime
 
         for mag in mags:
             ratio = self.scale_ratio(mag, data_mag)[::-1]
