@@ -317,6 +317,7 @@ class KnossosDataset(object):
         self.description = ''
         self.color = None
         self.visible = None # unspecified
+        self.write_empty_cubes = False
 
         if path is not None:
             self.initialize_from_conf(path)
@@ -2102,7 +2103,7 @@ class KnossosDataset(object):
                 indices = np.where(data != 0)
                 dest_cube[indices] = data[indices]
         # write
-        if np.any(dest_cube):
+        if self.write_empty_cubes or np.any(dest_cube):
             dest_cube = dest_cube.reshape(np.prod(dest_cube.shape))
             if cube_path.endswith('.seg.sz.zip'):
                 in_zip_name = os.path.basename(cube_path)[:-4]
@@ -2216,7 +2217,7 @@ class KnossosDataset(object):
                                                              start[0]: start[0] + end[0]]
 
 
-            if not np.any(cube):
+            if not self.write_empty_cubes and not np.any(cube):
                self._print(path, 'no data to write, cube will be removed if present')
 
             if not kzip_path:
