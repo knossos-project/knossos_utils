@@ -1,38 +1,39 @@
+# cython: language_level=3, boundscheck=False
+# distutils: language=c++
 from __future__ import absolute_import, division, print_function
 # builtins is either provided by Python 3 or by the "future" module for Python 2 (http://python-future.org/)
 from builtins import range, map, zip, filter, round, next, input, bytes, hex, oct, chr, int
 from functools import reduce
 
-cimport cython
 import networkx as nx
-import numpy as np
-cimport numpy as np
-from cython.operator cimport dereference
+
+from cython import fused_type
+from cython.operator import dereference
+
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 from libcpp cimport bool
 from libcpp.pair cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.unordered_set cimport unordered_set
 from libcpp.vector cimport vector
 
-seg_dtype = cython.fused_type(np.uint8_t, np.uint16_t, np.uint32_t, np.uint64_t)
+seg_dtype = fused_type(uint8_t, uint16_t, uint32_t, uint64_t)
 
 
-@cython.boundscheck(False)
 def objects_from_mergelist(mergelist_content):
     """
     Reads mergelist into a vector of objects (= sets of subobject ids)
     :param mergelist_content:
         the mergelist content as a string
     """
-    cdef vector[unordered_set[np.uint64_t]] obj_list
+    cdef vector[unordered_set[uint64_t]] obj_list
     for line in mergelist_content.split("\n")[0::4]:
         elems = line.split()
         if len(elems) > 0:
-            obj_list.push_back(<unordered_set[np.uint64_t]>[np.uint64(elem) for elem in elems[3:]])
+            obj_list.push_back(<unordered_set[uint64_t]>[<uint64_t>elem for elem in elems[3:]])
     return obj_list
 
 
-@cython.boundscheck(False)
 def subobject_map_from_mergelist(mergelist_content):
     """
     Extracts a single object layer from a mergelist and returns a map of subobject ID > object ID.
@@ -40,9 +41,9 @@ def subobject_map_from_mergelist(mergelist_content):
     :param mergelist_content:
         the mergelist content as a string
     """
-    cdef unordered_map[np.uint64_t, np.uint64_t] subobjects_to_objects_map
+    cdef unordered_map[uint64_t, uint64_t] subobjects_to_objects_map
     for line in mergelist_content.split("\n")[0::4]:
-        elems = [np.uint64(elem) for elem in line.split()]
+        elems = [<uint64_t>elem for elem in line.split()]
         if len(elems) > 0:
             object_id = elems[0]
             for subobject_id in elems[3:]:
@@ -50,11 +51,10 @@ def subobject_map_from_mergelist(mergelist_content):
                     subobjects_to_objects_map[subobject_id] = object_id
                 else:
                     # this should only insert it when the key (subobject_id) is not there yet
-                    subobjects_to_objects_map.insert(pair[np.uint64_t, np.uint64_t](subobject_id, object_id))
+                    subobjects_to_objects_map.insert(pair[uint64_t, uint64_t](subobject_id, object_id))
     return subobjects_to_objects_map
 
 
-@cython.boundscheck(False)
 def apply_mergelist(seg_dtype[:,:,:] segmentation, mergelist_content, seg_dtype background_id=0, seg_dtype pad=0, bool missing_subobjects_to_background=False):
     """
     Merges subobjects using a dictionary of (subobject, object) pairs. So each subobject can only be member of one object.
@@ -101,7 +101,6 @@ def apply_mergelist(seg_dtype[:,:,:] segmentation, mergelist_content, seg_dtype 
     return segmentation
 
 
-@cython.boundscheck(False)
 def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype background_id=0, seg_dtype pad=0, vector[Py_ssize_t] offsets=[0, 0, 0]):
     """
     Generates a mergelist from a segmentation in which each subobject is contained in its own object.
@@ -136,7 +135,6 @@ def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype bac
     return new_mergelist
 
 
-@cython.boundscheck(False)
 def gen_mergelist_from_objects(unordered_map[seg_dtype, pair[unordered_set[seg_dtype], vector[seg_dtype]]] objects):
     new_mergelist = ""
     for obj in objects:
