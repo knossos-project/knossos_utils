@@ -557,7 +557,7 @@ class KnossosDataset(object):
         elif path_to_conf.name.endswith("ariadne.conf") or path_to_conf.name.endswith(".pyknossos.conf") or path_to_conf.name.endswith(".pyk.conf"):
             self.initialize_from_pyknossos_path(path_to_conf)
         else:
-            self.initialize_from_knossos_path(path_to_conf)
+            self.initialize_from_knossos_path(str(path_to_conf))
             self.layers = [self]
 
     @staticmethod
