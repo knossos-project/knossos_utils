@@ -158,12 +158,12 @@ class Skeleton:
         self.annotations.add(annotation)
 
     def set_movement_area(self, area_min, area_size):
-        self.movement_area_min = np.array(area_min, dtype=np.int)
-        self.movement_area_size = np.array(area_size, dtype=np.int)
+        self.movement_area_min = np.array(area_min, dtype=int)
+        self.movement_area_size = np.array(area_size, dtype=int)
 
     def add_movement_area(self, area_min, area_max):
         print('add_movement_area is DEPRECATED.\nPlease use set_movement_area. Instead of movement area min and max, it will set min and size.')
-        self.movement_area_min = np.array(area_min, dtype=np.int)
+        self.movement_area_min = np.array(area_min, dtype=int)
         self.movement_area_size = area_max - self.movement_area_min
 
     def toSWC(self, basename, px=False, dest_folder=''):
@@ -303,11 +303,11 @@ class Skeleton:
             pass
         try: # movement area
             movement_area = doc.getElementsByTagName("parameters")[0].getElementsByTagName("MovementArea")[0]
-            self.movement_area_min = np.array(parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]]), dtype=np.int)
+            self.movement_area_min = np.array(parse_attributes(movement_area, [["min.x", int], ["min.y", int], ["min.z", int]]), dtype=int)
             if 'size.x' in movement_area.attributes or 'size.y' in movement_area.attributes or 'size.z' in movement_area.attributes:
-                self.movement_area_size = np.array(parse_attributes(movement_area, [["size.x", int], ["size.y", int], ["size.z", int]]), dtype=np.int)
+                self.movement_area_size = np.array(parse_attributes(movement_area, [["size.x", int], ["size.y", int], ["size.z", int]]), dtype=int)
             else:
-                area_max = np.array(parse_attributes(movement_area, [["max.x", int], ["max.y", int], ["max.z", int]]), dtype=np.int)
+                area_max = np.array(parse_attributes(movement_area, [["max.x", int], ["max.y", int], ["max.z", int]]), dtype=int)
                 self.movement_area_size = area_max - self.movement_area_min
         except IndexError:
             self.movement_area_min = None

@@ -784,8 +784,8 @@ class KnossosDataset(object):
             self._experiment_name = self._experiment_name[:-5]
 
         self._number_of_cubes = \
-            np.array(np.ceil(self.boundary.astype(np.float) /
-                             self.cube_shape), dtype=np.int)
+            np.array(np.ceil(self.boundary.astype(float) /
+                             self.cube_shape), dtype=int)
 
         if 'png' in parsed_dict:
             self.file_extensions = ['.png']
