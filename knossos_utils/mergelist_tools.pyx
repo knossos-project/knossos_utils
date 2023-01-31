@@ -101,7 +101,7 @@ def apply_mergelist(seg_dtype[:,:,:] segmentation, mergelist_content, seg_dtype 
     return segmentation
 
 
-def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype background_id=0, seg_dtype pad=0, vector[Py_ssize_t] offsets=[0, 0, 0]):
+def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype background_id=0, seg_dtype pad=0, vector[Py_ssize_t] offsets=[0, 0, 0], vector[double] scale=[1, 1, 1]):
     """
     Generates a mergelist from a segmentation in which each subobject is contained in its own object.
     The object's coordinate is the first coordinate of the subobject.
@@ -131,7 +131,7 @@ def gen_mergelist_from_segmentation(seg_dtype[:,:,:] segmentation, seg_dtype bac
                     continue
                 so_cache = next_id
                 seen_subobjects.insert(next_id)
-                new_mergelist += "{0} 0 0 {0}\n{1} {2} {3}\n\n\n".format(next_id, offsets[0]+x, offsets[1]+y, offsets[2]+z)
+                new_mergelist += '{0} 0 0 {0}\n{1} {2} {3}\n\n\n'.format(next_id, int(offsets[0]+x*scale[0]), int(offsets[1]+y*scale[1]), int(offsets[2]+z*scale[2]))
     return new_mergelist
 
 
