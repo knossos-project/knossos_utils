@@ -373,7 +373,7 @@ class KnossosDataset(object):
 
     @property
     def boundary(self):
-        return self._boundary
+        return np.array(self._boundary)
 
     @property
     def scale(self):
