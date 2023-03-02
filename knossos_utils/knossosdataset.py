@@ -631,7 +631,12 @@ class KnossosDataset(object):
         """ Parse a pyKNOSSOS conf
         :param path_to_pyknossos_conf: str
         """
-        print(f'DEPRECATION warning: The PyKNOSSOS conf format is deprecated (loaded conf: {path_to_pyknossos_conf}). Please convert this dataset to toml using save_toml("/output/path.k.toml")')
+        print(
+            'DEPRECATION warning: The PyKNOSSOS conf format is deprecated (loaded conf: '
+            f'{path_to_pyknossos_conf}). Please convert this dataset to toml using '
+            'save_toml("/output/path.k.toml") or use examples/convert_conf_to_toml.py '
+            f'{path_to_pyknossos_conf} /output/path.k.toml'
+        )
         def initialize(layer):
             layer._knossos_path = os.path.dirname(path_to_pyknossos_conf) + "/"
             layer._initialized = True
