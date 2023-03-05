@@ -30,7 +30,7 @@ def objects_from_mergelist(mergelist_content):
     for line in mergelist_content.split("\n")[0::4]:
         elems = line.split()
         if len(elems) > 0:
-            obj_list.push_back(<unordered_set[uint64_t]>[<uint64_t>elem for elem in elems[3:]])
+            obj_list.push_back([int(elem) for elem in elems[3:]])
     return obj_list
 
 
@@ -43,7 +43,7 @@ def subobject_map_from_mergelist(mergelist_content):
     """
     cdef unordered_map[uint64_t, uint64_t] subobjects_to_objects_map
     for line in mergelist_content.split("\n")[0::4]:
-        elems = [<uint64_t>elem for elem in line.split()]
+        elems = [int(elem) for elem in line.split()]
         if len(elems) > 0:
             object_id = elems[0]
             for subobject_id in elems[3:]:
@@ -51,7 +51,7 @@ def subobject_map_from_mergelist(mergelist_content):
                     subobjects_to_objects_map[subobject_id] = object_id
                 else:
                     # this should only insert it when the key (subobject_id) is not there yet
-                    subobjects_to_objects_map.insert(pair[uint64_t, uint64_t](subobject_id, object_id))
+                    subobjects_to_objects_map.insert([subobject_id, object_id])
     return subobjects_to_objects_map
 
 
