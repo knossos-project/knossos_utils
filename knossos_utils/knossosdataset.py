@@ -600,7 +600,7 @@ class KnossosDataset(object):
                 layer.url = layer_conf['URL']
                 split_url = urllib.parse.urlsplit(layer.url)
                 layer._http_user = split_url.username
-                layer._http_user = split_url.password
+                layer._http_passwd = split_url.password
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer._ordinal_mags = True
             layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
