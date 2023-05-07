@@ -28,18 +28,18 @@ classifiers=[
 dependencies = [
     'h5py >= 2.5',
     'imageio',
+    'matplotlib',
+    'networkx >= 1.11',
     'numpy >= 1.10',
+    'Pillow',
+    'python-snappy >= 0.5',
+    'requests >= 2.12',
     'scipy >= 0.16',
     'tomli',
-    'networkx >= 1.11',
-    'requests >= 2.12',
-    'matplotlib',
-    'Pillow'
 ]
 
 [project.urls]
 homepage = 'https://github.com/knossos-project/knossos_utils'
 
 [project.optional-dependencies]
-knossos_segmentation = ['python-snappy >= 0.5']
 skeletopyze_import = ['skeletopyze'] # https://github.com/funkey/skeletopyze
