@@ -1,3 +1,45 @@
 [build-system]
 # Minimum requirements for the build system to execute (according to PEP 518)
-requires = ["setuptools>=18.0", "wheel", "numpy>=1.10", "cython>=0.23"]
+requires = ['setuptools >= 61.0', 'wheel', 'cython >= 0.23']
+build-backend = 'setuptools.build_meta'
+
+[tool.setuptools]
+packages = ['knossos_utils']
+
+[project]
+name = 'knossos_utils'
+version = '0.1'
+authors = [ {name = 'KNOSSOS team', email='knossosteam@gmail.com'} ]
+description = 'A Python 3.x library for interacting with **KNOSSOS** datasets and annotation files.'
+readme = 'README.md'
+requires-python = '>=3.8'
+license = {text = 'GPLv3'}
+keywords = []
+classifiers=[
+    'Development Status :: 4 - Beta',
+    'Environment :: Console',
+    'Intended Audience :: Science/Research',
+    'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
+    'Operating System :: POSIX :: Linux',
+    'Programming Language :: Python :: 3',
+    'Topic :: Scientific/Engineering :: Information Analysis',
+    'Topic :: Scientific/Engineering :: Visualization',
+]
+dependencies = [
+    'h5py >= 2.5',
+    'imageio',
+    'matplotlib',
+    'networkx >= 1.11',
+    'numpy >= 1.10',
+    'Pillow',
+    'python-snappy >= 0.5',
+    'requests >= 2.12',
+    'scipy >= 0.16',
+    'tomli',
+]
+
+[project.urls]
+homepage = 'https://github.com/knossos-project/knossos_utils'
+
+[project.optional-dependencies]
+skeletopyze_import = ['skeletopyze'] # https://github.com/funkey/skeletopyze
