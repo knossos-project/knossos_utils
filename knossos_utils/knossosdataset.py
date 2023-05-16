@@ -2211,10 +2211,10 @@ class KnossosDataset(object):
         else:
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
-    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None, ext=None):
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None):
         datatype = datatype or (np.uint8 if as_raw else np.uint64)
 
-        if (as_raw and datatype not in {np.dtype(np.uint8), np.dtype(np.uint16)}) or (not as_raw and datatype != np.dtype(np.uint64)):
+        if (as_raw and datatype != np.dtype(np.uint8) and datatype != np.dtype(np.uint16)) or (not as_raw and datatype != np.dtype(np.uint64)):
             raise ValueError('Currently, saving only accepts destination datatypes np.uint8 or np.uint16 (raw) or np.uint64 (segmentation).')
         overwrite=True
 
