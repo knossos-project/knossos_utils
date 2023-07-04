@@ -328,7 +328,17 @@ class KnossosDataset(object):
         self.write_empty_cubes = False
 
         if path is not None:
-            self.initialize_from_conf(path)
+            if str(path).endswith(".k.zip"):
+                self.initialize_from_kzip(path_to_kzip=path)
+            else:
+                self.initialize_from_conf(path)
+
+    @property
+    def is_embedded(self):
+        if ".k.zip" in str(self._conf_path):
+            return True
+        else:
+            return False
 
     @property
     def mag(self):
@@ -355,6 +365,16 @@ class KnossosDataset(object):
                             if request.status_code < requests.codes.server_error:
                                 break # no use retrying if client error (e.g. 404)
                             continue
+            elif self.is_embedded:
+                regex = re.compile("mag([1-9][0-9]*)")
+                kzip_path = self._knossos_path[:self._knossos_path.find("/embedded")]
+                archive = zipfile.ZipFile(kzip_path, "r")
+                for file in archive.namelist():
+                    if "embedded" + self.knossos_path in file:
+                        match = regex.search(file)
+                        if match is not None:
+                            self._mags.append(int(match.group(1))) # mag number
+                    self._mags = list(np.unique(self._mags))
             else:
                 regex = re.compile("mag[1-9][0-9]*$")
                 for mag_folder in glob.glob(os.path.join(self.knossos_path, "*mag*")):
@@ -436,7 +456,7 @@ class KnossosDataset(object):
         index = mag - 1 if self._ordinal_mags else int(np.log2(mag))
         return self.scales[index]
 
-    def scale_ratio(self, mag, base_mag): # ratio between scale in mag and scale in base_mag
+    def scale_ratio(self, mag, base_mag) -> np.ndarray: # ratio between scale in mag and scale in base_mag
         return (self.mag_scale(mag) / self.mag_scale(base_mag)) if self._ordinal_mags else np.array(3 * [float(mag) / base_mag])
 
     def iter(self, offset=(0, 0, 0), end=None, step=(512, 512, 512)):
@@ -551,7 +571,7 @@ class KnossosDataset(object):
                 z = np.ceil(z / ds_factor[1])
         return scales
 
-    def initialize_from_conf(self, path_to_conf):
+    def initialize_from_conf(self, path_to_conf: str):
         path_to_conf = Path(path_to_conf)
         if path_to_conf.name.endswith('.k.toml'):
             self.initialize_from_toml(path_to_conf)
@@ -584,6 +604,42 @@ class KnossosDataset(object):
         except FileNotFoundError as e:
             raise NotImplementedError("Could not read .conf: {}".format(e))
         self._initialize_from_dict(conf, path_to_toml)
+
+    def initialize_from_kzip(self, path_to_kzip: Union[str, Path]):
+        dataset_path = None
+        # Try to read the dataset path from annotation.xml
+        try:
+            with zipfile.ZipFile(path_to_kzip, "r") as zf:
+                xml_str = zf.read("annotation.xml").decode()
+            annotation_xml = ET.fromstring(xml_str)
+            dataset = annotation_xml.find("parameters/dataset")
+            dataset_path = dataset.attrib["path"]
+        except (KeyError, AttributeError):
+            # KeyError: annotation.xml does not exist, AttributeError: xml elem does not exist
+            # Check if there is an "embedded" folder with a dataset config file
+            with zipfile.ZipFile(path_to_kzip, "r") as zf:
+                for file_info in zf.infolist():
+                    if (file_info.filename.startswith("embedded/") and
+                        not "/" in file_info.filename[len("embedded/"):] and
+                        (file_info.filename.endswith(".conf") or
+                        file_info.filename.endswith(".toml"))):
+                            dataset_name = file_info.filename
+                            dataset_path = path_to_kzip + "/" + dataset_name
+                            conf = zf.read(dataset_name).decode()
+                            break
+        assert dataset_path != None, "No dataset path has been found in the provided kzip."
+
+        if dataset_path.endswith(".k.toml"):
+            toml_conf = tomli.loads(conf)
+            self._initialize_from_dict(toml_conf, dataset_path)
+        elif (dataset_path.endswith("ariadne.conf") or dataset_path.endswith(".pyknossos.conf") or
+              dataset_path.endswith(".pyk.conf")):
+            lines = conf.split("\n")
+            lines = [line + "\n" for line in lines] # mimic readlines behaviour
+            self._initialize_from_pyknossos_conf(dataset_path, lines)
+        else:
+            raise NotImplementedError("Only toml and pyknossos confs are implemented for embedded kzips")
+
 
     def _initialize_from_dict(self, conf: dict, conf_path: Optional[str] = None):
         layers = []
@@ -640,16 +696,21 @@ class KnossosDataset(object):
             'save_toml("/output/path.k.toml") or use examples/convert_conf_to_toml.py '
             f'{path_to_pyknossos_conf} /output/path.k.toml'
         )
-        def initialize(layer):
-            layer._knossos_path = os.path.dirname(path_to_pyknossos_conf) + "/"
-            layer._initialized = True
-            layer._initialize_cache(0)
+
         try:
             f = open(path_to_pyknossos_conf)
             lines = f.readlines()
             f.close()
         except FileNotFoundError as e:
             raise NotImplementedError("Could not read .conf: {}".format(e))
+
+        self._initialize_from_pyknossos_conf(path_to_pyknossos_conf, lines)
+
+    def _initialize_from_pyknossos_conf(self, path_to_pyknossos_conf: str, lines: list[str]):
+        def initialize(layer):
+            layer._knossos_path = os.path.dirname(path_to_pyknossos_conf) + "/"
+            layer._initialized = True
+            layer._initialize_cache(0)
 
         layers = []
         for line in lines:
@@ -698,7 +759,10 @@ class KnossosDataset(object):
             elif key == '_Color':
                 layer.color = tokens[1]
             elif key == '_Visible':
-                layer.visible = bool(int(tokens[1]))
+                try:
+                    layer.visible = bool(int(tokens[1]))
+                except ValueError:
+                    layer.visible = bool(tokens[1])
 
         for layer in layers:
             initialize(layer)
@@ -1010,7 +1074,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[Sequence[int]], ds_factor: Sequence[int], file_extensions: Sequence[str] = ('.png'), channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None):
+    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None):
         if write_path and parent_dataset:
             raise ValueError(f"Specify either `write_path` (to create a new dataset) or `parent_dataset` (to add a layer to an existing dataset).")
         if parent_dataset and not parent_dataset.initialized:
@@ -1395,8 +1459,33 @@ class KnossosDataset(object):
                         except Exception as e:
                             print(f'Reading cube failed: {path}')
                             raise e
+                    elif self.is_embedded:
+                        kzip_path = self._knossos_path[:self._knossos_path.find("/embedded")]
+                        try:
+                            if from_overlay:
+                                with zipfile.ZipFile(kzip_path, "r") as archive:
+                                    with archive.open("embedded" + path, "r") as inner_zip:
+                                        zf = zipfile.ZipFile(inner_zip)
+                                        snappy_cube = zf.read(zf.namelist()[0]) # seg.sz (without .zip)
+                                raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
+                                values = np.fromstring(raw_cube, dtype=np.uint64).astype(datatype)
+                            elif ext == '.raw':
+                                flat_shape = int(np.prod(self.cube_shape))
+                                with zipfile.ZipFile(kzip_path, "r") as archive:
+                                    with archive.open("embedded" + path) as file:
+                                        values = np.fromfile(file, dtype=np.uint8, count=flat_shape).astype(datatype)
+                            else: # compressed
+                                with zipfile.ZipFile(kzip_path, "r") as archive:
+                                    with archive.open("embedded" + path) as file:
+                                        values = imageio.imread(file)
+                            valid_values = True
+                        except KeyError:
+                            self._print(f"Cube »{path}« does not exist, cube with zeros only assigned")
+                        except Exception as e:
+                            print(f'Reading cube failed: {path}')
+                            raise e
                     else:
-                        self. _print(f'Cube »{path}« does not exist, cube with zeros only assigned')
+                        self._print(f'Cube »{path}« does not exist, cube with zeros only assigned')
 
             if valid_values:
                 values = values.reshape(self.cube_shape[::-1])
