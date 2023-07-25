@@ -384,7 +384,10 @@ class KnossosDataset(object):
         if self.in_http_mode:
             return self.url
         elif self.url or self._knossos_path:
-            return urllib.parse.urlparse(self.url).path if self.url else self._knossos_path
+            if self.url:
+                # cut off the "file://" to use abspath to support relative paths with urlparse
+                url = os.path.abspath(self.url[7:]) if self.url.startswith("file://") else self.url
+            return urllib.parse.urlparse(url).path if self.url else self._knossos_path
         else:
             raise Exception("No knossos path available")
 
