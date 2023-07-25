@@ -1456,10 +1456,6 @@ class KnossosDataset(object):
 
         output = np.zeros(size[::-1], dtype=datatype)
 
-        offset_start = offset % self.cube_shape
-        offset_end = (self.cube_shape - (offset + size)
-                      % self.cube_shape) % self.cube_shape
-
         nb_cubes_to_process = int(np.prod(end - start))
         if nb_cubes_to_process == 0:
             return np.zeros(orig_size[::-1], dtype=datatype)
@@ -1547,7 +1543,7 @@ class KnossosDataset(object):
 
         assert preferred_raw_layer is not None, 'Tried to load raw data, but the loaded dataset configuration contains no raw layer.'
         kwargs['ext'] = ext
-        return self._load(**kwargs)
+        return preferred_raw_layer._load(**kwargs)
 
     def load_seg(self, **kwargs):
         """
@@ -1574,7 +1570,7 @@ class KnossosDataset(object):
 
         for layer in self.layers: # prefer local seg
             if not layer.in_http_mode and '.seg.sz.zip' in layer.file_extensions:
-                return self._load(**kwargs)
+                return layer._load(**kwargs)
         for layer in self.layers:
             if '.seg.sz.zip' in layer.file_extensions:
                 return layer._load(**kwargs)
