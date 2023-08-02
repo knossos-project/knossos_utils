@@ -2434,7 +2434,13 @@ class KnossosDataset(object):
             self._print(f'end_cube: {end}')
 
             multithreading_params = []
+
             conf_folder = os.path.dirname(self._conf_path)
+            conf_folder_name = "/" + Path(conf_folder).name
+            index = self.knossos_path.rfind(conf_folder_name)
+            if index != -1:
+                conf_folder = Path(conf_folder) / self.knossos_path[index + len(conf_folder_name):]
+
             for z in range(start[2], end[2]):
                 for y in range(start[1], end[1]):
                     for x in range(start[0], end[0]):
