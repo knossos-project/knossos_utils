@@ -370,11 +370,14 @@ class KnossosDataset(object):
                 kzip_path = self._knossos_path[:self._knossos_path.find("/embedded")]
                 archive = zipfile.ZipFile(kzip_path, "r")
                 for file in archive.namelist():
-                    if "embedded" + self.knossos_path in file:
+                    if (file.startswith("embedded/") and 
+                        self.experiment_name in file and 
+                        not file.endswith('/') and  # Not a directory
+                        any(ext in file for ext in ['.png', '.jpg', '.raw'])):  # Actual data files
                         match = regex.search(file)
                         if match is not None:
                             self._mags.append(int(match.group(1))) # mag number
-                    self._mags = list(np.unique(self._mags))
+                self._mags = list(np.unique(self._mags))
             else:
                 regex = re.compile("mag[1-9][0-9]*$")
                 for mag_folder in glob.glob(os.path.join(self.knossos_path, "*mag*")):
@@ -620,14 +623,14 @@ class KnossosDataset(object):
             with zipfile.ZipFile(path_to_kzip, "r") as zf:
                 for file_info in zf.infolist():
                     if (file_info.filename.startswith("embedded/") and
-                        not "/" in file_info.filename[len("embedded/"):] and
+                        "/" not in file_info.filename[len("embedded/"):] and
                         (file_info.filename.endswith(".conf") or
                         file_info.filename.endswith(".toml"))):
                             dataset_name = file_info.filename
                             dataset_path = path_to_kzip + "/" + dataset_name
                             conf = zf.read(dataset_name).decode()
                             break
-        assert dataset_path != None, "No dataset path has been found in the provided kzip."
+        assert dataset_path is not None, "No dataset path has been found in the provided kzip."
 
         if dataset_path.endswith(".k.toml"):
             toml_conf = tomli.loads(conf)
@@ -1461,10 +1464,11 @@ class KnossosDataset(object):
                             raise e
                     elif self.is_embedded:
                         kzip_path = self._knossos_path[:self._knossos_path.find("/embedded")]
+                        embedded_path = f'embedded/{self.name_mag_folder}{mag}/x{cube_coord[0]:04d}/y{cube_coord[1]:04d}/z{cube_coord[2]:04d}/{filename}'
                         try:
                             if from_overlay:
                                 with zipfile.ZipFile(kzip_path, "r") as archive:
-                                    with archive.open("embedded" + path, "r") as inner_zip:
+                                    with archive.open(embedded_path, "r") as inner_zip:
                                         zf = zipfile.ZipFile(inner_zip)
                                         snappy_cube = zf.read(zf.namelist()[0]) # seg.sz (without .zip)
                                 raw_cube = self.module_wide['snappy'].decompress(snappy_cube)
@@ -1472,11 +1476,11 @@ class KnossosDataset(object):
                             elif ext == '.raw':
                                 flat_shape = int(np.prod(self.cube_shape))
                                 with zipfile.ZipFile(kzip_path, "r") as archive:
-                                    with archive.open("embedded" + path) as file:
+                                    with archive.open(embedded_path) as file:
                                         values = np.fromfile(file, dtype=np.uint8, count=flat_shape).astype(datatype)
                             else: # compressed
                                 with zipfile.ZipFile(kzip_path, "r") as archive:
-                                    with archive.open("embedded" + path) as file:
+                                    with archive.open(embedded_path) as file:
                                         values = imageio.imread(file)
                             valid_values = True
                         except KeyError:
