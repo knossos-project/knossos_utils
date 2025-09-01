@@ -1574,7 +1574,7 @@ class KnossosDataset(object):
 
         if self.show_progress:
             dt = time.time() - t0
-            speed = np.product(output.shape) * 1.0/1000000/dt
+            speed = np.prod(output.shape) * 1.0/1000000/dt
             print(f'\rSpeed: {speed:.2f} Mvx/s, time {dt}')
 
         if not np.all(output.shape == size[::-1]):
