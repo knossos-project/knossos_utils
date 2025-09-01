@@ -707,35 +707,31 @@ class SkeletonAnnotation:
                     self.addEdge(neigbor1, neigbor2)
 
     def interpolate_nodes(self, max_node_dist_scaled=50):
-        """
-        Add interpolated nodes along edges so that no node distance exceeds max_node_dist_scaled.
-        :param max_node_dist_scaled: scaled maximum allowed distance between node pairs.
-        """
-        edges_copy = self.edges.copy()
-        for src_node, targets in edges_copy.items():
-            for trg_node in targets:
-                distance = src_node.distance_scaled(trg_node)
-                if distance < max_node_dist_scaled:
-                    continue
+        interpolated_edges = 1
+        while interpolated_edges:
+            interpolated_edges = 0
+            for src_node in self.edges.keys():
+                for trg_node in self.edges[src_node]:
+                   dst = np.sqrt(np.sum((np.array(src_node.getCoordinate()) - np.array(trg_node.getCoordinate()))**2))
+                   if dst > max_node_dist_scaled:
+                        interpolated_edges += 1
+                        # remove this edge
+                        self.removeEdge(src_node, trg_node)
 
-                self.removeEdge(src_node, trg_node)
-                # number of nodes to be added along this edge
-                num_interpolation_nodes = int(math.floor(distance / max_node_dist_scaled))
+                        # get new node coordinate in between the old nodes
+                        a = src_node.getCoordinate()
+                        b = trg_node.getCoordinate()
+                        c = [int(round((a[0]+b[0])/2., 0)),
+                             int(round((a[1]+b[1])/2., 0)),
+                             int(round((a[2]+b[2])/2., 0))]
 
-                src_coords = np.array(src_node.getCoordinate())
-                trg_coords = np.array(trg_node.getCoordinate())
-                direction_vec = trg_coords - src_coords
-                direction_vec = direction_vec / distance # normalize
-                last_node = src_node
-                for i in range(1, num_interpolation_nodes + 2):
-                    c = src_coords + np.ceil(direction_vec * i)
-                    if np.linalg.norm(c - src_coords) > distance: break
-                    new_node = SkeletonNode()
-                    new_node.setCoordinate(c)
-                    self.addNode(new_node)
-                    self.addEdge(last_node, new_node)
-                    last_node = new_node
-                self.addEdge(last_node, trg_node)
+                        # add node from scratch in between
+                        new_node = SkeletonNode()
+                        new_node.from_scratch(self, c[0], c[1], c[2])
+                        self.addNode(new_node)
+                        # add edges to new node, and from new node
+                        self.addEdge(src_node, new_node)
+                        self.addEdge(new_node, trg_node)
 
     def resetObject(self):
         # Mandatory
@@ -1399,15 +1395,6 @@ class SkeletonNode:
     def detachAnnotation(self):
         self.annotation = None
         return
-
-    def distance_scaled(self, to_node):
-        c_1 = self.getCoordinate_scaled()
-        c_2 = to_node.getCoordinate_scaled()
-
-        dst = math.sqrt(math.pow(c_1[0] - c_2[0], 2) +
-                        math.pow(c_1[1] - c_2[1], 2) +
-                        math.pow(c_1[2] - c_2[2], 2))
-        return dst
 
     def degree(self):
         return len(self.getNeighbors())
