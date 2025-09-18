@@ -304,6 +304,7 @@ class KnossosDataset(object):
         self.url = None
         self._http_user = None
         self._http_passwd = None
+        self._cdn_token = None
         self.server_format = None
         self._experiment_name = None
         self.description = None
@@ -357,6 +358,7 @@ class KnossosDataset(object):
                         try:
                             request = requests.get(mag_folder,
                                                    auth=self.http_auth,
+                                                   params=self._cdn_token,
                                                    timeout=10)
                             request.raise_for_status()
                             self._mags.append(mag_num)
@@ -645,6 +647,7 @@ class KnossosDataset(object):
 
 
     def _initialize_from_dict(self, conf: dict, conf_path: Optional[str] = None):
+        fail_fast_cdn = False
         layers = []
         for layer_conf in conf['Layer']:
             layer = KnossosDataset(show_progress=self.show_progress)
@@ -663,6 +666,27 @@ class KnossosDataset(object):
                 split_url = urllib.parse.urlsplit(layer.url)
                 layer._http_user = split_url.username
                 layer._http_passwd = split_url.password
+                if layer._http_user is not None and layer._http_passwd is not None and not fail_fast_cdn:
+                    try:
+                        response = requests.get(
+                            f'{split_url.scheme}://{split_url.hostname}/auth', 
+                            auth=(layer._http_user, layer._http_passwd), 
+                            params={"path": split_url.path}
+                        )
+                        if response.status_code == 200:
+                            token_data = response.json()
+                            token_str = token_data['token_string']
+                            token_dict = {}
+                            for param in token_str.split('&'):
+                                key, value = param.split('=')
+                                token_dict[key] = value
+                            layer._cdn_token = token_dict
+                        else:
+                            print(f'Failed to get CDN token: {response.status_code} for {layer.url}')
+                            fail_fast_cdn = True
+                    except Exception as e:
+                        print(f'Failed to get CDN token: {e} for {layer.url}')
+                        fail_fast_cdn = True
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer._ordinal_mags = True
             layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
@@ -1416,7 +1440,7 @@ class KnossosDataset(object):
                 if self.in_http_mode:
                     for tries in range(1, self.http_max_tries + 1):
                         try:
-                            request = requests.get(path, auth=self.http_auth, timeout=60)
+                            request = requests.get(path, auth=self.http_auth, params=self._cdn_token, timeout=60)
                             request.raise_for_status()
                             if not from_overlay:
                                 if ext == '.raw':
