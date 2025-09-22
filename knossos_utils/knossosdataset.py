@@ -680,6 +680,7 @@ class KnossosDataset(object):
                             for param in token_str.split('&'):
                                 key, value = param.split('=')
                                 token_dict[key] = value
+                            token_dict["token_path"] = token_dict["token_path"].replace("%2F", "/")
                             layer._cdn_token = token_dict
                         else:
                             print(f'Failed to get CDN token: {response.status_code} for {layer.url}')
