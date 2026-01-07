@@ -34,6 +34,7 @@ reading and writing raw and overlay data."""
 
 from __future__ import annotations
 import collections
+import copy
 import dataclasses
 from dataclasses import dataclass
 import glob
@@ -69,6 +70,7 @@ import requests
 import scipy.misc
 import scipy.ndimage
 from PIL import Image
+import tensorstore as ts
 
 try:
     from . import mergelist_tools
@@ -327,6 +329,7 @@ class KnossosDataset(object):
         self.color = None
         self.visible = None # unspecified
         self.write_empty_cubes = False
+        self._tensorstore_datasets = None
 
         if path is not None:
             if str(path).endswith(".k.zip"):
@@ -660,18 +663,24 @@ class KnossosDataset(object):
             layer.layers = [layer]
             layers.append(layer)
             layer._experiment_name = layer_conf['Name']
+            layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer.url = f'file://{layer._knossos_path}'
             if 'URL' in layer_conf:
                 layer.url = layer_conf['URL']
+                if layer.server_format == None and layer.url.endswith("info"):
+                    layer.server_format = "precomputed"
                 split_url = urllib.parse.urlsplit(layer.url)
                 layer._http_user = split_url.username
                 layer._http_passwd = split_url.password
                 if layer._http_user is not None and layer._http_passwd is not None and not fail_fast_cdn:
                     try:
+                        auth_path = split_url.path
+                        if layer.server_format == "precomputed":
+                            auth_path = auth_path.replace("/info", "")
                         response = requests.get(
                             f'{split_url.scheme}://{split_url.hostname}/auth', 
                             auth=(layer._http_user, layer._http_passwd), 
-                            params={"path": split_url.path}
+                            params={"path": auth_path}
                         )
                         if response.status_code == 200:
                             token_data = response.json()
@@ -683,19 +692,83 @@ class KnossosDataset(object):
                             token_dict["token_path"] = token_dict["token_path"].replace("%2F", "/")
                             layer._cdn_token = token_dict
                         else:
-                            print(f'Failed to get CDN token: {response.status_code} for {layer.url}')
+                            print(f'Unable to get CDN token: {response.status_code} for {layer.url}')
                             fail_fast_cdn = True
                     except Exception as e:
                         print(f'Failed to get CDN token: {e} for {layer.url}')
                         fail_fast_cdn = True
-            layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
+
+                if layer.server_format == "precomputed":
+                    import json
+                    info_json = None
+                    url = layer.url
+                    parsed = urllib.parse.urlparse(url)
+                    if parsed.scheme == 'file':
+                        local_path = parsed.path
+                        try:
+                            with open(local_path, 'r') as f:
+                                info_json = json.load(f)
+                        except Exception as e:
+                            print(f"Failed to load info json from local file '{local_path}': {e}")
+                    else:
+                        try:
+                            headers = {}
+                            auth=None
+                            if layer._http_user and layer._http_passwd:
+                                auth = (layer._http_user, layer._http_passwd)
+                                cdn_token = copy.deepcopy(layer._cdn_token)
+                            response = requests.get(url, headers=headers, auth=auth, params=cdn_token)
+                            response.raise_for_status()
+                            info_json = response.json()
+                        except Exception as e:
+                            print(f"Failed to load info json from url '{url}': {e}")
+                    if info_json is not None:
+                        assert info_json["data_type"] == "uint8", f"Expected data_type to be uint8, got {info_json['data_type']}"
+                        assert info_json["num_channels"] == 1, f"Expected num_channels to be 1, got {info_json['num_channels']}"
+
+                        layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
+                        layer._boundary = info_json["scales"][0]["size"]
+                        layer._cube_shape = info_json["scales"][0]["chunk_sizes"][0]
+                        layer.file_extensions = [f'.{info_json["scales"][0]["encoding"]}']
+
+                        tensorstore_url = layer.url.replace("/info", "")
+                        query_params = ""
+                        if layer._cdn_token is not None:
+                            bcdn_token = layer._cdn_token.get('token', '')
+                            expires = layer._cdn_token.get('expires', '')
+                            token_path = layer._cdn_token.get('token_path', '')
+                            query_params = f"?token={bcdn_token}&expires={expires}&token_path={token_path}"
+
+                        layer._tensorstore_datasets = {}
+                        for mag in range(len(layer.scales)):
+                            if tensorstore_url.startswith("http"):
+                                parsed_url = urllib.parse.urlparse(tensorstore_url)
+                                driver = "http"
+                                base_url = f"{parsed_url.scheme}://{parsed_url.username}:{parsed_url.password}@{parsed_url.hostname}{query_params}"
+                                data_path = parsed_url.path
+                            else:
+                                driver = "file"
+                                base_url = None
+                                data_path = tensorstore_url
+                            layer._tensorstore_datasets[mag] = ts.open({
+                                        "driver": "neuroglancer_precomputed",
+                                        "kvstore": {
+                                            "base_url": base_url,
+                                            "driver": driver,
+                                            "path": data_path,
+                                        },
+                                        "scale_index": mag,
+                                    }).result()
+
+
+            if not layer.server_format == "precomputed":
+                layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
+                layer._boundary = layer_conf['Extent_px']
+                layer._cube_shape = layer_conf['CubeShape_px']
+                layer.file_extensions = layer_conf['FileExtension']
             layer._ordinal_mags = True
-            layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
             layer._scale = layer.scales[0]
-            layer._boundary = layer_conf['Extent_px']
-            layer._cube_shape = layer_conf['CubeShape_px']
             layer.description = layer_conf.get('Description', layer.description)
-            layer.file_extensions = layer_conf['FileExtension']
             layer.color = layer_conf.get('Color')
             layer.visible = layer_conf.get('Visible')
 
@@ -2706,9 +2779,9 @@ class LayerConfig:
         self.Name = layer.experiment_name
         self.ServerFormat = layer.server_format
         self.FileExtension = layer.file_extensions
-        self.Extent_px = list(layer.boundary)
-        self.VoxelSize_nm = [scale.tolist() for scale in layer.scales]
-        self.CubeShape_px = list(layer.cube_shape)
+        self.Extent_px = list(layer.boundary) if not layer.server_format == "precomputed" else None
+        self.VoxelSize_nm = [scale.tolist() for scale in layer.scales] if not layer.server_format == "precomputed" else None
+        self.CubeShape_px = list(layer.cube_shape) if not layer.server_format == "precomputed" else None
         self.Description = layer.description
         self.Color = layer.color
         self.Visible = layer.visible
