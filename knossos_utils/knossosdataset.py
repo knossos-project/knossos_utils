@@ -663,6 +663,7 @@ class KnossosDataset(object):
             layer.layers = [layer]
             layers.append(layer)
             layer._experiment_name = layer_conf['Name']
+            layer.file_extensions = layer_conf['FileExtension']
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer.url = f'file://{layer._knossos_path}'
             if 'URL' in layer_conf:
@@ -697,75 +698,113 @@ class KnossosDataset(object):
                     except Exception as e:
                         print(f'Failed to get CDN token: {e} for {layer.url}')
                         fail_fast_cdn = True
+            else:
+                info_file_path = os.path.join(layer._knossos_path, "info")
+                if os.path.exists(info_file_path):
+                    layer.server_format = "precomputed"
+                    layer.url = f'file://{layer._knossos_path}/info'
+                elif layer.server_format == "precomputed" and not os.path.exists(info_file_path):
+                    layer.url = f'file://{layer._knossos_path}/info'
 
-                if layer.server_format == "precomputed":
-                    import json
-                    info_json = None
-                    url = layer.url
-                    parsed = urllib.parse.urlparse(url)
-                    if parsed.scheme == 'file':
-                        local_path = parsed.path
-                        try:
-                            with open(local_path, 'r') as f:
-                                info_json = json.load(f)
-                        except Exception as e:
-                            print(f"Failed to load info json from local file '{local_path}': {e}")
+            if layer.server_format == "precomputed":
+                import json
+                info_json = None
+                if layer.url.startswith("file://"):
+                    local_path = copy.deepcopy(layer.url)
+                    local_path = local_path.replace("file://", "")
+                    try:
+                        with open(local_path, 'r') as f:
+                            info_json = json.load(f)
+                    except Exception as e:
+                        print(f"Failed to load info json from local file '{local_path}': {e}")
+                else:
+                    try:
+                        headers = {}
+                        auth=None
+                        if layer._http_user and layer._http_passwd:
+                            auth = (layer._http_user, layer._http_passwd)
+                            cdn_token = copy.deepcopy(layer._cdn_token)
+                        response = requests.get(layer.url, headers=headers, auth=auth, params=cdn_token)
+                        response.raise_for_status()
+                        info_json = response.json()
+                    except Exception as e:
+                        print(f"Failed to load info json from url '{layer.url}': {e}")
+                if info_json is not None:
+                    assert info_json["data_type"] == "uint8" or info_json["data_type"] == "uint16" or info_json["data_type"] == "uint64", f"Expected data_type to be uint8 or uint16 or uint64, got {info_json['data_type']}"
+                    assert info_json["num_channels"] == 1, f"Expected num_channels to be 1, got {info_json['num_channels']}"
+                    file_extension = ".seg.sz.zip" if info_json["scales"][0]["encoding"] == "compressed_segmentation" else f'.{info_json["scales"][0]["encoding"]}'
+                    assert layer.file_extensions == [file_extension], f"Expected file extensions to be {layer.file_extensions}, got {f'.{info_json["scales"][0]["encoding"]}'}"
+
+                    layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
+                    layer._boundary = info_json["scales"][0]["size"]
+                    layer._cube_shape = info_json["scales"][0]["chunk_sizes"][0]
+
+                    tensorstore_url = copy.deepcopy(layer.url)
+                    tensorstore_url = tensorstore_url.replace("/info", "")
+                    query_params = ""
+                    if layer._cdn_token is not None:
+                        bcdn_token = layer._cdn_token.get('token', '')
+                        expires = layer._cdn_token.get('expires', '')
+                        token_path = layer._cdn_token.get('token_path', '')
+                        query_params = f"?token={bcdn_token}&expires={expires}&token_path={token_path}"
+
+                    layer._tensorstore_datasets = {}
+                    for mag in range(len(layer.scales)):
+                        if tensorstore_url.startswith("http"):
+                            parsed_url = urllib.parse.urlparse(tensorstore_url)
+                            driver = "http"
+                            base_url = f"{parsed_url.scheme}://{parsed_url.username}:{parsed_url.password}@{parsed_url.hostname}{query_params}"
+                            data_path = parsed_url.path
+                        else:
+                            driver = "file"
+                            base_url = None
+                            data_path = tensorstore_url.replace("file://", "")
+                        layer._tensorstore_datasets[mag] = ts.open({
+                                    "driver": "neuroglancer_precomputed",
+                                    "kvstore": {
+                                        **({"base_url": base_url} if base_url is not None else {}),
+                                        "driver": driver,
+                                        "path": data_path,
+                                    },
+                                    "scale_index": mag,
+                                }).result()
+                else:
+                    print("Looking for missing information in toml file...")
+                    scales = None
+                    extent_px = layer_conf.get('Extent_px', None)
+                    cube_shape_px = layer_conf.get('CubeShape_px', None)
+                    if 'VoxelSize_nm' in layer_conf:
+                        scales = [np.array(scale) for scale in layer_conf['VoxelSize_nm']]
+                    if scales is not None and len(scales) == 1 and extent_px is not None and cube_shape_px is not None:
+                        print("Only one scale found in toml file. Assuming isotropic scale and generating scales...")
+                        layer._boundary = extent_px
+                        layer._cube_shape = cube_shape_px
+                        ds_factor = (2, 2, 2)
+                        if extent_px[2] == 1:
+                            ds_factor[2] = 1
+                        scales = layer.generate_scales(scales[0], ds_factor)
+                    
+                    if extent_px is None or cube_shape_px is None or scales is None:
+                        print("Could not find all missing information in toml file. Looking for missing information in other layers...")
+                        if len(layers) > 1:
+                            other_layer = layers[0]
+                            extent_px = other_layer._boundary
+                            cube_shape_px = other_layer._cube_shape
+                            scales = other_layer.scales
+                    
+                    if extent_px is not None and cube_shape_px is not None and scales is not None:
+                        print("Found all missing information. Creating neuroglancer dataset...")
+                        layer.scales = scales
+                        layer._boundary = extent_px
+                        layer._cube_shape = cube_shape_px
+                        KnossosDataset.create_neuroglancer_layer(layer)
                     else:
-                        try:
-                            headers = {}
-                            auth=None
-                            if layer._http_user and layer._http_passwd:
-                                auth = (layer._http_user, layer._http_passwd)
-                                cdn_token = copy.deepcopy(layer._cdn_token)
-                            response = requests.get(url, headers=headers, auth=auth, params=cdn_token)
-                            response.raise_for_status()
-                            info_json = response.json()
-                        except Exception as e:
-                            print(f"Failed to load info json from url '{url}': {e}")
-                    if info_json is not None:
-                        assert info_json["data_type"] == "uint8", f"Expected data_type to be uint8, got {info_json['data_type']}"
-                        assert info_json["num_channels"] == 1, f"Expected num_channels to be 1, got {info_json['num_channels']}"
-
-                        layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
-                        layer._boundary = info_json["scales"][0]["size"]
-                        layer._cube_shape = info_json["scales"][0]["chunk_sizes"][0]
-                        layer.file_extensions = [f'.{info_json["scales"][0]["encoding"]}']
-
-                        tensorstore_url = layer.url.replace("/info", "")
-                        query_params = ""
-                        if layer._cdn_token is not None:
-                            bcdn_token = layer._cdn_token.get('token', '')
-                            expires = layer._cdn_token.get('expires', '')
-                            token_path = layer._cdn_token.get('token_path', '')
-                            query_params = f"?token={bcdn_token}&expires={expires}&token_path={token_path}"
-
-                        layer._tensorstore_datasets = {}
-                        for mag in range(len(layer.scales)):
-                            if tensorstore_url.startswith("http"):
-                                parsed_url = urllib.parse.urlparse(tensorstore_url)
-                                driver = "http"
-                                base_url = f"{parsed_url.scheme}://{parsed_url.username}:{parsed_url.password}@{parsed_url.hostname}{query_params}"
-                                data_path = parsed_url.path
-                            else:
-                                driver = "file"
-                                base_url = None
-                                data_path = tensorstore_url
-                            layer._tensorstore_datasets[mag] = ts.open({
-                                        "driver": "neuroglancer_precomputed",
-                                        "kvstore": {
-                                            "base_url": base_url,
-                                            "driver": driver,
-                                            "path": data_path,
-                                        },
-                                        "scale_index": mag,
-                                    }).result()
-
+                        raise ValueError(f"No info file found at {layer.url} and could not find all missing information in toml file or other layers.")
 
             if not layer.server_format == "precomputed":
                 layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
                 layer._boundary = layer_conf['Extent_px']
                 layer._cube_shape = layer_conf['CubeShape_px']
-                layer.file_extensions = layer_conf['FileExtension']
             layer._ordinal_mags = True
             layer._scale = layer.scales[0]
             layer.description = layer_conf.get('Description', layer.description)
@@ -778,6 +817,8 @@ class KnossosDataset(object):
                 self.__dict__.update(layer.__dict__)
 
         self.layers = layers
+
+        # print(self.__dict__)
 
     def save_toml(self, path_to_toml: Union[str, Path]):
         with open(path_to_toml, 'w') as toml_file:
@@ -1050,6 +1091,180 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
+    def calculateShardLayout(layer: KnossosDataset):
+        # adviced parameters taken from: https://github.com/google/tensorstore/issues/13#issuecomment-857274972
+        # !!! "The temporary memory required to write a shard is 2 to 3 times the size of the shard." !!!
+
+        def getNumberOfBits(input: int) -> int:
+            input -= 1
+            for i in range(32):
+                if input == 0:
+                    return i
+                input = input >> 1
+            return 32
+
+        maxNumberFiles = 1500
+        maxShardSize = 10000000000 #10GB
+
+        numberChannel = 1
+        numberChunksX = np.ceil(layer.boundary[0] / layer.cube_shape[0])
+        numberChunksY = np.ceil(layer.boundary[1] / layer.cube_shape[1])
+        numberChunksZ = np.ceil(layer.boundary[2] / layer.cube_shape[2])
+        numberChunks = numberChunksX * numberChunksY * numberChunksZ
+
+        if numberChunks < maxNumberFiles: #if less then maxNumberFiles of chunks -> dont use shards
+            shardBits = 0;
+            miniShardBits = 0;
+            preShiftBits = 0;
+
+            print("Using unsharded neuroglancer storage!");
+            return shardBits, miniShardBits, preShiftBits
+
+        # calculate number of bits needed to represent number of chunks
+        numberBitsX = getNumberOfBits(numberChunksX);
+        numberBitsY = getNumberOfBits(numberChunksY);
+        numberBitsZ = getNumberOfBits(numberChunksZ);
+        numberBits = numberBitsX + numberBitsY + numberBitsZ;
+
+        # calculate size of one chunk / one minishard
+        chunkSizeZ = layer.cube_shape[2] if layer.cube_shape[2] > layer.boundary[2] else layer.boundary[2]
+        chunkSize = layer.cube_shape[0] * layer.cube_shape[1] * chunkSizeZ * numberChannel    #Number Pixels in X,Y,Z + number channels
+        miniShardSize = 256 * chunkSize
+
+        # define number of bits
+        preShiftBits = 8     #to get 256 chunks per minishard - fixed
+        miniShardBits = 0    #to get 1 minishard per shard
+        shardBits = numberBits - preShiftBits  #to get up to 1024 shards
+
+        if shardBits > 10: #more then 1024 shards
+            maxNumberMiniShards = np.floor(maxShardSize / miniShardSize);    #calculate max number of minishards per shard
+            maxBitsMiniShards = getNumberOfBits(maxNumberMiniShards);        #shards not bigger then 10GB. Keep memory usage while writing in minde
+
+            miniShardBits = min(shardBits - 10, maxBitsMiniShards); #keep number of minishards as small as possible
+            shardBits = shardBits - miniShardBits;    #do as much shards as needed
+        
+
+        # calculate number of chunks per shard per dimension
+        chunkBitsX = 0
+        chunkBitsY = 0
+        chunkBitsZ = 0
+
+        pos = 0
+        while True:
+            lastPos = pos
+            if chunkBitsX < numberBitsX:
+                chunkBitsX += 1
+                pos += 1
+                if pos >= (miniShardBits + preShiftBits):
+                    break
+            if chunkBitsY < numberBitsY:
+                chunkBitsY += 1
+                pos += 1
+                if pos >= (miniShardBits + preShiftBits):
+                    break
+            if chunkBitsZ < numberBitsZ:
+                chunkBitsZ += 1
+                pos += 1
+                if pos >= (miniShardBits + preShiftBits):
+                    break
+            if lastPos == pos: #something is wrong -> escape loop
+                break
+
+        shardLayoutX = 2**chunkBitsX
+        shardLayoutY = 2**chunkBitsY
+        shardLayoutZ = 2**chunkBitsZ
+
+        print("Using sharded neuroglancer storage with: \n"
+                "preShiftBits: " + str(preShiftBits) + " miniShardBits: " + str(miniShardBits) + " shardBits: " + str(shardBits) + "\n"
+                "shard layout: " + str(shardLayoutX) + " " + str(shardLayoutY) + " " + str(shardLayoutZ))
+        return shardBits, miniShardBits, preShiftBits
+
+    @staticmethod
+    def create_neuroglancer_layer(layer: KnossosDataset):
+        if len(layer.file_extensions) == 1 and (layer.file_extensions[0] == '.raw' or layer.file_extensions[0] == '.png' or layer.file_extensions[0] == '.jpg' or layer.file_extensions[0] == '.jpeg'):
+            layer.server_format = "precomputed"
+            layer.url = f'file://{layer._knossos_path}/info'
+            layer._tensorstore_datasets = {}
+            encoding = "png"
+            encoding_version = "png_level"
+            encoding_level = 6
+            if layer.file_extensions[0] == '.raw':
+                encoding = "raw"
+            elif layer.file_extensions[0] == '.jpg' or layer.file_extensions[0] == '.jpeg':
+                encoding = "jpeg"
+                encoding_version = "jpeg_quality"
+                encoding_level = 75
+            shardBits, miniShardBits, preShiftBits = KnossosDataset.calculateShardLayout(layer)
+            use_sharding = shardBits > 0
+            for mag in range(len(layer.scales)):
+                factors = layer.scales[mag] / layer.scales[0]
+                layer._tensorstore_datasets[mag] = ts.open({
+                    "driver": "neuroglancer_precomputed",
+                    "kvstore": {
+                        "driver": "file",
+                        "path": layer._knossos_path,
+                    },
+                    "multiscale_metadata" : {
+                        "data_type" : "uint8",      
+                        "num_channels" : 1,
+                        "type" : "image",
+                    },
+                    "scale_metadata" : {
+                        "key" : "mag"+str(mag+1),
+                        "resolution" : layer.scales[mag],
+                        "encoding" : encoding,
+                        encoding_version : encoding_level,
+                        "chunk_size" : layer.cube_shape,
+                        "size" : np.ceil(layer.boundary / factors).astype(int),
+                        # Only add the sharding block if use_sharding is true
+                        **({
+                            "sharding" : {
+                                "@type" : "neuroglancer_uint64_sharded_v1",
+                                "preshift_bits" : preShiftBits,
+                                "minishard_bits" : miniShardBits,
+                                "shard_bits" : shardBits,
+                                "minishard_index_encoding" : "raw",
+                                "hash" : "identity",
+                            }
+                        } if use_sharding else {}),
+                    },
+                    # "scale_index" : mag,
+                },
+                create=True,
+                open=True,
+                ).result()  #open_mode=ts.OpenMode.create
+
+        elif len(layer.file_extensions) == 1 and layer.file_extensions[0] == '.seg.sz.zip':
+            layer.server_format = "precomputed"
+            layer.url = f'file://{layer._knossos_path}/info'
+            layer._tensorstore_datasets = {}
+            for mag in range(len(layer.scales)):
+                factors = layer.scales[mag] / layer.scales[0]
+                layer._tensorstore_datasets[mag] = ts.open({
+                    "driver": "neuroglancer_precomputed",
+                    "kvstore": {
+                        "driver": "file",
+                        "path": layer._knossos_path,
+                    },
+                    "multiscale_metadata" : {
+                        "data_type" : "uint64",
+                        "num_channels" : 1,
+                        "type" : "segmentation",
+                    },
+                    "scale_metadata" : {
+                        "key" : "mag"+str(mag+1),
+                        "resolution" : layer.scales[mag],
+                        "encoding" : "compressed_segmentation",
+                        "chunk_size" : layer.cube_shape,
+                        "size" : np.ceil(layer.boundary / factors).astype(int),
+                    },
+                    # "scale_index" : mag,
+                },
+                create=True,
+                open=True,
+                ).result()  #open_mode=ts.OpenMode.create
+
+    @staticmethod
     def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None):
         conf_path = Path(path) / channel / f'{experiment_name}.k.toml'
         if parent_dataset is None and conf_path.exists():
@@ -1075,6 +1290,8 @@ class KnossosDataset(object):
         layer.layers = [layer]
         layer._initialize_cache(0)
         layer._initialized = True
+
+        KnossosDataset.create_neuroglancer_layer(layer)
 
         if parent_dataset:
             d = parent_dataset
@@ -1116,7 +1333,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
-        print('DEPRECATION warning: initialize_without_conf is deprecated. Please use initialize.')
+        print('DEPRECATION warning: initialize_without_conf is deprecated. Please use initialize. This will not generate neuroglancer datasets.')
         self._knossos_path = path
         all_mag_folders = our_glob(path+"/*mag*")
 
@@ -1246,7 +1463,7 @@ class KnossosDataset(object):
         :return:
             nothing
         """
-        print('DEPRECATION warning: initialize_from_matrix is deprecated. Please use initialize_from_array.')
+        print('DEPRECATION warning: initialize_from_matrix is deprecated. Please use initialize_from_array. This will not generate neuroglancer datasets.')
 
         if (data is None) and (data_path is None or hdf5_names is None):
             raise Exception("No data given")
