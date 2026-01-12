@@ -29,6 +29,7 @@ requirements:
     - python-snappy >=0.5
     - networkx >=1.11
     - requests >=2.12
+    - tensorstore
     # - skeletopyze (add, when channels can be specified)
 
 build:

@@ -36,6 +36,7 @@ dependencies = [
     'requests >= 2.12',
     'scipy >= 0.16',
     'tomli',
+    'tensorstore',
 ]
 
 [project.urls]
