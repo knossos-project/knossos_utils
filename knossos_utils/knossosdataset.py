@@ -737,7 +737,7 @@ class KnossosDataset(object):
                     assert info_json["data_type"] == "uint8" or info_json["data_type"] == "uint16" or info_json["data_type"] == "uint64", f"Expected data_type to be uint8 or uint16 or uint64, got {info_json['data_type']}"
                     assert info_json["num_channels"] == 1, f"Expected num_channels to be 1, got {info_json['num_channels']}"
                     file_extension = ".seg.sz.zip" if info_json["scales"][0]["encoding"] == "compressed_segmentation" else f'.{info_json["scales"][0]["encoding"]}'
-                    assert layer.file_extensions == [file_extension], f"Expected file extensions to be {layer.file_extensions}, got {f'.{info_json["scales"][0]["encoding"]}'}"
+                    assert layer.file_extensions == [file_extension], f"Expected file extensions to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']}"
 
                     layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
                     layer._boundary = info_json["scales"][0]["size"]
