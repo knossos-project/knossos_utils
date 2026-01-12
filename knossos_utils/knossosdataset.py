@@ -584,25 +584,34 @@ class KnossosDataset(object):
         return scales
 
     def initialize_from_conf(self, path_to_conf: str):
-        path_to_conf = Path(path_to_conf)
-        if path_to_conf.name.endswith('.k.toml'):
-            self.initialize_from_toml(path_to_conf)
-        elif not path_to_conf.exists():
+
+        if path_to_conf.startswith("http") and path_to_conf.endswith(".k.toml"):
             try:
-                for suffix in ('.k.conf', '.pyk.conf', '.pyknossos.conf', '.conf'):
-                    if path_to_conf.name.endswith(suffix):
-                        break
-                name = path_to_conf.name[:-len(suffix)]
-                new_path_to_conf = path_to_conf.with_name(f'{name}.k.toml')
-                self.initialize_from_toml(new_path_to_conf)
-                print(f'{path_to_conf} does not exist. Loaded {new_path_to_conf} instead.')
+                response = requests.get(path_to_conf)
+                response.raise_for_status()
+                self._initialize_from_dict(tomli.loads(response.text))
             except Exception as e:
-                print(f'{path_to_conf} does not exist. Also failed to load {new_path_to_conf} instead: {e}')
-        elif path_to_conf.name.endswith("ariadne.conf") or path_to_conf.name.endswith(".pyknossos.conf") or path_to_conf.name.endswith(".pyk.conf"):
-            self.initialize_from_pyknossos_path(path_to_conf)
+                raise NotImplementedError(f"Could not read .conf from url {path_to_conf}: {e}")
         else:
-            self.initialize_from_knossos_path(str(path_to_conf))
-            self.layers = [self]
+            path_to_conf = Path(path_to_conf)
+            if path_to_conf.name.endswith('.k.toml'):
+                self.initialize_from_toml(path_to_conf)
+            elif not path_to_conf.exists():
+                try:
+                    for suffix in ('.k.conf', '.pyk.conf', '.pyknossos.conf', '.conf'):
+                        if path_to_conf.name.endswith(suffix):
+                            break
+                    name = path_to_conf.name[:-len(suffix)]
+                    new_path_to_conf = path_to_conf.with_name(f'{name}.k.toml')
+                    self.initialize_from_toml(new_path_to_conf)
+                    print(f'{path_to_conf} does not exist. Loaded {new_path_to_conf} instead.')
+                except Exception as e:
+                    print(f'{path_to_conf} does not exist. Also failed to load {new_path_to_conf} instead: {e}')
+            elif path_to_conf.name.endswith("ariadne.conf") or path_to_conf.name.endswith(".pyknossos.conf") or path_to_conf.name.endswith(".pyk.conf"):
+                self.initialize_from_pyknossos_path(path_to_conf)
+            else:
+                self.initialize_from_knossos_path(str(path_to_conf))
+                self.layers = [self]
 
     @staticmethod
     def from_toml_string(toml_str: str) -> KnossosDataset:
@@ -725,6 +734,7 @@ class KnossosDataset(object):
                     try:
                         headers = {}
                         auth=None
+                        cdn_token = None
                         if layer._http_user and layer._http_passwd:
                             auth = (layer._http_user, layer._http_passwd)
                             cdn_token = copy.deepcopy(layer._cdn_token)
