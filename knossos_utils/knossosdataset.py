@@ -356,7 +356,9 @@ class KnossosDataset(object):
             if self.in_http_mode:
                 for mag_test_nb in range(10):
                     mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
-                    mag_folder = "{}/{}{}".format(self.url, self.name_mag_folder, mag_num)
+                    url = copy.deepcopy(self.url)
+                    url = url.replace("/info", "")
+                    mag_folder = "{}/{}{}".format(url, self.name_mag_folder, mag_num)
                     for tries in range(10):
                         try:
                             request = requests.get(mag_folder,
@@ -389,6 +391,8 @@ class KnossosDataset(object):
                     match = regex.search(mag_folder)
                     if match is not None:
                         self._mags.append(int(mag_folder[match.start() + 3:])) # mag number
+            if self.server_format == "precomputed" and (self._mags is None or len(self._mags) == 0):
+                self._mags = list(self._tensorstore_datasets.keys())
         return self._mags
 
     @property
@@ -738,6 +742,7 @@ class KnossosDataset(object):
                     layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
                     layer._boundary = info_json["scales"][0]["size"]
                     layer._cube_shape = info_json["scales"][0]["chunk_sizes"][0]
+                    keys = [scale["key"] for scale in info_json["scales"]]
 
                     tensorstore_url = copy.deepcopy(layer.url)
                     tensorstore_url = tensorstore_url.replace("/info", "")
@@ -749,7 +754,10 @@ class KnossosDataset(object):
                         query_params = f"?token={bcdn_token}&expires={expires}&token_path={token_path}"
 
                     layer._tensorstore_datasets = {}
-                    for mag in range(len(layer.scales)):
+                    for mag, key in enumerate(keys):
+                        mag += 1
+                        if "mag" in key:
+                            mag = int(key.split("mag")[1])
                         if tensorstore_url.startswith("http"):
                             parsed_url = urllib.parse.urlparse(tensorstore_url)
                             driver = "http"
@@ -766,7 +774,10 @@ class KnossosDataset(object):
                                         "driver": driver,
                                         "path": data_path,
                                     },
-                                    "scale_index": mag,
+                                    "scale_metadata" : {
+                                        "key" : key,
+                                    },
+                                    # "scale_index": mag,
                                 }).result()
                 else:
                     print("Looking for missing information in toml file...")
@@ -1198,7 +1209,7 @@ class KnossosDataset(object):
             use_sharding = shardBits > 0
             for mag in range(len(layer.scales)):
                 factors = layer.scales[mag] / layer.scales[0]
-                layer._tensorstore_datasets[mag] = ts.open({
+                layer._tensorstore_datasets[mag+1] = ts.open({
                     "driver": "neuroglancer_precomputed",
                     "kvstore": {
                         "driver": "file",
@@ -1240,7 +1251,7 @@ class KnossosDataset(object):
             layer._tensorstore_datasets = {}
             for mag in range(len(layer.scales)):
                 factors = layer.scales[mag] / layer.scales[0]
-                layer._tensorstore_datasets[mag] = ts.open({
+                layer._tensorstore_datasets[mag+1] = ts.open({
                     "driver": "neuroglancer_precomputed",
                     "kvstore": {
                         "driver": "file",
@@ -1859,33 +1870,38 @@ class KnossosDataset(object):
                                 "offset: [%d, %d, %d]!" %
                                 (offset[0], offset[1], offset[2]))
 
-        start = self.get_first_blocks(offset).astype(int)
-        end = self.get_last_blocks(offset, size).astype(int)
-
         output = np.zeros(size[::-1], dtype=datatype)
 
-        nb_cubes_to_process = int(np.prod(end - start))
-        if nb_cubes_to_process == 0:
-            return np.zeros(orig_size[::-1], dtype=datatype)
+        if self.server_format == "precomputed":
+            dataset = self._tensorstore_datasets[mag]
+            data = np.array(dataset[offset[0]:offset[0]+size[0], offset[1]:offset[1]+size[1], offset[2]:offset[2]+size[2]])   #TODO: check if order of indexes is correct
+            output = data[..., 0].swapaxes(0, 2)
+        else:
+            start = self.get_first_blocks(offset).astype(int)
+            end = self.get_last_blocks(offset, size).astype(int)
 
-        cube_coordinates = []
+            nb_cubes_to_process = int(np.prod(end - start))
+            if nb_cubes_to_process == 0:
+                return np.zeros(orig_size[::-1], dtype=datatype)
 
-        for z in range(start[2], end[2]):
-            for y in range(start[1], end[1]):
-                for x in range(start[0], end[0]):
-                    cube_coordinates.append(np.array([x, y, z]))
+            cube_coordinates = []
 
-        with ThreadPoolExecutor() as pool:
-            results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
+            for z in range(start[2], end[2]):
+                for y in range(start[1], end[1]):
+                    for x in range(start[0], end[0]):
+                        cube_coordinates.append(np.array([x, y, z]))
 
-        if results.count(None) < len(results):
-            errors = defaultdict(int)
-            for result in results: # None results are no error
-                if result is not None and result.response is not None: # errors with server response
-                    errors[result.response.status_code] += 1
-                elif result is not None: # errors without server response
-                    errors[result.__class__.__name__] += 1
-            self._print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
+            with ThreadPoolExecutor() as pool:
+                results = list(pool.map(_read_cube, cube_coordinates)) # convert generator to list so we can count
+
+            if results.count(None) < len(results):
+                errors = defaultdict(int)
+                for result in results: # None results are no error
+                    if result is not None and result.response is not None: # errors with server response
+                        errors[result.response.status_code] += 1
+                    elif result is not None: # errors without server response
+                        errors[result.__class__.__name__] += 1
+                self._print(f'{len(errors)} non-ok http responses: {list(errors.items())}')
 
         if self.show_progress:
             dt = time.time() - t0
@@ -2746,62 +2762,66 @@ class KnossosDataset(object):
             self._print(f'box_offset: {offset_mag}')
             self._print(f'box_size: {size_mag}')
 
-            start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])
-            end = np.array([get_last_block(dim, size_mag, offset_mag, self._cube_shape) + 1 for dim in range(3)])
+            if self.server_format == "precomputed":
+                dataset = self._tensorstore_datasets[mag]
+                dataset[int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), 0] = data_inter.astype(datatype)
+            else:
+                start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])
+                end = np.array([get_last_block(dim, size_mag, offset_mag, self._cube_shape) + 1 for dim in range(3)])
 
-            self._print(f'start_cube: {start}')
-            self._print(f'end_cube: {end}')
+                self._print(f'start_cube: {start}')
+                self._print(f'end_cube: {end}')
 
-            multithreading_params = []
+                multithreading_params = []
 
-            conf_folder = os.path.dirname(self._conf_path)
-            conf_folder_name = "/" + Path(conf_folder).name
-            index = self.knossos_path.rfind(conf_folder_name)
-            if index != -1:
-                conf_folder = Path(conf_folder) / self.knossos_path[index + len(conf_folder_name):]
+                conf_folder = os.path.dirname(self._conf_path)
+                conf_folder_name = "/" + Path(conf_folder).name
+                index = self.knossos_path.rfind(conf_folder_name)
+                if index != -1:
+                    conf_folder = Path(conf_folder) / self.knossos_path[index + len(conf_folder_name):]
 
-            for z in range(start[2], end[2]):
-                for y in range(start[1], end[1]):
-                    for x in range(start[0], end[0]):
-                        current = np.array([x, y, z])
+                for z in range(start[2], end[2]):
+                    for y in range(start[1], end[1]):
+                        for x in range(start[0], end[0]):
+                            current = np.array([x, y, z])
 
-                        this_cube_info = []
-                        path = f'{conf_folder}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
-                        this_cube_info.append(path)
+                            this_cube_info = []
+                            path = f'{conf_folder}/{self.name_mag_folder}{mag}/x{current[0]:04d}/y{current[1]:04d}/z{current[2]:04d}/'
+                            this_cube_info.append(path)
 
-                        extensions = ['.seg.sz']
-                        if kzip_path is None:
-                            if as_raw:
-                                save_layer, _ = self.preferred_raw_layer()
-                                extensions = save_layer.file_extensions
+                            extensions = ['.seg.sz']
+                            if kzip_path is None:
+                                if as_raw:
+                                    save_layer, _ = self.preferred_raw_layer()
+                                    extensions = save_layer.file_extensions
+                                else:
+                                    save_layer = self
+                                path += f'{save_layer.experiment_name}_{save_layer.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}'
                             else:
-                                save_layer = self
-                            path += f'{save_layer.experiment_name}_{save_layer.name_mag_folder}{mag}_x{current[0]:04d}_y{current[1]:04d}_z{current[2]:04d}'
-                        else:
-                            path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}'
-                        this_cube_info.extend([path, extensions])
-                        cube_coords = current * self.cube_shape
-                        cube_offset = np.zeros(3)
-                        cube_limit = np.ones(3) * self.cube_shape
+                                path = f'{kzip_path}/{self._experiment_name}_{self.name_mag_folder}{mag}x{current[0]}y{current[1]}z{current[2]}'
+                            this_cube_info.extend([path, extensions])
+                            cube_coords = current * self.cube_shape
+                            cube_offset = np.zeros(3)
+                            cube_limit = np.ones(3) * self.cube_shape
 
-                        for dim in range(3):
-                            if cube_coords[dim] < offset_mag[dim]:
-                                cube_offset[dim] = offset_mag[dim] - cube_coords[dim]
-                            if cube_coords[dim] + cube_limit[dim] > offset_mag[dim] + size_mag[dim]:
-                                cube_limit[dim] = offset_mag[dim] + size_mag[dim] - cube_coords[dim]
+                            for dim in range(3):
+                                if cube_coords[dim] < offset_mag[dim]:
+                                    cube_offset[dim] = offset_mag[dim] - cube_coords[dim]
+                                if cube_coords[dim] + cube_limit[dim] > offset_mag[dim] + size_mag[dim]:
+                                    cube_limit[dim] = offset_mag[dim] + size_mag[dim] - cube_coords[dim]
 
-                        start_coord = cube_coords - offset_mag + cube_offset
-                        end_coord = cube_limit - cube_offset
+                            start_coord = cube_coords - offset_mag + cube_offset
+                            end_coord = cube_limit - cube_offset
 
-                        this_cube_info.append(cube_offset.astype(int))
-                        this_cube_info.append(cube_limit.astype(int))
-                        this_cube_info.append(start_coord.astype(int))
-                        this_cube_info.append(end_coord.astype(int))
+                            this_cube_info.append(cube_offset.astype(int))
+                            this_cube_info.append(cube_limit.astype(int))
+                            this_cube_info.append(start_coord.astype(int))
+                            this_cube_info.append(end_coord.astype(int))
 
-                        multithreading_params.append(this_cube_info)
+                            multithreading_params.append(this_cube_info)
 
-            with ThreadPoolExecutor() as pool:
-                list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
+                with ThreadPoolExecutor() as pool:
+                    list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
     def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=np.uint8):
         self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype)
