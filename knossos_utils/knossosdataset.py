@@ -797,7 +797,7 @@ class KnossosDataset(object):
                     if 'VoxelSize_nm' in layer_conf:
                         scales = [np.array(scale) for scale in layer_conf['VoxelSize_nm']]
                     if scales is not None and len(scales) == 1 and extent_px is not None and cube_shape_px is not None:
-                        print("Only one scale found in toml file. Assuming isotropic scale and generating scales...")
+                        warnings.warn("MISSING INFORMATION: Only one scale found in toml file. Assuming isotropic scale and generating scales...")
                         layer._boundary = extent_px
                         layer._cube_shape = cube_shape_px
                         ds_factor = (2, 2, 2)
@@ -806,7 +806,7 @@ class KnossosDataset(object):
                         scales = layer.generate_scales(scales[0], ds_factor)
                     
                     if extent_px is None or cube_shape_px is None or scales is None:
-                        print("Could not find all missing information in toml file. Looking for missing information in other layers...")
+                        warnings.warn("MISSING INFORMATION: Could not find all missing information in toml file. Looking for missing information in other layers...")
                         if len(layers) > 1:
                             other_layer = layers[0]
                             extent_px = other_layer._boundary
