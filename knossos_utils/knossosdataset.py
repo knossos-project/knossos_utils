@@ -1249,11 +1249,10 @@ class KnossosDataset(object):
                             }
                         } if use_sharding else {}),
                     },
-                    # "scale_index" : mag,
                 },
                 create=True,
                 open=True,
-                ).result()  #open_mode=ts.OpenMode.create
+                ).result()
 
         elif len(layer.file_extensions) == 1 and layer.file_extensions[0] == '.seg.sz.zip':
             layer.server_format = "precomputed"
@@ -1279,14 +1278,13 @@ class KnossosDataset(object):
                         "chunk_size" : layer.cube_shape,
                         "size" : np.ceil(layer.boundary / factors).astype(int),
                     },
-                    # "scale_index" : mag,
                 },
                 create=True,
                 open=True,
-                ).result()  #open_mode=ts.OpenMode.create
+                ).result()
 
     @staticmethod
-    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None):
+    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed"):
         conf_path = Path(path) / channel / f'{experiment_name}.k.toml'
         if parent_dataset is None and conf_path.exists():
             raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
@@ -1295,6 +1293,7 @@ class KnossosDataset(object):
         layer._knossos_path = str(conf_path.parent)
         layer.url = f'file://{layer._knossos_path}/'
         layer._experiment_name = experiment_name
+        layer.server_format = server_format
         layer._boundary = boundary
         layer._scale = scale
         layer._cube_shape = cube_shape
@@ -1312,7 +1311,8 @@ class KnossosDataset(object):
         layer._initialize_cache(0)
         layer._initialized = True
 
-        KnossosDataset.create_neuroglancer_layer(layer)
+        if server_format == "precomputed":
+            KnossosDataset.create_neuroglancer_layer(layer)
 
         if parent_dataset:
             d = parent_dataset
@@ -1413,7 +1413,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None):
+    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed"):
         if write_path and parent_dataset:
             raise ValueError(f"Specify either `write_path` (to create a new dataset) or `parent_dataset` (to add a layer to an existing dataset).")
         if parent_dataset and not parent_dataset.initialized:
@@ -1434,7 +1434,7 @@ class KnossosDataset(object):
         parent = parent_dataset or None
         layers = []
         for channel in channels:
-            ds = KnossosDataset.initialize(write_path, experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel=channel, parent_dataset=parent)
+            ds = KnossosDataset.initialize(write_path, experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel=channel, parent_dataset=parent, server_format=server_format)
             if parent is None:
                 parent = ds
             layers.append(ds.layers[-1])
