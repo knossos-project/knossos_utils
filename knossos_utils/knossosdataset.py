@@ -330,6 +330,7 @@ class KnossosDataset(object):
         self.visible = None # unspecified
         self.write_empty_cubes = False
         self._tensorstore_datasets = None
+        self._rgb_channel = None
 
         if path is not None:
             if str(path).endswith(".k.zip"):
@@ -661,6 +662,31 @@ class KnossosDataset(object):
         else:
             raise NotImplementedError("Only toml and pyknossos confs are implemented for embedded kzips")
 
+    def _copy_configuration(self, source_layer: KnossosDataset) -> KnossosDataset:
+        layer = KnossosDataset(show_progress=self.show_progress)
+        layer._conf_path = copy.deepcopy(source_layer._conf_path)
+        layer._knossos_path = copy.deepcopy(source_layer._knossos_path)
+        layer._initialized = copy.deepcopy(source_layer._initialized)
+        layer._initialize_cache(0)
+        layer._ordinal_mags = copy.deepcopy(source_layer._ordinal_mags)
+        layer._cube_shape = copy.deepcopy(source_layer._cube_shape)
+        layer._boundary = copy.deepcopy(source_layer._boundary)
+        layer.scales = copy.deepcopy(source_layer.scales)
+        layer._scale = copy.deepcopy(source_layer._scale)
+        layer.layers = [layer]
+        layer._experiment_name = copy.deepcopy(source_layer._experiment_name)
+        layer.file_extensions = copy.deepcopy(source_layer.file_extensions)
+        layer.server_format = copy.deepcopy(source_layer.server_format)
+        layer.url = copy.deepcopy(source_layer.url)
+        layer._http_user = copy.deepcopy(source_layer._http_user)
+        layer._http_passwd = copy.deepcopy(source_layer._http_passwd)
+        layer._cdn_token = copy.deepcopy(source_layer._cdn_token)
+        layer.description = copy.deepcopy(source_layer.description)
+        layer.color = copy.deepcopy(source_layer.color)
+        layer.visible = copy.deepcopy(source_layer.visible)
+        layer._tensorstore_datasets = copy.deepcopy(source_layer._tensorstore_datasets)
+        layer._rgb_channel = copy.deepcopy(source_layer._rgb_channel)
+        return layer
 
     def _initialize_from_dict(self, conf: dict, conf_path: Optional[str] = None):
         fail_fast_cdn = False
@@ -745,7 +771,7 @@ class KnossosDataset(object):
                         print(f"Failed to load info json from url '{layer.url}': {e}")
                 if info_json is not None:
                     assert info_json["data_type"] == "uint8" or info_json["data_type"] == "uint16" or info_json["data_type"] == "uint64", f"Expected data_type to be uint8 or uint16 or uint64, got {info_json['data_type']}"
-                    assert info_json["num_channels"] == 1, f"Expected num_channels to be 1, got {info_json['num_channels']}"
+                    assert info_json["num_channels"] == 1 or info_json["num_channels"] == 3, f"Expected num_channels to be 1 or 3(rgb), got {info_json['num_channels']}"
                     file_extension = ".seg.sz.zip" if info_json["scales"][0]["encoding"] == "compressed_segmentation" else f'.{info_json["scales"][0]["encoding"]}'
                     assert layer.file_extensions == [file_extension], f"Expected file extensions to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']}"
 
@@ -789,8 +815,11 @@ class KnossosDataset(object):
                                     },
                                     # "scale_index": mag,
                                 }).result()
+                    
+                    if info_json["num_channels"] == 3:
+                        layer._rgb_channel = True
                 else:
-                    print("Looking for missing information in toml file...")
+                    print(f"Looking for missing information in toml file... file_extensions: {layer.file_extensions}")
                     scales = None
                     extent_px = layer_conf.get('Extent_px', None)
                     cube_shape_px = layer_conf.get('CubeShape_px', None)
@@ -832,6 +861,21 @@ class KnossosDataset(object):
             layer.color = layer_conf.get('Color')
             layer.visible = layer_conf.get('Visible')
 
+            if layer._rgb_channel:
+                rgb_numbers = []
+                for lyr in layers:
+                    val = getattr(lyr, "_rgb_channel", None)
+                    if isinstance(val, str) and re.match(r'^[rgb]_(\d+)$', val):
+                        num = int(val.split("_")[1])
+                        rgb_numbers.append(num)
+                highest_rgb_channel = max(rgb_numbers, default=0)
+
+                layer._rgb_channel = f"r_{highest_rgb_channel + 1}"
+                for channel in ["g", "b"]:
+                    layer_rgb = self._copy_configuration(layer)
+                    layer_rgb._rgb_channel = f"{channel}_{highest_rgb_channel + 1}"
+                    layers.append(layer_rgb)
+
         for layer in layers:
             # set to first local layer or to first remote layer if there is no local one.
             if not self._initialized or (self.in_http_mode and not layer.in_http_mode):
@@ -845,6 +889,8 @@ class KnossosDataset(object):
         with open(path_to_toml, 'w') as toml_file:
             string = ''
             for layer in self.layers:
+                if layer._rgb_channel.startswith("g_") or layer._rgb_channel.startswith("b_"):
+                    continue
                 string += '[[Layer]]\n'
                 string += LayerConfig(layer).to_toml_string() + '\n'
             toml_file.write(string[:-1])
@@ -1201,7 +1247,8 @@ class KnossosDataset(object):
         return shardBits, miniShardBits, preShiftBits
 
     @staticmethod
-    def create_neuroglancer_layer(layer: KnossosDataset):
+    def create_neuroglancer_layer(layer: KnossosDataset, as_rgb: bool = False):
+        assert ".seg.sz.zip" not in layer.file_extensions or not as_rgb, "Can not create neuroglancer layer for segmentation data with as_rgb=True"
         if len(layer.file_extensions) == 1 and (layer.file_extensions[0] == '.raw' or layer.file_extensions[0] == '.png' or layer.file_extensions[0] == '.jpg' or layer.file_extensions[0] == '.jpeg'):
             layer.server_format = "precomputed"
             layer.url = f'file://{layer._knossos_path}/info'
@@ -1217,6 +1264,9 @@ class KnossosDataset(object):
                 encoding_level = 75
             shardBits, miniShardBits, preShiftBits = KnossosDataset.calculateShardLayout(layer)
             use_sharding = shardBits > 0
+            number_of_channels = 1
+            if as_rgb:
+                number_of_channels = 3
             for mag in range(len(layer.scales)):
                 factors = layer.scales[mag] / layer.scales[0]
                 layer._tensorstore_datasets[mag+1] = ts.open({
@@ -1227,7 +1277,7 @@ class KnossosDataset(object):
                     },
                     "multiscale_metadata" : {
                         "data_type" : "uint8",      
-                        "num_channels" : 1,
+                        "num_channels" : number_of_channels,
                         "type" : "image",
                     },
                     "scale_metadata" : {
@@ -1284,10 +1334,12 @@ class KnossosDataset(object):
                 ).result()
 
     @staticmethod
-    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed"):
+    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed", as_rgb: bool = False):
+        assert server_format == "precomputed" or not as_rgb, "as_rgb=True is only supported for server_format=precomputed"
         conf_path = Path(path) / channel / f'{experiment_name}.k.toml'
         if parent_dataset is None and conf_path.exists():
             raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
+        layers = []
         layer = KnossosDataset()
         layer._conf_path = str(conf_path)
         layer._knossos_path = str(conf_path.parent)
@@ -1310,19 +1362,35 @@ class KnossosDataset(object):
         layer.layers = [layer]
         layer._initialize_cache(0)
         layer._initialized = True
+        layers = [layer]
 
         if server_format == "precomputed":
-            KnossosDataset.create_neuroglancer_layer(layer)
+            KnossosDataset.create_neuroglancer_layer(layer, as_rgb)
+            if as_rgb:
+                highest_rgb_channel = 0
+                if parent_dataset:
+                    rgb_numbers = []
+                    for lyr in parent_dataset.layers:
+                        val = getattr(lyr, "_rgb_channel", None)
+                        if isinstance(val, str) and re.match(r'^[rgb]_(\d+)$', val):
+                            num = int(val.split("_")[1])
+                            rgb_numbers.append(num)
+                    highest_rgb_channel = max(rgb_numbers, default=0)
+                layer._rgb_channel = f"r_{highest_rgb_channel + 1}"
+                for channel in ["g", "b"]:
+                    layer_rgb = layer._copy_configuration(layer)
+                    layer_rgb._rgb_channel = f"{channel}_{highest_rgb_channel + 1}"
+                    layers.append(layer_rgb)
 
         if parent_dataset:
             d = parent_dataset
-            d.layers.append(layer)
+            d.layers.extend(layers)
         else:
             d = KnossosDataset()
             d.__dict__.update(layer.__dict__)
             d._conf_path = str(Path(path) / f'{experiment_name}.k.toml')
             d._knossos_path = str(Path(d._conf_path).parent)
-            d.layers = [layer]
+            d.layers = layers
         Path(d._conf_path).parent.mkdir(exist_ok=True, parents=True)
         d.save_toml(d._conf_path)
         return d
@@ -1413,7 +1481,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed"):
+    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed", as_rgb: bool = False):
         if write_path and parent_dataset:
             raise ValueError(f"Specify either `write_path` (to create a new dataset) or `parent_dataset` (to add a layer to an existing dataset).")
         if parent_dataset and not parent_dataset.initialized:
@@ -1433,11 +1501,14 @@ class KnossosDataset(object):
         boundary = data.shape[:-1][::-1]
         parent = parent_dataset or None
         layers = []
+        number_existing_layers = 0
+        if parent_dataset:
+            number_existing_layers = len(parent_dataset.layers)
         for channel in channels:
             ds = KnossosDataset.initialize(write_path, experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel=channel, parent_dataset=parent, server_format=server_format)
             if parent is None:
                 parent = ds
-            layers.append(ds.layers[-1])
+        layers.extend(parent.layers[number_existing_layers:])
         for idx, layer in enumerate(layers):
             save_func = layer.save_seg if '.seg.sz.zip' in file_extensions else layer.save_raw
             Path(layer._conf_path).parent.mkdir(exist_ok=True)
@@ -1883,9 +1954,16 @@ class KnossosDataset(object):
         output = np.zeros(size[::-1], dtype=datatype)
 
         if self.server_format == "precomputed":
+            channel = 0
+            if self._rgb_channel.startswith("r_"):
+                channel = 0
+            elif self._rgb_channel.startswith("g_"):
+                channel = 1
+            elif self._rgb_channel.startswith("b_"):
+                channel = 2
             dataset = self._tensorstore_datasets[mag]
-            data = np.array(dataset[offset[0]:offset[0]+size[0], offset[1]:offset[1]+size[1], offset[2]:offset[2]+size[2]])   #TODO: check if order of indexes is correct
-            output = data[..., 0].swapaxes(0, 2)
+            data = np.array(dataset[offset[0]:offset[0]+size[0], offset[1]:offset[1]+size[1], offset[2]:offset[2]+size[2], channel])
+            output = data.swapaxes(0, 2)
         else:
             start = self.get_first_blocks(offset).astype(int)
             end = self.get_last_blocks(offset, size).astype(int)
@@ -2773,8 +2851,15 @@ class KnossosDataset(object):
             self._print(f'box_size: {size_mag}')
 
             if self.server_format == "precomputed":
+                channel = 0
+                if self._rgb_channel.startswith("r_"):
+                    channel = 0
+                elif self._rgb_channel.startswith("g_"):
+                    channel = 1
+                elif self._rgb_channel.startswith("b_"):
+                    channel = 2
                 dataset = self._tensorstore_datasets[mag]
-                dataset[int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), 0] = data_inter.astype(datatype)
+                dataset[int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), channel] = data_inter.astype(datatype)
             else:
                 start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])
                 end = np.array([get_last_block(dim, size_mag, offset_mag, self._cube_shape) + 1 for dim in range(3)])
