@@ -1955,12 +1955,13 @@ class KnossosDataset(object):
 
         if self.server_format == "precomputed":
             channel = 0
-            if self._rgb_channel.startswith("r_"):
-                channel = 0
-            elif self._rgb_channel.startswith("g_"):
-                channel = 1
-            elif self._rgb_channel.startswith("b_"):
-                channel = 2
+            if self._rgb_channel:
+                if self._rgb_channel.startswith("r_"):
+                    channel = 0
+                elif self._rgb_channel.startswith("g_"):
+                    channel = 1
+                elif self._rgb_channel.startswith("b_"):
+                    channel = 2
             dataset = self._tensorstore_datasets[mag]
             data = np.array(dataset[offset[0]:offset[0]+size[0], offset[1]:offset[1]+size[1], offset[2]:offset[2]+size[2], channel])
             output = data.swapaxes(0, 2)
@@ -2852,12 +2853,13 @@ class KnossosDataset(object):
 
             if self.server_format == "precomputed":
                 channel = 0
-                if self._rgb_channel.startswith("r_"):
-                    channel = 0
-                elif self._rgb_channel.startswith("g_"):
-                    channel = 1
-                elif self._rgb_channel.startswith("b_"):
-                    channel = 2
+                if self._rgb_channel:
+                    if self._rgb_channel.startswith("r_"):
+                        channel = 0
+                    elif self._rgb_channel.startswith("g_"):
+                        channel = 1
+                    elif self._rgb_channel.startswith("b_"):
+                        channel = 2
                 dataset = self._tensorstore_datasets[mag]
                 dataset[int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), channel] = data_inter.astype(datatype)
             else:
