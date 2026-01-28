@@ -1909,7 +1909,9 @@ class KnossosDataset(object):
 
         assert self.initialized, 'Dataset is not initialized'
 
-        if mag not in self.available_mags:
+        if len(self.available_mags) == 0:
+            warnings.warn(f'Dataset has no available mags or mags could not be determined')
+        elif mag not in self.available_mags:
             raise Exception(f'Requested mag {mag} not available, only mags {self.available_mags} are available.')
 
         if 0 in size:
