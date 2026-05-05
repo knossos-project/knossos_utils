@@ -889,7 +889,7 @@ class KnossosDataset(object):
         with open(path_to_toml, 'w') as toml_file:
             string = ''
             for layer in self.layers:
-                if layer._rgb_channel.startswith("g_") or layer._rgb_channel.startswith("b_"):
+                if layer._rgb_channel and (layer._rgb_channel.startswith("g_") or layer._rgb_channel.startswith("b_")):
                     continue
                 string += '[[Layer]]\n'
                 string += LayerConfig(layer).to_toml_string() + '\n'
