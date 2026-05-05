@@ -2863,7 +2863,7 @@ class KnossosDataset(object):
                     elif self._rgb_channel.startswith("b_"):
                         channel = 2
                 dataset = self._tensorstore_datasets[mag]
-                dataset[int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), channel] = data_inter.astype(datatype)
+                dataset[int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), channel] = data_inter.swapaxes(0,2).astype(datatype)
             else:
                 start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])
                 end = np.array([get_last_block(dim, size_mag, offset_mag, self._cube_shape) + 1 for dim in range(3)])
