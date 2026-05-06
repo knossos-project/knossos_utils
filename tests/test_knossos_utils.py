@@ -76,23 +76,7 @@ def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
         assert np.array_equal(loaded, data[..., idx])
 
 
-def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtrip(tmp_path):
-    data = np.zeros((2, 3, 4), dtype=np.uint64)
-    data[0, 0, 0] = 1
-    data[0, 1, 2] = 42
-    data[1, 2, 3] = 2**33
-
-    kd = KnossosDataset.initialize_from_array(
-        data=data,
-        experiment_name='seg',
-        cube_shape=(2, 2, 2),
-        scale=(1, 1, 1),
-        ds_factor=(2, 2, 1),
-        file_extensions=['.seg.sz.zip'],
-        write_path=str(tmp_path),
-        server_format='precomputed',
-    )
-
+def _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path):
     info = json.loads((tmp_path / 'info').read_text())
     assert info['data_type'] == 'uint64'
     assert info['scales'][0]['encoding'] == 'compressed_segmentation'
@@ -113,6 +97,51 @@ def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtri
     assert loaded_after_reload.dtype == np.uint64
     assert loaded_after_reload.shape == data.shape
     assert np.array_equal(loaded_after_reload, data)
+
+
+def _segmentation_test_data():
+    data = np.zeros((2, 3, 4), dtype=np.uint64)
+    data[0, 0, 0] = 1
+    data[0, 1, 2] = 42
+    data[1, 2, 3] = 2**33
+    return data
+
+
+def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtrip(tmp_path):
+    data = _segmentation_test_data()
+
+    kd = KnossosDataset.initialize_from_array(
+        data=data,
+        experiment_name='seg',
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=['.seg.sz.zip'],
+        write_path=str(tmp_path),
+        server_format='precomputed',
+    )
+
+    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path)
+
+
+def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtrip_with_shard_size(tmp_path):
+    data = _segmentation_test_data()
+
+    kd = KnossosDataset.initialize_from_array(
+        data=data,
+        experiment_name='seg',
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=['.seg.sz.zip'],
+        write_path=str(tmp_path),
+        server_format='precomputed',
+        shard_size=(2, 2, 2),
+    )
+
+    info = json.loads((tmp_path / 'info').read_text())
+    assert 'sharding' in info['scales'][0]
+    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path)
 
 
 @pytest.mark.parametrize(

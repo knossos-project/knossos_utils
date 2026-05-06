@@ -1507,7 +1507,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed", as_rgb: bool = False):
+    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None):
         if write_path and parent_dataset:
             raise ValueError(f"Specify either `write_path` (to create a new dataset) or `parent_dataset` (to add a layer to an existing dataset).")
         if parent_dataset and not parent_dataset.initialized:
@@ -1540,6 +1540,7 @@ class KnossosDataset(object):
                 parent_dataset=parent_dataset,
                 server_format=server_format,
                 as_rgb=True,
+                shard_size=shard_size,
             )
             layers = parent.layers[number_existing_layers:]
             for idx, layer in enumerate(layers):
@@ -1560,7 +1561,7 @@ class KnossosDataset(object):
         if parent_dataset:
             number_existing_layers = len(parent_dataset.layers)
         for channel in channels:
-            ds = KnossosDataset.initialize(write_path, experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel=channel, parent_dataset=parent, server_format=server_format)
+            ds = KnossosDataset.initialize(write_path, experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel=channel, parent_dataset=parent, server_format=server_format, shard_size=shard_size)
             if parent is None:
                 parent = ds
         layers.extend(parent.layers[number_existing_layers:])
