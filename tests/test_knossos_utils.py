@@ -76,24 +76,24 @@ def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
         assert np.array_equal(loaded, data[..., idx])
 
 
-def _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path):
+def _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size):
     info = json.loads((tmp_path / 'info').read_text())
     assert info['data_type'] == 'uint64'
     assert info['scales'][0]['encoding'] == 'compressed_segmentation'
-    assert info['scales'][0]['size'] == [4, 3, 2]
-    assert np.array_equal(kd.boundary, [4, 3, 2])
-    assert tuple(kd._tensorstore_datasets[1].domain.shape) == (4, 3, 2, 1)
+    assert info['scales'][0]['size'] == expected_size
+    assert np.array_equal(kd.boundary, expected_size)
+    assert tuple(kd._tensorstore_datasets[1].domain.shape) == (*expected_size, 1)
 
-    loaded = kd.load_seg(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+    loaded = kd.load_seg(offset=(0, 0, 0), size=expected_size, mag=1)
     assert loaded.dtype == np.uint64
     assert loaded.shape == data.shape
     assert np.array_equal(loaded, data)
 
     reloaded = KnossosDataset(kd.conf_path)
-    assert np.array_equal(reloaded.boundary, [4, 3, 2])
-    assert tuple(reloaded._tensorstore_datasets[1].domain.shape) == (4, 3, 2, 1)
+    assert np.array_equal(reloaded.boundary, expected_size)
+    assert tuple(reloaded._tensorstore_datasets[1].domain.shape) == (*expected_size, 1)
 
-    loaded_after_reload = reloaded.load_seg(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+    loaded_after_reload = reloaded.load_seg(offset=(0, 0, 0), size=expected_size, mag=1)
     assert loaded_after_reload.dtype == np.uint64
     assert loaded_after_reload.shape == data.shape
     assert np.array_equal(loaded_after_reload, data)
@@ -107,7 +107,32 @@ def _segmentation_test_data():
     return data
 
 
-def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtrip(tmp_path):
+def _segmentation_2d_test_data():
+    data = np.zeros((1, 3, 4), dtype=np.uint64)
+    data[0, 0, 0] = 1
+    data[0, 1, 2] = 42
+    data[0, 2, 3] = 2**33
+    return data
+
+
+def test_KnossosDataset_initialize_from_array__segmentation_precomputed_2d_roundtrip(tmp_path):
+    data = _segmentation_2d_test_data()
+
+    kd = KnossosDataset.initialize_from_array(
+        data=data,
+        experiment_name='seg2d',
+        cube_shape=(2, 2, 1),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=['.seg.sz.zip'],
+        write_path=str(tmp_path),
+        server_format='precomputed',
+    )
+
+    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size=[4, 3, 1])
+
+
+def test_KnossosDataset_initialize_from_array__segmentation_precomputed_3d_roundtrip(tmp_path):
     data = _segmentation_test_data()
 
     kd = KnossosDataset.initialize_from_array(
@@ -121,7 +146,7 @@ def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtri
         server_format='precomputed',
     )
 
-    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path)
+    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size=[4, 3, 2])
 
 
 def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtrip_with_shard_size(tmp_path):
@@ -141,7 +166,7 @@ def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtri
 
     info = json.loads((tmp_path / 'info').read_text())
     assert 'sharding' in info['scales'][0]
-    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path)
+    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size=[4, 3, 2])
 
 
 @pytest.mark.parametrize(
