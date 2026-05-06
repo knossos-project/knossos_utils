@@ -90,7 +90,7 @@ def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
         (
             'https://example.org/dataset/info',
             {'token': 'abc', 'expires': '123', 'token_path': '/dataset'},
-            {'driver': 'http', 'base_url': 'https://example.org?token=abc&expires=123&token_path=%2Fdataset', 'path': '/dataset'},
+            {'driver': 'http', 'base_url': 'https://example.org?token=abc&expires=123&token_path=/dataset', 'path': '/dataset'},
         ),
         (
             'https://example.org/dataset/infobox/info',
