@@ -65,6 +65,8 @@ def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
 
     assert len(kd.layers) == 3
     assert [layer._rgb_channel for layer in kd.layers] == ['r_1', 'g_1', 'b_1']
+    assert kd.layers[0]._tensorstore_datasets is kd.layers[1]._tensorstore_datasets
+    assert kd.layers[0]._tensorstore_datasets is kd.layers[2]._tensorstore_datasets
     assert json.loads((tmp_path / 'info').read_text())['num_channels'] == 3
 
     reloaded = KnossosDataset(kd.conf_path)

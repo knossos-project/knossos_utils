@@ -716,7 +716,7 @@ class KnossosDataset(object):
         layer.description = copy.deepcopy(source_layer.description)
         layer.color = copy.deepcopy(source_layer.color)
         layer.visible = copy.deepcopy(source_layer.visible)
-        layer._tensorstore_datasets = copy.deepcopy(source_layer._tensorstore_datasets)
+        layer._tensorstore_datasets = source_layer._tensorstore_datasets
         layer._rgb_channel = copy.deepcopy(source_layer._rgb_channel)
         return layer
 
