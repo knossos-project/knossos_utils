@@ -1,7 +1,10 @@
+import json
+
 import numpy as np
 import pytest
 
 from knossos_utils import KnossosDataset
+from knossos_utils.knossosdataset import _precomputed_kvstore_config
 
 
 @pytest.mark.parametrize("boundary", [np.array([7,9,10]), (7,9,10), [7, 9, 10]])
@@ -40,3 +43,61 @@ def test_Knossosdataset__initalize_without_conf__robust_magfolder_detection(tmp_
     kd = KnossosDataset()
     kd.initialize_without_conf(str(tmp_path), boundary=(7, 9, 10), scale=(1, 1, 1), experiment_name='test', mags=[1], verbose=True)
     assert((tmp_path / expected_mag).is_dir())
+
+
+def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
+    data = np.zeros((2, 3, 4, 3), dtype=np.uint8)
+    data[..., 0] = 11
+    data[..., 1] = 22
+    data[..., 2] = 33
+
+    kd = KnossosDataset.initialize_from_array(
+        data=data,
+        experiment_name='rgb',
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=['.raw'],
+        write_path=str(tmp_path),
+        server_format='precomputed',
+        as_rgb=True,
+    )
+
+    assert len(kd.layers) == 3
+    assert [layer._rgb_channel for layer in kd.layers] == ['r_1', 'g_1', 'b_1']
+    assert json.loads((tmp_path / 'info').read_text())['num_channels'] == 3
+
+    reloaded = KnossosDataset(kd.conf_path)
+    assert len(reloaded.layers) == 3
+    for idx, layer in enumerate(reloaded.layers):
+        loaded = layer.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+        assert np.array_equal(loaded, data[..., idx])
+
+
+@pytest.mark.parametrize(
+    'url,cdn_token,expected',
+    [
+        (
+            'https://example.org/dataset/info',
+            None,
+            {'driver': 'http', 'base_url': 'https://example.org', 'path': '/dataset'},
+        ),
+        (
+            'https://user:pass@example.org:8443/dataset/info',
+            None,
+            {'driver': 'http', 'base_url': 'https://user:pass@example.org:8443', 'path': '/dataset'},
+        ),
+        (
+            'https://example.org/dataset/info',
+            {'token': 'abc', 'expires': '123', 'token_path': '/dataset'},
+            {'driver': 'http', 'base_url': 'https://example.org?token=abc&expires=123&token_path=%2Fdataset', 'path': '/dataset'},
+        ),
+        (
+            'https://example.org/dataset/infobox/info',
+            None,
+            {'driver': 'http', 'base_url': 'https://example.org', 'path': '/dataset/infobox'},
+        ),
+    ],
+)
+def test_precomputed_kvstore_config__http_urls(url, cdn_token, expected):
+    assert _precomputed_kvstore_config(url, cdn_token) == expected

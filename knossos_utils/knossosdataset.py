@@ -81,6 +81,12 @@ except ImportError:
 
 module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 
+# Limits used by KnossosDataset._calculate_optimal_shard_size to bound the number of
+# neuroglancer_precomputed shards and the on-disk size of a single shard.
+# Note: tensorstore needs roughly 2-3x MAX_SHARD_SIZE as temporary memory while writing a shard.
+MAX_NUMBER_OF_SHARDS = 200
+MAX_SHARD_SIZE = 10**10  # 10 GB
+
 
 def our_glob(s):
     l = []
@@ -169,6 +175,32 @@ def get_last_block(dim, size, offset, cube_shape):
     """ Helper for iterating over cubes """
     cube_shape = _as_shapearray(cube_shape)
     return int(np.floor((offset[dim]+size[dim]-1) / cube_shape[dim]))
+
+
+def _precomputed_kvstore_config(url: str, cdn_token: Optional[dict] = None):
+    dataset_url = copy.deepcopy(url)
+    dataset_url = dataset_url[:-5] if dataset_url.endswith("/info") else dataset_url
+    if dataset_url.startswith("http"):
+        split_url = urllib.parse.urlsplit(dataset_url)
+        query_params = ""
+        if cdn_token is not None:
+            bcdn_token = cdn_token.get('token', '')
+            expires = cdn_token.get('expires', '')
+            token_path = cdn_token.get('token_path', '')
+            query_params = f"token={bcdn_token}&expires={expires}&token_path={token_path}"
+        base_url = urllib.parse.urlunsplit(
+            (split_url.scheme, split_url.netloc, "", query_params, "")
+        )
+        return {
+            "driver": "http",
+            "base_url": base_url,
+            "path": split_url.path,
+        }
+    return {
+        "driver": "file",
+        "base_url": None,
+        "path": dataset_url.replace("file://", ""),
+    }
 
 
 def cut_matrix(data, offset_start, offset_end, cube_shape, start, end):
@@ -716,7 +748,7 @@ class KnossosDataset(object):
                     try:
                         auth_path = split_url.path
                         if layer.server_format == "precomputed":
-                            auth_path = auth_path.replace("/info", "")
+                            auth_path = auth_path[:-5] if auth_path.endswith("/info") else auth_path
                         response = requests.get(
                             f'{split_url.scheme}://{split_url.hostname}/auth', 
                             auth=(layer._http_user, layer._http_passwd), 
@@ -780,35 +812,20 @@ class KnossosDataset(object):
                     layer._cube_shape = info_json["scales"][0]["chunk_sizes"][0]
                     keys = [scale["key"] for scale in info_json["scales"]]
 
-                    tensorstore_url = copy.deepcopy(layer.url)
-                    tensorstore_url = tensorstore_url.replace("/info", "")
-                    query_params = ""
-                    if layer._cdn_token is not None:
-                        bcdn_token = layer._cdn_token.get('token', '')
-                        expires = layer._cdn_token.get('expires', '')
-                        token_path = layer._cdn_token.get('token_path', '')
-                        query_params = f"?token={bcdn_token}&expires={expires}&token_path={token_path}"
-
+                    kvstore_config = _precomputed_kvstore_config(
+                        layer.url, layer._cdn_token
+                    )
                     layer._tensorstore_datasets = {}
                     for mag, key in enumerate(keys):
                         mag += 1
                         if "mag" in key:
                             mag = int(key.split("mag")[1])
-                        if tensorstore_url.startswith("http"):
-                            parsed_url = urllib.parse.urlparse(tensorstore_url)
-                            driver = "http"
-                            base_url = f"{parsed_url.scheme}://{parsed_url.username}:{parsed_url.password}@{parsed_url.hostname}{query_params}"
-                            data_path = parsed_url.path
-                        else:
-                            driver = "file"
-                            base_url = None
-                            data_path = tensorstore_url.replace("file://", "")
                         layer._tensorstore_datasets[mag] = ts.open({
                                     "driver": "neuroglancer_precomputed",
                                     "kvstore": {
-                                        **({"base_url": base_url} if base_url is not None else {}),
-                                        "driver": driver,
-                                        "path": data_path,
+                                        **({"base_url": kvstore_config["base_url"]} if kvstore_config["base_url"] is not None else {}),
+                                        "driver": kvstore_config["driver"],
+                                        "path": kvstore_config["path"],
                                     },
                                     "scale_metadata" : {
                                         "key" : key,
@@ -1158,184 +1175,193 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def calculateShardLayout(layer: KnossosDataset):
-        # adviced parameters taken from: https://github.com/google/tensorstore/issues/13#issuecomment-857274972
-        # !!! "The temporary memory required to write a shard is 2 to 3 times the size of the shard." !!!
+    def _calculate_optimal_shard_size(layer: KnossosDataset) -> np.ndarray:
+        """Compute an optimal 3D shard size for a neuroglancer_precomputed layer.
 
-        def getNumberOfBits(input: int) -> int:
-            input -= 1
-            for i in range(32):
-                if input == 0:
-                    return i
-                input = input >> 1
-            return 32
+        Starts at the layer's cube_shape and iteratively doubles it until either
+        the total number of shards fits within MAX_NUMBER_OF_SHARDS or doubling
+        would push a single shard above MAX_SHARD_SIZE. When the current shard
+        already covers the full Z extent of the dataset, only X and Y are doubled.
 
-        maxNumberFiles = 1500
-        maxShardSize = 10000000000 #10GB
+        The returned shard size is later used as the tensorstore write_chunk size
+        (i.e. the on-disk shard); the read_chunk stays at layer.cube_shape.
+        """
+        shard_size = np.asarray(layer.cube_shape, dtype=float)
+        dataset_size = np.asarray(layer.boundary, dtype=float)
+        number_of_shards = np.maximum(1, np.ceil(dataset_size / shard_size).astype(int))
+        total_number_of_shards = np.prod(number_of_shards)
+        while total_number_of_shards > MAX_NUMBER_OF_SHARDS:
+            if shard_size[2] >= dataset_size[2]:
+                shard_size = np.array(
+                    [shard_size[0] * 2, shard_size[1] * 2, shard_size[2]],
+                    dtype=float,
+                )
+            else:
+                shard_size = shard_size * 2
 
-        numberChannel = 1
-        numberChunksX = np.ceil(layer.boundary[0] / layer.cube_shape[0])
-        numberChunksY = np.ceil(layer.boundary[1] / layer.cube_shape[1])
-        numberChunksZ = np.ceil(layer.boundary[2] / layer.cube_shape[2])
-        numberChunks = numberChunksX * numberChunksY * numberChunksZ
+            number_of_shards = np.maximum(
+                1, np.ceil(dataset_size / shard_size).astype(int)
+            )
+            total_number_of_shards = np.prod(number_of_shards)
 
-        if numberChunks < maxNumberFiles: #if less then maxNumberFiles of chunks -> dont use shards
-            shardBits = 0;
-            miniShardBits = 0;
-            preShiftBits = 0;
-
-            print("Using unsharded neuroglancer storage!");
-            return shardBits, miniShardBits, preShiftBits
-
-        # calculate number of bits needed to represent number of chunks
-        numberBitsX = getNumberOfBits(numberChunksX);
-        numberBitsY = getNumberOfBits(numberChunksY);
-        numberBitsZ = getNumberOfBits(numberChunksZ);
-        numberBits = numberBitsX + numberBitsY + numberBitsZ;
-
-        # calculate size of one chunk / one minishard
-        chunkSizeZ = layer.cube_shape[2] if layer.cube_shape[2] > layer.boundary[2] else layer.boundary[2]
-        chunkSize = layer.cube_shape[0] * layer.cube_shape[1] * chunkSizeZ * numberChannel    #Number Pixels in X,Y,Z + number channels
-        miniShardSize = 256 * chunkSize
-
-        # define number of bits
-        preShiftBits = 8     #to get 256 chunks per minishard - fixed
-        miniShardBits = 0    #to get 1 minishard per shard
-        shardBits = numberBits - preShiftBits  #to get up to 1024 shards
-
-        if shardBits > 10: #more then 1024 shards
-            maxNumberMiniShards = np.floor(maxShardSize / miniShardSize);    #calculate max number of minishards per shard
-            maxBitsMiniShards = getNumberOfBits(maxNumberMiniShards);        #shards not bigger then 10GB. Keep memory usage while writing in minde
-
-            miniShardBits = min(shardBits - 10, maxBitsMiniShards); #keep number of minishards as small as possible
-            shardBits = shardBits - miniShardBits;    #do as much shards as needed
-        
-
-        # calculate number of chunks per shard per dimension
-        chunkBitsX = 0
-        chunkBitsY = 0
-        chunkBitsZ = 0
-
-        pos = 0
-        while True:
-            lastPos = pos
-            if chunkBitsX < numberBitsX:
-                chunkBitsX += 1
-                pos += 1
-                if pos >= (miniShardBits + preShiftBits):
-                    break
-            if chunkBitsY < numberBitsY:
-                chunkBitsY += 1
-                pos += 1
-                if pos >= (miniShardBits + preShiftBits):
-                    break
-            if chunkBitsZ < numberBitsZ:
-                chunkBitsZ += 1
-                pos += 1
-                if pos >= (miniShardBits + preShiftBits):
-                    break
-            if lastPos == pos: #something is wrong -> escape loop
+            # Heuristic bytes-per-voxel-times-channel factor used to bound shard size:
+            # 4 for flat (single-Z-slab) shards, 8 otherwise.
+            factor = 4 if shard_size[2] >= dataset_size[2] else 8
+            if np.prod(shard_size) * factor > MAX_SHARD_SIZE:
                 break
-
-        shardLayoutX = 2**chunkBitsX
-        shardLayoutY = 2**chunkBitsY
-        shardLayoutZ = 2**chunkBitsZ
-
-        print("Using sharded neuroglancer storage with: \n"
-                "preShiftBits: " + str(preShiftBits) + " miniShardBits: " + str(miniShardBits) + " shardBits: " + str(shardBits) + "\n"
-                "shard layout: " + str(shardLayoutX) + " " + str(shardLayoutY) + " " + str(shardLayoutZ))
-        return shardBits, miniShardBits, preShiftBits
+        return shard_size.astype(int)
 
     @staticmethod
-    def create_neuroglancer_layer(layer: KnossosDataset, as_rgb: bool = False):
-        assert ".seg.sz.zip" not in layer.file_extensions or not as_rgb, "Can not create neuroglancer layer for segmentation data with as_rgb=True"
-        if len(layer.file_extensions) == 1 and (layer.file_extensions[0] == '.raw' or layer.file_extensions[0] == '.png' or layer.file_extensions[0] == '.jpg' or layer.file_extensions[0] == '.jpeg'):
-            layer.server_format = "precomputed"
-            layer.url = f'file://{layer._knossos_path}/info'
-            layer._tensorstore_datasets = {}
+    def create_neuroglancer_layer(
+        layer: KnossosDataset,
+        as_rgb: bool = False,
+        shard_size: Optional[Sequence[int]] = None,
+    ):
+        """Create a neuroglancer_precomputed tensorstore dataset per magnification.
+
+        Supports image layers (.raw / .png / .jpg / .jpeg, uint8) and segmentation
+        layers (.seg.sz.zip, uint64 + compressed_segmentation).
+
+        Sharding is configured implicitly via tensorstore's chunk_layout: the
+        write_chunk drives the on-disk shard size, the read_chunk stays at
+        layer.cube_shape so existing readers keep working. If `shard_size` is
+        None, an optimal value is derived from the dataset boundary and cube
+        shape via _calculate_optimal_shard_size; otherwise the provided value
+        is validated and used as-is.
+        """
+        if len(layer.file_extensions) != 1:
+            return
+
+        ext = layer.file_extensions[0]
+        if ext == '.seg.sz.zip':
+            assert not as_rgb, "Cannot create neuroglancer layer for segmentation data with as_rgb=True"
+            dtype = "uint64"
+            encoding = "compressed_segmentation"
+            encoding_level_key = None
+            encoding_level_value = None
+        elif ext == '.raw':
+            dtype = "uint8"
+            encoding = "raw"
+            encoding_level_key = None
+            encoding_level_value = None
+        elif ext == '.png':
+            dtype = "uint8"
             encoding = "png"
-            encoding_version = "png_level"
-            encoding_level = 6
-            if layer.file_extensions[0] == '.raw':
-                encoding = "raw"
-            elif layer.file_extensions[0] == '.jpg' or layer.file_extensions[0] == '.jpeg':
-                encoding = "jpeg"
-                encoding_version = "jpeg_quality"
-                encoding_level = 75
-            shardBits, miniShardBits, preShiftBits = KnossosDataset.calculateShardLayout(layer)
-            use_sharding = shardBits > 0
-            number_of_channels = 1
-            if as_rgb:
-                number_of_channels = 3
-            for mag in range(len(layer.scales)):
-                factors = layer.scales[mag] / layer.scales[0]
-                layer._tensorstore_datasets[mag+1] = ts.open({
-                    "driver": "neuroglancer_precomputed",
-                    "kvstore": {
-                        "driver": "file",
-                        "path": layer._knossos_path,
-                    },
-                    "multiscale_metadata" : {
-                        "data_type" : "uint8",      
-                        "num_channels" : number_of_channels,
-                        "type" : "image",
-                    },
-                    "scale_metadata" : {
-                        "key" : "mag"+str(mag+1),
-                        "resolution" : layer.scales[mag],
-                        "encoding" : encoding,
-                        encoding_version : encoding_level,
-                        "chunk_size" : layer.cube_shape,
-                        "size" : np.ceil(layer.boundary / factors).astype(int),
-                        # Only add the sharding block if use_sharding is true
-                        **({
-                            "sharding" : {
-                                "@type" : "neuroglancer_uint64_sharded_v1",
-                                "preshift_bits" : preShiftBits,
-                                "minishard_bits" : miniShardBits,
-                                "shard_bits" : shardBits,
-                                "minishard_index_encoding" : "raw",
-                                "hash" : "identity",
-                            }
-                        } if use_sharding else {}),
-                    },
-                },
-                create=True,
-                open=True,
-                ).result()
+            encoding_level_key = "png_level"
+            encoding_level_value = 6
+        elif ext in ('.jpg', '.jpeg'):
+            dtype = "uint8"
+            encoding = "jpeg"
+            encoding_level_key = "jpeg_quality"
+            encoding_level_value = 75
+        else:
+            return  # Unsupported extension; leave layer untouched.
 
-        elif len(layer.file_extensions) == 1 and layer.file_extensions[0] == '.seg.sz.zip':
-            layer.server_format = "precomputed"
-            layer.url = f'file://{layer._knossos_path}/info'
-            layer._tensorstore_datasets = {}
-            for mag in range(len(layer.scales)):
-                factors = layer.scales[mag] / layer.scales[0]
-                layer._tensorstore_datasets[mag+1] = ts.open({
-                    "driver": "neuroglancer_precomputed",
-                    "kvstore": {
-                        "driver": "file",
-                        "path": layer._knossos_path,
+        if shard_size is None:
+            shard_size = KnossosDataset._calculate_optimal_shard_size(layer)
+        else:
+            if int(shard_size[0]) != int(shard_size[1]):
+                raise ValueError(
+                    f"shard_size must be equal in x and y (got {tuple(shard_size)})"
+                )
+            if int(shard_size[2]) > int(shard_size[0]):
+                raise ValueError(
+                    f"shard_size z must be <= x/y (got {tuple(shard_size)})"
+                )
+            shard_size = np.asarray(shard_size, dtype=int)
+
+        layer.server_format = "precomputed"
+        layer.url = f'file://{layer._knossos_path}/info'
+        layer._tensorstore_datasets = {}
+
+        num_channels = 3 if as_rgb else 1
+        cube_shape = [int(c) for c in layer.cube_shape]
+        shard_size_int = [int(s) for s in shard_size]
+        base_scale = np.asarray(layer.scales[0], dtype=float)
+
+        for mag_idx in range(len(layer.scales)):
+            mag = mag_idx + 1
+            curr_scale = np.asarray(layer.scales[mag_idx], dtype=float)
+            # factors is base/curr (<= 1 for higher mags); dataset_size shrinks accordingly.
+            factors = base_scale / curr_scale
+            dataset_size = [
+                int(np.ceil(float(layer.boundary[i]) * float(factors[i])))
+                for i in range(3)
+            ]
+            resolution = [float(s) for s in curr_scale]
+
+            spec_seed = {
+                "driver": "neuroglancer_precomputed",
+                "schema": {
+                    "rank": 4,
+                    "dtype": dtype,
+                    "chunk_layout": {
+                        "write_chunk": {
+                            "shape_soft_constraint": [
+                                shard_size_int[0],
+                                shard_size_int[1],
+                                shard_size_int[2],
+                                num_channels,
+                            ]
+                        },
+                        "read_chunk": {
+                            "shape": [
+                                cube_shape[0],
+                                cube_shape[1],
+                                cube_shape[2],
+                                num_channels,
+                            ]
+                        },
                     },
-                    "multiscale_metadata" : {
-                        "data_type" : "uint64",
-                        "num_channels" : 1,
-                        "type" : "segmentation",
+                    "codec": {
+                        "driver": "neuroglancer_precomputed",
+                        "encoding": encoding,
+                        "shard_data_encoding": "raw",
                     },
-                    "scale_metadata" : {
-                        "key" : "mag"+str(mag+1),
-                        "resolution" : layer.scales[mag],
-                        "encoding" : "compressed_segmentation",
-                        "chunk_size" : layer.cube_shape,
-                        "size" : np.ceil(layer.boundary / factors).astype(int),
+                    "domain": {
+                        "shape": [
+                            dataset_size[0],
+                            dataset_size[1],
+                            dataset_size[2],
+                            num_channels,
+                        ],
                     },
+                    "dimension_units": [
+                        [resolution[0], "nm"],
+                        [resolution[1], "nm"],
+                        [resolution[2], "nm"],
+                        None,
+                    ],
                 },
-                create=True,
-                open=True,
-                ).result()
+                "kvstore": {"driver": "memory"},
+                "create": True,
+            }
+
+            # Open on a memory kvstore first so tensorstore computes the sharding
+            # parameters from the chunk layout; then patch the resulting JSON spec
+            # and open the real on-disk dataset.
+            tmp_dataset = ts.open(spec_seed).result()
+            json_spec = tmp_dataset.spec().to_json()
+            sharding = json_spec.get("scale_metadata", {}).get("sharding")
+            if sharding is not None:
+                sharding["minishard_index_encoding"] = "raw"
+            json_spec["scale_metadata"]["key"] = f"mag{mag}"
+            if encoding_level_key is not None:
+                json_spec["scale_metadata"][encoding_level_key] = encoding_level_value
+            json_spec["kvstore"] = {
+                "driver": "file",
+                "path": str(layer._knossos_path),
+            }
+            json_spec.pop("scale_index", None)
+
+            layer._tensorstore_datasets[mag] = ts.open(
+                ts.Spec(json_spec), open=True, create=True, delete_existing=False
+            ).result()
 
     @staticmethod
-    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed", as_rgb: bool = False):
+    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None):
         assert server_format == "precomputed" or not as_rgb, "as_rgb=True is only supported for server_format=precomputed"
+        assert server_format == "precomputed" or shard_size is None, "shard_size is only supported for server_format=precomputed"
         conf_path = Path(path) / channel / f'{experiment_name}.k.toml'
         if parent_dataset is None and conf_path.exists():
             raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
@@ -1365,7 +1391,7 @@ class KnossosDataset(object):
         layers = [layer]
 
         if server_format == "precomputed":
-            KnossosDataset.create_neuroglancer_layer(layer, as_rgb)
+            KnossosDataset.create_neuroglancer_layer(layer, as_rgb, shard_size=shard_size)
             if as_rgb:
                 highest_rgb_channel = 0
                 if parent_dataset:
@@ -1491,6 +1517,35 @@ class KnossosDataset(object):
         conf_path = f'{write_path}/{experiment_name}.k.toml'
         if not parent_dataset and Path(conf_path).exists():
             raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
+
+        if as_rgb:
+            if server_format != "precomputed":
+                raise ValueError("as_rgb=True is only supported for server_format='precomputed'.")
+            if channels not in (None, '', ('',), ['']):
+                raise ValueError("as_rgb=True stores one RGB layer; do not pass separate channels.")
+            if data.ndim != len(cube_shape) + 1 or data.shape[-1] != 3:
+                raise ValueError(f'Cube shape: {cube_shape}, as_rgb=True. Expected data.shape == {(*cube_shape, 3)}, found actual shape {data.shape}.')
+
+            boundary = data.shape[:-1][::-1]
+            number_existing_layers = len(parent_dataset.layers) if parent_dataset else 0
+            parent = KnossosDataset.initialize(
+                write_path,
+                experiment_name,
+                boundary,
+                cube_shape,
+                scale,
+                ds_factor,
+                file_extensions,
+                channel='',
+                parent_dataset=parent_dataset,
+                server_format=server_format,
+                as_rgb=True,
+            )
+            layers = parent.layers[number_existing_layers:]
+            for idx, layer in enumerate(layers):
+                Path(layer._conf_path).parent.mkdir(exist_ok=True)
+                layer.save_raw(data[..., idx], offset=(0, 0, 0), data_mag=1)
+            return parent
 
         if len(channels) > 1 and (data.ndim < len(cube_shape) + 1 or data.shape[-1] != len(channels)):
             raise ValueError(f'Cube shape: {cube_shape}, channels: {channels}.  Expected data.shape == {(*cube_shape, len(channels))}, found actual shape {data.shape}.')
