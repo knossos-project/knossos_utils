@@ -7,42 +7,161 @@ from knossos_utils import KnossosDataset
 from knossos_utils.knossosdataset import _precomputed_kvstore_config
 
 
-@pytest.mark.parametrize("boundary", [np.array([7,9,10]), (7,9,10), [7, 9, 10]])
+@pytest.mark.parametrize("boundary", [np.array([7, 9, 10]), (7, 9, 10), [7, 9, 10]])
 def test_KnossosDataset_initialize_without_conf__boundary(tmp_path, boundary):
     kd = KnossosDataset()
-    kd.initialize_without_conf(str(tmp_path), boundary=boundary, scale=(1, 1, 1), experiment_name='test', mags=[1], verbose=True)
+    kd.initialize_without_conf(
+        str(tmp_path),
+        boundary=boundary,
+        scale=(1, 1, 1),
+        experiment_name="test",
+        mags=[1],
+        verbose=True,
+    )
 
 
 def test_KnossosDataset_initialize_without_conf__mags(tmp_path):
     kd = KnossosDataset()
     with pytest.raises(AssertionError):
-        kd.initialize_without_conf(str(tmp_path), boundary=(7, 9, 10), scale=(1, 1, 1), experiment_name='test', mags=None, verbose=True)
+        kd.initialize_without_conf(
+            str(tmp_path),
+            boundary=(7, 9, 10),
+            scale=(1, 1, 1),
+            experiment_name="test",
+            mags=None,
+            verbose=True,
+        )
 
 
 def test_KnossosDataset_initalize_without_conf__mags_1_make_mag_folder_False(tmp_path):
     kd = KnossosDataset()
     with pytest.raises(AssertionError):
-        kd.initialize_without_conf(str(tmp_path), boundary=(7, 9, 19), scale=(1, 1, 1), experiment_name='test', mags=[1], make_mag_folders=False, verbose=True)
+        kd.initialize_without_conf(
+            str(tmp_path),
+            boundary=(7, 9, 19),
+            scale=(1, 1, 1),
+            experiment_name="test",
+            mags=[1],
+            make_mag_folders=False,
+            verbose=True,
+        )
 
 
 def test_KnossosDataset_initialize_without_conf__conf_exist(tmp_path):
     from pathlib import Path
+
     kd = KnossosDataset()
-    kd.initialize_without_conf(str(tmp_path), boundary=(7, 9, 10), scale=(1, 1, 1), experiment_name='test', mags=[1], verbose=True)
-    assert(Path(kd.conf_path).is_file())
+    kd.initialize_without_conf(
+        str(tmp_path),
+        boundary=(7, 9, 10),
+        scale=(1, 1, 1),
+        experiment_name="test",
+        mags=[1],
+        verbose=True,
+    )
+    assert Path(kd.conf_path).is_file()
 
 
-@pytest.mark.parametrize('existing_mag,expected_mag', [
-    ('test_mag16', 'test_mag1'),
-    ('test_mag1', 'test_mag1'),
-    ('mag16', 'mag1'),
-    ('mag1', 'mag1')
-])
-def test_Knossosdataset__initalize_without_conf__robust_magfolder_detection(tmp_path, existing_mag, expected_mag):
+@pytest.mark.parametrize(
+    "existing_mag,expected_mag",
+    [
+        ("test_mag16", "test_mag1"),
+        ("test_mag1", "test_mag1"),
+        ("mag16", "mag1"),
+        ("mag1", "mag1"),
+    ],
+)
+def test_Knossosdataset__initalize_without_conf__robust_magfolder_detection(
+    tmp_path, existing_mag, expected_mag
+):
     (tmp_path / existing_mag).mkdir()
     kd = KnossosDataset()
-    kd.initialize_without_conf(str(tmp_path), boundary=(7, 9, 10), scale=(1, 1, 1), experiment_name='test', mags=[1], verbose=True)
-    assert((tmp_path / expected_mag).is_dir())
+    kd.initialize_without_conf(
+        str(tmp_path),
+        boundary=(7, 9, 10),
+        scale=(1, 1, 1),
+        experiment_name="test",
+        mags=[1],
+        verbose=True,
+    )
+    assert (tmp_path / expected_mag).is_dir()
+
+
+def test_KnossosDataset_from_toml_string_without_conf_path():
+    kd = KnossosDataset.from_toml_string("""[[Layer]]
+Name = "TestDataset"
+FileExtension = [".jpg", ".png"]
+Extent_px = [128,128, 128]
+VoxelSize_nm = [[8,8,8]]
+CubeShape_px = [128, 128, 128]
+Description = "test"
+
+""")
+
+    assert isinstance(kd, KnossosDataset)
+    assert kd.experiment_name == "TestDataset"
+    assert len(kd.layers) == 1
+    assert kd.layers[0].experiment_name == kd.experiment_name
+    assert kd.conf_path is None
+    assert kd.url is None
+    assert np.array_equal(kd.boundary, [128, 128, 128])
+    assert np.array_equal(kd.cube_shape, [128, 128, 128])
+    assert np.array_equal(kd.scale, [8, 8, 8])
+    assert len(kd.scales) == 1
+
+
+def test_KnossosDataset_from_toml_string_without_conf_path_precomputed():
+    kd = KnossosDataset.from_toml_string("""[[Layer]]
+Name = "TestDataset"
+ServerFormat = "precomputed"
+FileExtension = [".jpg", ".png"]
+Extent_px = [128,128, 128]
+VoxelSize_nm = [[8,8,8]]
+CubeShape_px = [128, 128, 128]
+Description = "test"
+
+""")
+
+    assert isinstance(kd, KnossosDataset)
+    assert kd.experiment_name == "TestDataset"
+    assert kd.server_format == "precomputed"
+    assert len(kd.layers) == 1
+    assert kd.layers[0].experiment_name == kd.experiment_name
+    assert kd.conf_path is None
+    assert kd.url is None
+    assert len(kd._tensorstore_datasets) > 0
+    assert np.array_equal(kd.boundary, [128, 128, 128])
+    assert np.array_equal(kd.cube_shape, [128, 128, 128])
+    assert np.array_equal(kd.scale, [8, 8, 8])
+    assert np.array_equal(kd.scales[0], [8, 8, 8])
+
+
+def test_KnossosDataset_from_toml_string_precomputed_without_conf_path_roundtrip():
+    kd = KnossosDataset.from_toml_string("""[[Layer]]
+Name = "TestDataset"
+ServerFormat = "precomputed"
+FileExtension = [".raw"]
+Extent_px = [4, 3, 2]
+VoxelSize_nm = [[8, 8, 8]]
+CubeShape_px = [2, 2, 2]
+Description = "test"
+
+""")
+    data = np.arange(24, dtype=np.uint8).reshape((2, 3, 4))
+
+    kd.save_raw(
+        data=data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1],
+        upsample=False,
+        downsample=False,
+    )
+    loaded = kd.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+
+    assert kd.url is None
+    assert tuple(kd._tensorstore_datasets[1].domain.shape) == (4, 3, 2, 1)
+    assert np.array_equal(loaded, data)
 
 
 def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
@@ -53,21 +172,21 @@ def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
 
     kd = KnossosDataset.initialize_from_array(
         data=data,
-        experiment_name='rgb',
+        experiment_name="rgb",
         cube_shape=(2, 2, 2),
         scale=(1, 1, 1),
         ds_factor=(2, 2, 1),
-        file_extensions=['.raw'],
+        file_extensions=[".raw"],
         write_path=str(tmp_path),
-        server_format='precomputed',
+        server_format="precomputed",
         as_rgb=True,
     )
 
     assert len(kd.layers) == 3
-    assert [layer._rgb_channel for layer in kd.layers] == ['r_1', 'g_1', 'b_1']
+    assert [layer._rgb_channel for layer in kd.layers] == ["r_1", "g_1", "b_1"]
     assert kd.layers[0]._tensorstore_datasets is kd.layers[1]._tensorstore_datasets
     assert kd.layers[0]._tensorstore_datasets is kd.layers[2]._tensorstore_datasets
-    assert json.loads((tmp_path / 'info').read_text())['num_channels'] == 3
+    assert json.loads((tmp_path / "info").read_text())["num_channels"] == 3
 
     reloaded = KnossosDataset(kd.conf_path)
     assert len(reloaded.layers) == 3
@@ -77,10 +196,10 @@ def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
 
 
 def _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size):
-    info = json.loads((tmp_path / 'info').read_text())
-    assert info['data_type'] == 'uint64'
-    assert info['scales'][0]['encoding'] == 'compressed_segmentation'
-    assert info['scales'][0]['size'] == expected_size
+    info = json.loads((tmp_path / "info").read_text())
+    assert info["data_type"] == "uint64"
+    assert info["scales"][0]["encoding"] == "compressed_segmentation"
+    assert info["scales"][0]["size"] == expected_size
     assert np.array_equal(kd.boundary, expected_size)
     assert tuple(kd._tensorstore_datasets[1].domain.shape) == (*expected_size, 1)
 
@@ -115,82 +234,106 @@ def _segmentation_2d_test_data():
     return data
 
 
-def test_KnossosDataset_initialize_from_array__segmentation_precomputed_2d_roundtrip(tmp_path):
+def test_KnossosDataset_initialize_from_array__segmentation_precomputed_2d_roundtrip(
+    tmp_path,
+):
     data = _segmentation_2d_test_data()
 
     kd = KnossosDataset.initialize_from_array(
         data=data,
-        experiment_name='seg2d',
+        experiment_name="seg2d",
         cube_shape=(2, 2, 1),
         scale=(1, 1, 1),
         ds_factor=(2, 2, 1),
-        file_extensions=['.seg.sz.zip'],
+        file_extensions=[".seg.sz.zip"],
         write_path=str(tmp_path),
-        server_format='precomputed',
+        server_format="precomputed",
     )
 
-    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size=[4, 3, 1])
+    _assert_segmentation_precomputed_roundtrip(
+        kd, data, tmp_path, expected_size=[4, 3, 1]
+    )
 
 
-def test_KnossosDataset_initialize_from_array__segmentation_precomputed_3d_roundtrip(tmp_path):
+def test_KnossosDataset_initialize_from_array__segmentation_precomputed_3d_roundtrip(
+    tmp_path,
+):
     data = _segmentation_test_data()
 
     kd = KnossosDataset.initialize_from_array(
         data=data,
-        experiment_name='seg',
+        experiment_name="seg",
         cube_shape=(2, 2, 2),
         scale=(1, 1, 1),
         ds_factor=(2, 2, 1),
-        file_extensions=['.seg.sz.zip'],
+        file_extensions=[".seg.sz.zip"],
         write_path=str(tmp_path),
-        server_format='precomputed',
+        server_format="precomputed",
     )
 
-    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size=[4, 3, 2])
+    _assert_segmentation_precomputed_roundtrip(
+        kd, data, tmp_path, expected_size=[4, 3, 2]
+    )
 
 
-def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtrip_with_shard_size(tmp_path):
+def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtrip_with_shard_size(
+    tmp_path,
+):
     data = _segmentation_test_data()
 
     kd = KnossosDataset.initialize_from_array(
         data=data,
-        experiment_name='seg',
+        experiment_name="seg",
         cube_shape=(2, 2, 2),
         scale=(1, 1, 1),
         ds_factor=(2, 2, 1),
-        file_extensions=['.seg.sz.zip'],
+        file_extensions=[".seg.sz.zip"],
         write_path=str(tmp_path),
-        server_format='precomputed',
+        server_format="precomputed",
         shard_size=(2, 2, 2),
     )
 
-    info = json.loads((tmp_path / 'info').read_text())
-    assert 'sharding' in info['scales'][0]
-    _assert_segmentation_precomputed_roundtrip(kd, data, tmp_path, expected_size=[4, 3, 2])
+    info = json.loads((tmp_path / "info").read_text())
+    assert "sharding" in info["scales"][0]
+    _assert_segmentation_precomputed_roundtrip(
+        kd, data, tmp_path, expected_size=[4, 3, 2]
+    )
 
 
 @pytest.mark.parametrize(
-    'url,cdn_token,expected',
+    "url,cdn_token,expected",
     [
         (
-            'https://example.org/dataset/info',
+            "https://example.org/dataset/info",
             None,
-            {'driver': 'http', 'base_url': 'https://example.org', 'path': '/dataset'},
+            {"driver": "http", "base_url": "https://example.org", "path": "/dataset"},
         ),
         (
-            'https://user:pass@example.org:8443/dataset/info',
+            "https://user:pass@example.org:8443/dataset/info",
             None,
-            {'driver': 'http', 'base_url': 'https://user:pass@example.org:8443', 'path': '/dataset'},
+            {
+                "driver": "http",
+                "base_url": "https://user:pass@example.org:8443",
+                "path": "/dataset",
+            },
         ),
         (
-            'https://example.org/dataset/info',
-            {'token': 'abc', 'expires': '123', 'token_path': '/dataset'},
-            {'driver': 'http', 'base_url': 'https://example.org?token=abc&expires=123&token_path=/dataset', 'path': '/dataset'},
+            "https://example.org/dataset/info",
+            {"token": "abc", "expires": "123", "token_path": "/dataset"},
+            {
+                "driver": "http",
+                "base_url": "https://example.org?token=abc&expires=123&token_path=/dataset",
+                "path": "/dataset",
+            },
         ),
         (
-            'https://example.org/dataset/infobox/info',
+            "https://example.org/dataset/infobox/info",
             None,
-            {'driver': 'http', 'base_url': 'https://example.org', 'path': '/dataset/infobox'},
+            {
+                "driver": "http",
+                "base_url": "https://example.org",
+                "path": "/dataset/infobox",
+            },
         ),
     ],
 )

@@ -386,7 +386,9 @@ class KnossosDataset(object):
     def available_mags(self):
         if self._mags is None:
             self._mags = []
-            if self.in_http_mode:
+            if self.server_format == "precomputed" and self._tensorstore_datasets is not None:
+                self._mags = list(self._tensorstore_datasets.keys())
+            elif self.in_http_mode:
                 for mag_test_nb in range(10):
                     mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
                     url = copy.deepcopy(self.url)
@@ -424,8 +426,6 @@ class KnossosDataset(object):
                     match = regex.search(mag_folder)
                     if match is not None:
                         self._mags.append(int(mag_folder[match.start() + 3:])) # mag number
-            if self.server_format == "precomputed" and (self._mags is None or len(self._mags) == 0):
-                self._mags = list(self._tensorstore_datasets.keys())
         return self._mags
 
     @property
@@ -736,7 +736,7 @@ class KnossosDataset(object):
             layer._experiment_name = layer_conf['Name']
             layer.file_extensions = layer_conf['FileExtension']
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
-            layer.url = f'file://{layer._knossos_path}'
+            layer.url = f'file://{layer._knossos_path}' if layer._knossos_path is not None else None
             if 'URL' in layer_conf:
                 layer.url = layer_conf['URL']
                 if layer.server_format == None and layer.url.endswith("info"):
@@ -769,7 +769,7 @@ class KnossosDataset(object):
                     except Exception as e:
                         print(f'Failed to get CDN token: {e} for {layer.url}')
                         fail_fast_cdn = True
-            else:
+            elif layer._knossos_path is not None:
                 info_file_path = os.path.join(layer._knossos_path, "info")
                 if os.path.exists(info_file_path):
                     layer.server_format = "precomputed"
@@ -780,7 +780,7 @@ class KnossosDataset(object):
             if layer.server_format == "precomputed":
                 import json
                 info_json = None
-                if layer.url.startswith("file://"):
+                if layer.url and layer.url.startswith("file://"):
                     local_path = copy.deepcopy(layer.url)
                     local_path = local_path.replace("file://", "")
                     try:
@@ -788,7 +788,7 @@ class KnossosDataset(object):
                             info_json = json.load(f)
                     except Exception as e:
                         print(f"Failed to load info json from local file '{local_path}': {e}")
-                else:
+                elif layer.url:
                     try:
                         headers = {}
                         auth=None
@@ -901,6 +901,7 @@ class KnossosDataset(object):
         self.layers = layers
 
         # print(self.__dict__)
+        return self
 
     def save_toml(self, path_to_toml: Union[str, Path]):
         with open(path_to_toml, 'w') as toml_file:
@@ -1229,10 +1230,14 @@ class KnossosDataset(object):
         shape via _calculate_optimal_shard_size; otherwise the provided value
         is validated and used as-is.
         """
-        if len(layer.file_extensions) != 1:
+        supported_extensions = ('.seg.sz.zip', '.raw', '.png', '.jpg', '.jpeg')
+        ext = next((ext for ext in layer.file_extensions if ext in supported_extensions), None)
+        if ext is None:
             return
+        
+        if len(layer.file_extensions) != 1:
+            print(f"Warning: {layer.experiment_name} has multiple file extensions: {layer.file_extensions}. Will only create a layer for the first extension: {ext}.")
 
-        ext = layer.file_extensions[0]
         if ext == '.seg.sz.zip':
             assert not as_rgb, "Cannot create neuroglancer layer for segmentation data with as_rgb=True"
             dtype = "uint64"
@@ -1271,7 +1276,7 @@ class KnossosDataset(object):
             shard_size = np.asarray(shard_size, dtype=int)
 
         layer.server_format = "precomputed"
-        layer.url = f'file://{layer._knossos_path}/info'
+        layer.url = f'file://{layer._knossos_path}/info' if layer._knossos_path is not None else None
         layer._tensorstore_datasets = {}
 
         num_channels = 3 if as_rgb else 1
@@ -1348,10 +1353,11 @@ class KnossosDataset(object):
             json_spec["scale_metadata"]["key"] = f"mag{mag}"
             if encoding_level_key is not None:
                 json_spec["scale_metadata"][encoding_level_key] = encoding_level_value
-            json_spec["kvstore"] = {
-                "driver": "file",
-                "path": str(layer._knossos_path),
-            }
+            if layer._knossos_path is not None:
+                json_spec["kvstore"] = {
+                    "driver": "file",
+                    "path": str(layer._knossos_path),
+                }
             json_spec.pop("scale_index", None)
 
             layer._tensorstore_datasets[mag] = ts.open(
@@ -2879,8 +2885,14 @@ class KnossosDataset(object):
 
         if self.reentrant:
             # obtain clock difference between write destination and process system for correct block file age determination
-            with tempfile.NamedTemporaryFile(dir=kzip_path if kzip_path else os.path.dirname(self._conf_path)) as time_file:
-                filesystem_process_time_diff = time.time() - os.stat(time_file.name).st_mtime
+            time_file_dir = kzip_path if kzip_path else None
+            if time_file_dir is None and self._conf_path is not None:
+                time_file_dir = os.path.dirname(self._conf_path)
+            if time_file_dir is not None:
+                with tempfile.NamedTemporaryFile(dir=time_file_dir) as time_file:
+                    filesystem_process_time_diff = time.time() - os.stat(time_file.name).st_mtime
+            else:
+                filesystem_process_time_diff = 0
 
         for mag in mags:
             ratio = self.scale_ratio(mag, data_mag)[::-1]
