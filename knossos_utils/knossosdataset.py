@@ -2822,10 +2822,11 @@ class KnossosDataset(object):
                                                              start[0]: start[0] + end[0]]
 
 
-            if not self.write_empty_cubes and not np.any(cube):
+            nothing_to_write = not self.write_empty_cubes and not np.any(cube)
+            if nothing_to_write:
                self._print(path, 'no data to write, cube will be removed if present')
 
-            if not kzip_path:
+            if not kzip_path and not nothing_to_write:
                 while True:
                     try:
                         os.makedirs(folder_path, exist_ok=True)
