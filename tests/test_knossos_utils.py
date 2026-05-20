@@ -1,4 +1,5 @@
 import json
+import os
 
 import numpy as np
 import pytest
@@ -108,6 +109,24 @@ Description = "test"
     assert np.array_equal(kd.cube_shape, [128, 128, 128])
     assert np.array_equal(kd.scale, [8, 8, 8])
     assert len(kd.scales) == 1
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter behavior")
+@pytest.mark.parametrize("url", ["file://C:/data/dataset", "file:///C:/data/dataset", "file:///mnt/storage/dataset"])
+def test_KnossosDataset_knossos_path_preserves_windows_drive_letter(url):
+    kd = KnossosDataset()
+    kd.url = url
+
+    assert kd.knossos_path == os.path.abspath("C:/data/dataset")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Unix path behavior")
+@pytest.mark.parametrize("url", ["file:///mnt/storage/dataset"])
+def test_KnossosDataset_knossos_path_preserves_unix_path(url):
+    kd = KnossosDataset()
+    kd.url = url
+
+    assert kd.knossos_path == os.path.abspath("/mnt/storage/dataset")
 
 
 def test_KnossosDataset_from_toml_string_without_conf_path_precomputed():

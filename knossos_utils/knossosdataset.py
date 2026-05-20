@@ -450,9 +450,16 @@ class KnossosDataset(object):
             return self.url
         elif self.url or self._knossos_path:
             if self.url:
-                # cut off the "file://" to use abspath to support relative paths with urlparse
-                url = os.path.abspath(self.url[7:]) if self.url.startswith("file://") else self.url
-            return urllib.parse.urlparse(url).path if self.url else self._knossos_path
+                if self.url.startswith("file://"):
+                    # Do not pass Windows drive paths through urlparse; it treats "C:" as a URL scheme.
+                    url_path = self.url[7:]
+                    if re.match(r"^/[a-zA-Z]:[\\/]", url_path):
+                        url_path = url_path[1:]
+                    path = os.path.abspath(url_path)
+                else:
+                    path = urllib.parse.urlparse(self.url).path
+                return path
+            return self._knossos_path
         else:
             raise Exception("No knossos path available")
 
