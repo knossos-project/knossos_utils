@@ -667,28 +667,47 @@ class KnossosDataset(object):
         self._initialize_from_dict(conf, path_to_toml)
 
     def initialize_from_kzip(self, path_to_kzip: Union[str, Path]):
+        path_to_kzip = str(path_to_kzip)
         dataset_path = None
-        # Try to read the dataset path from annotation.xml
-        try:
-            with zipfile.ZipFile(path_to_kzip, "r") as zf:
+        conf = None
+
+        with zipfile.ZipFile(path_to_kzip, "r") as zf:
+            # Try to read the dataset path from annotation.xml
+            try:
                 xml_str = zf.read("annotation.xml").decode()
-            annotation_xml = ET.fromstring(xml_str)
-            dataset = annotation_xml.find("parameters/dataset")
-            dataset_path = dataset.attrib["path"]
-        except (KeyError, AttributeError):
-            # KeyError: annotation.xml does not exist, AttributeError: xml elem does not exist
-            # Check if there is an "embedded" folder with a dataset config file
-            with zipfile.ZipFile(path_to_kzip, "r") as zf:
+                annotation_xml = ET.fromstring(xml_str)
+                dataset = annotation_xml.find("parameters/dataset")
+                if dataset is not None:
+                    dataset_path = dataset.attrib.get("path")
+            except KeyError:
+                pass
+
+            if dataset_path is not None:
+                embedded_dataset_path = None
+                if dataset_path.startswith(f"{path_to_kzip}/"):
+                    embedded_dataset_path = dataset_path[len(path_to_kzip) + 1:]
+                elif dataset_path.startswith("embedded/"):
+                    embedded_dataset_path = dataset_path
+
+                if embedded_dataset_path in zf.namelist():
+                    conf = zf.read(embedded_dataset_path).decode()
+                    dataset_path = f"{path_to_kzip}/{embedded_dataset_path}"
+                else:
+                    with open(dataset_path, "r") as conf_file:
+                        conf = conf_file.read()
+            else:
+                # Check if there is an "embedded" folder with a dataset config file
                 for file_info in zf.infolist():
                     if (file_info.filename.startswith("embedded/") and
                         "/" not in file_info.filename[len("embedded/"):] and
                         (file_info.filename.endswith(".conf") or
                         file_info.filename.endswith(".toml"))):
                             dataset_name = file_info.filename
-                            dataset_path = path_to_kzip + "/" + dataset_name
+                            dataset_path = f"{path_to_kzip}/{dataset_name}"
                             conf = zf.read(dataset_name).decode()
                             break
         assert dataset_path is not None, "No dataset path has been found in the provided kzip."
+        assert conf is not None, f"Could not read dataset configuration from {dataset_path}."
 
         if dataset_path.endswith(".k.toml"):
             toml_conf = tomli.loads(conf)

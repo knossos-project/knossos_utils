@@ -1,11 +1,24 @@
 import json
 import os
+import zipfile
 
 import numpy as np
 import pytest
 
 from knossos_utils import KnossosDataset
 from knossos_utils.knossosdataset import _precomputed_kvstore_config
+
+
+def _minimal_toml_config(experiment_name="TestDataset"):
+    return f"""[[Layer]]
+Name = "{experiment_name}"
+FileExtension = [".raw"]
+Extent_px = [4, 3, 2]
+VoxelSize_nm = [[8, 8, 8]]
+CubeShape_px = [2, 2, 2]
+Description = "test"
+
+"""
 
 
 @pytest.mark.parametrize("boundary", [np.array([7, 9, 10]), (7, 9, 10), [7, 9, 10]])
@@ -109,6 +122,43 @@ Description = "test"
     assert np.array_equal(kd.cube_shape, [128, 128, 128])
     assert np.array_equal(kd.scale, [8, 8, 8])
     assert len(kd.scales) == 1
+
+
+def test_KnossosDataset_initialize_from_kzip_reads_external_toml_from_annotation(tmp_path):
+    toml_path = tmp_path / "dataset.k.toml"
+    toml_path.write_text(_minimal_toml_config("ExternalDataset"))
+    kzip_path = tmp_path / "annotation.k.zip"
+    annotation_xml = f"""<things>
+    <parameters>
+        <dataset path="{toml_path}" />
+    </parameters>
+</things>"""
+
+    with zipfile.ZipFile(kzip_path, "w") as zf:
+        zf.writestr("annotation.xml", annotation_xml)
+
+    kd = KnossosDataset(kzip_path)
+
+    assert kd.experiment_name == "ExternalDataset"
+    assert kd.conf_path == str(toml_path)
+    assert np.array_equal(kd.boundary, [4, 3, 2])
+    assert np.array_equal(kd.cube_shape, [2, 2, 2])
+    assert np.array_equal(kd.scale, [8, 8, 8])
+
+
+def test_KnossosDataset_initialize_from_kzip_reads_embedded_toml(tmp_path):
+    kzip_path = tmp_path / "embedded.k.zip"
+
+    with zipfile.ZipFile(kzip_path, "w") as zf:
+        zf.writestr("embedded/dataset.k.toml", _minimal_toml_config("EmbeddedDataset"))
+
+    kd = KnossosDataset(kzip_path)
+
+    assert kd.experiment_name == "EmbeddedDataset"
+    assert kd.conf_path == f"{kzip_path}/embedded/dataset.k.toml"
+    assert np.array_equal(kd.boundary, [4, 3, 2])
+    assert np.array_equal(kd.cube_shape, [2, 2, 2])
+    assert np.array_equal(kd.scale, [8, 8, 8])
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter behavior")
