@@ -161,6 +161,66 @@ def test_KnossosDataset_initialize_from_kzip_reads_embedded_toml(tmp_path):
     assert np.array_equal(kd.scale, [8, 8, 8])
 
 
+def test_KnossosDataset_save_raw_rejects_uint16_for_classic_knossos_cubes(tmp_path):
+    kd = KnossosDataset.initialize(
+        tmp_path,
+        experiment_name="classic",
+        boundary=(4, 3, 2),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        file_extensions=[".raw"],
+        server_format="knossos",
+    )
+    data = np.zeros((2, 3, 4), dtype=np.uint16)
+
+    with pytest.raises(ValueError, match="uint16 raw data is only supported for precomputed"):
+        kd.save_raw(
+            data=data,
+            data_mag=1,
+            offset=(0, 0, 0),
+            mags=[1],
+            upsample=False,
+            downsample=False,
+            datatype=np.uint16,
+        )
+
+
+def test_KnossosDataset_save_raw_accepts_uint16_for_precomputed_tensorstore():
+    class FakeTensorstoreDataset:
+        def __init__(self):
+            self.written = None
+
+        def __setitem__(self, key, value):
+            self.written = (key, value)
+
+    dataset = FakeTensorstoreDataset()
+    kd = KnossosDataset()
+    kd._initialized = True
+    kd.server_format = "precomputed"
+    kd._tensorstore_datasets = {1: dataset}
+    kd._rgb_channel = None
+    kd.scales = [np.array([1, 1, 1])]
+    kd._ordinal_mags = True
+    kd._boundary = np.array([4, 3, 2])
+    kd._cube_shape = np.array([2, 2, 2])
+    data = np.arange(24, dtype=np.uint16).reshape((2, 3, 4))
+
+    kd.save_raw(
+        data=data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1],
+        upsample=False,
+        downsample=False,
+        datatype=np.uint16,
+    )
+
+    assert dataset.written is not None
+    _, written = dataset.written
+    assert written.dtype == np.uint16
+    assert np.array_equal(written.swapaxes(0, 2), data)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter behavior")
 @pytest.mark.parametrize("url", ["file://C:/data/dataset", "file:///C:/data/dataset", "file:///mnt/storage/dataset"])
 def test_KnossosDataset_knossos_path_preserves_windows_drive_letter(url):
