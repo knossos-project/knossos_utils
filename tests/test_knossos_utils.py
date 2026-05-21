@@ -6,7 +6,10 @@ import numpy as np
 import pytest
 
 from knossos_utils import KnossosDataset
-from knossos_utils.knossosdataset import _precomputed_kvstore_config
+from knossos_utils.knossosdataset import (
+    _file_url_to_path,
+    _precomputed_kvstore_config,
+)
 
 
 def _minimal_toml_config(experiment_name="TestDataset"):
@@ -222,7 +225,23 @@ def test_KnossosDataset_save_raw_accepts_uint16_for_precomputed_tensorstore():
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter behavior")
-@pytest.mark.parametrize("url", ["file://C:/data/dataset", "file:///C:/data/dataset", "file:///mnt/storage/dataset"])
+@pytest.mark.parametrize("url", ["file://C:/data/dataset/info", "file:///C:/data/dataset/info"])
+def test_file_url_to_path_preserves_windows_drive_letter(url):
+    assert _file_url_to_path(url) == os.path.abspath("C:/data/dataset/info")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter behavior")
+@pytest.mark.parametrize("url", ["file://C:/data/dataset/info", "file:///C:/data/dataset/info"])
+def test_precomputed_kvstore_config__file_urls_preserve_windows_drive_letter(url):
+    assert _precomputed_kvstore_config(url) == {
+        "driver": "file",
+        "base_url": None,
+        "path": os.path.abspath("C:/data/dataset"),
+    }
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter behavior")
+@pytest.mark.parametrize("url", ["file://C:/data/dataset", "file:///C:/data/dataset"])
 def test_KnossosDataset_knossos_path_preserves_windows_drive_letter(url):
     kd = KnossosDataset()
     kd.url = url

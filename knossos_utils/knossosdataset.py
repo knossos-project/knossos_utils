@@ -142,6 +142,14 @@ def _as_shapearray(x, dim=3):
     return array
 
 
+def _file_url_to_path(url: str):
+    # Do not pass Windows drive paths through urlparse; it treats "C:" as a URL scheme.
+    url_path = url[7:]
+    if re.match(r"^/[a-zA-Z]:[\\/]", url_path):
+        url_path = url_path[1:]
+    return os.path.abspath(urllib.parse.unquote(url_path))
+
+
 def moduleInit():
     global module_wide
     if module_wide["init"]:
@@ -199,7 +207,7 @@ def _precomputed_kvstore_config(url: str, cdn_token: Optional[dict] = None):
     return {
         "driver": "file",
         "base_url": None,
-        "path": dataset_url.replace("file://", ""),
+        "path": _file_url_to_path(dataset_url) if dataset_url.startswith("file://") else dataset_url,
     }
 
 
@@ -451,11 +459,7 @@ class KnossosDataset(object):
         elif self.url or self._knossos_path:
             if self.url:
                 if self.url.startswith("file://"):
-                    # Do not pass Windows drive paths through urlparse; it treats "C:" as a URL scheme.
-                    url_path = self.url[7:]
-                    if re.match(r"^/[a-zA-Z]:[\\/]", url_path):
-                        url_path = url_path[1:]
-                    path = os.path.abspath(url_path)
+                    path = _file_url_to_path(self.url)
                 else:
                     path = urllib.parse.urlparse(self.url).path
                 return path
@@ -807,8 +811,7 @@ class KnossosDataset(object):
                 import json
                 info_json = None
                 if layer.url and layer.url.startswith("file://"):
-                    local_path = copy.deepcopy(layer.url)
-                    local_path = local_path.replace("file://", "")
+                    local_path = _file_url_to_path(layer.url)
                     try:
                         with open(local_path, 'r') as f:
                             info_json = json.load(f)
