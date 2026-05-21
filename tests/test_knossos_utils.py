@@ -127,6 +127,29 @@ Description = "test"
     assert len(kd.scales) == 1
 
 
+def test_KnossosDataset_from_toml_path_without_server_format_classic_raw_roundtrip(tmp_path):
+    toml_path = tmp_path / "classic.k.toml"
+    toml_path.write_text(_minimal_toml_config("ClassicDataset"))
+    data = np.arange(8, dtype=np.uint8).reshape((2, 2, 2))
+
+    kd = KnossosDataset(str(toml_path))
+    kd.save_raw(
+        data=data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1],
+        upsample=False,
+        downsample=False,
+    )
+    loaded = kd.load_raw(offset=(0, 0, 0), size=(2, 2, 2), mag=1)
+
+    assert kd.server_format is None
+    assert kd._tensorstore_datasets is None
+    assert kd._dtype == np.uint8
+    assert kd.knossos_path == os.path.abspath(str(tmp_path))
+    assert np.array_equal(loaded, data)
+
+
 def test_KnossosDataset_initialize_from_kzip_reads_external_toml_from_annotation(tmp_path):
     toml_path = tmp_path / "dataset.k.toml"
     toml_path.write_text(_minimal_toml_config("ExternalDataset"))
@@ -202,6 +225,7 @@ def test_KnossosDataset_save_raw_accepts_uint16_for_precomputed_tensorstore():
     kd.server_format = "precomputed"
     kd._tensorstore_datasets = {1: dataset}
     kd._rgb_channel = None
+    kd._dtype = np.uint16
     kd.scales = [np.array([1, 1, 1])]
     kd._ordinal_mags = True
     kd._boundary = np.array([4, 3, 2])
@@ -312,6 +336,55 @@ Description = "test"
     assert np.array_equal(loaded, data)
 
 
+def test_KnossosDataset_initialize_from_array__raw_precomputed_uint16_roundtrip(tmp_path):
+    data = np.arange(24, dtype=np.uint16).reshape((2, 3, 4))
+    data[0, 0, 0] = 2**12
+
+    kd = KnossosDataset.initialize_from_array(
+        data=data,
+        experiment_name="raw16",
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        write_path=str(tmp_path),
+        server_format="precomputed",
+        dtype=np.uint16,
+    )
+
+    info = json.loads((tmp_path / "info").read_text())
+    loaded = kd.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+
+    assert info["data_type"] == "uint16"
+    assert loaded.dtype == np.uint16
+    assert np.array_equal(loaded, data)
+
+    reloaded = KnossosDataset(kd.conf_path)
+    assert reloaded._dtype == np.uint16
+    assert reloaded.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1).dtype == np.uint16
+
+
+def test_KnossosDataset_initialize_from_array__raw_precomputed_uint8_to_uint16_roundtrip(tmp_path):
+    data = np.arange(24, dtype=np.uint8).reshape((2, 3, 4))
+
+    kd = KnossosDataset.initialize_from_array(
+        data=data,
+        experiment_name="raw16",
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        write_path=str(tmp_path),
+        server_format="precomputed",
+        dtype=np.uint16,
+    )
+
+    loaded = kd.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+
+    assert loaded.dtype == np.uint16
+    assert np.array_equal(loaded, data.astype(np.uint16))
+
+
 def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
     data = np.zeros((2, 3, 4, 3), dtype=np.uint8)
     data[..., 0] = 11
@@ -380,6 +453,98 @@ def _segmentation_2d_test_data():
     data[0, 1, 2] = 42
     data[0, 2, 3] = 2**33
     return data
+
+
+def test_KnossosDataset_save_seg_load_seg_precomputed_roundtrip(tmp_path):
+    data = np.zeros((2, 2, 2), dtype=np.uint64)
+    data[0, 0, 0] = 1
+    data[0, 1, 1] = 42
+    data[1, 1, 1] = 2**33
+    expected = np.zeros((4, 4, 4), dtype=np.uint64)
+    expected[1:3, 1:3, 1:3] = data
+
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="seg_direct",
+        boundary=(4, 4, 4),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".seg.sz.zip"],
+        server_format="precomputed",
+    )
+
+    kd.save_seg(
+        data=data,
+        data_mag=1,
+        offset=(1, 1, 1),
+        mags=[1],
+        upsample=False,
+        downsample=False,
+    )
+    loaded = kd.load_seg(offset=(0, 0, 0), size=(4, 4, 4), mag=1)
+
+    assert loaded.dtype == np.uint64
+    assert loaded.shape == expected.shape
+    assert np.array_equal(loaded, expected)
+
+
+def test_KnossosDataset_save_seg_load_seg_classic_knossos_roundtrip(tmp_path):
+    data = np.zeros((2, 2, 2), dtype=np.uint64)
+    data[0, 0, 0] = 1
+    data[0, 1, 1] = 42
+    data[1, 1, 1] = 2**33
+    expected = np.zeros((4, 4, 4), dtype=np.uint64)
+    expected[1:3, 1:3, 1:3] = data
+
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="seg_direct_classic",
+        boundary=(4, 4, 4),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".seg.sz.zip"],
+        server_format="knossos",
+    )
+
+    kd.save_seg(
+        data=data,
+        data_mag=1,
+        offset=(1, 1, 1),
+        mags=[1],
+        upsample=False,
+        downsample=False,
+    )
+    loaded = kd.load_seg(offset=(0, 0, 0), size=(4, 4, 4), mag=1)
+
+    assert kd.server_format == "knossos"
+    assert loaded.dtype == np.uint64
+    assert loaded.shape == expected.shape
+    assert np.array_equal(loaded, expected)
+
+
+def test_KnossosDataset_save_seg_rejects_non_uint64_data(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="seg_dtype",
+        boundary=(2, 2, 2),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".seg.sz.zip"],
+        server_format="precomputed",
+    )
+
+    with pytest.raises(ValueError, match="np.uint64"):
+        kd.save_seg(
+            data=np.ones((2, 2, 2), dtype=np.uint8),
+            data_mag=1,
+            offset=(0, 0, 0),
+            mags=[1],
+            upsample=False,
+            downsample=False,
+        )
 
 
 def test_KnossosDataset_initialize_from_array__segmentation_precomputed_2d_roundtrip(

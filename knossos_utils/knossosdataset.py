@@ -142,6 +142,15 @@ def _as_shapearray(x, dim=3):
     return array
 
 
+def _normalize_dtype(dtype):
+    if dtype:
+        _dtype = np.dtype(dtype)
+        if _dtype not in (np.dtype(np.uint8), np.dtype(np.uint16), np.dtype(np.uint64)):
+            raise ValueError(f"dtype must be np.uint8 or np.uint16 or np.uint64, got {_dtype}.")
+        return _dtype
+    return dtype
+
+
 def _file_url_to_path(url: str):
     # Do not pass Windows drive paths through urlparse; it treats "C:" as a URL scheme.
     url_path = url[7:]
@@ -371,6 +380,7 @@ class KnossosDataset(object):
         self.write_empty_cubes = False
         self._tensorstore_datasets = None
         self._rgb_channel = None
+        self._dtype = None
 
         if path is not None:
             if str(path).endswith(".k.zip"):
@@ -748,6 +758,7 @@ class KnossosDataset(object):
         layer.visible = copy.deepcopy(source_layer.visible)
         layer._tensorstore_datasets = source_layer._tensorstore_datasets
         layer._rgb_channel = copy.deepcopy(source_layer._rgb_channel)
+        layer._dtype = copy.deepcopy(source_layer._dtype)
         return layer
 
     def _initialize_from_dict(self, conf: dict, conf_path: Optional[str] = None):
@@ -765,6 +776,7 @@ class KnossosDataset(object):
             layers.append(layer)
             layer._experiment_name = layer_conf['Name']
             layer.file_extensions = layer_conf['FileExtension']
+            layer._dtype = np.uint64 if ".seg.sz.zip" in layer.file_extensions else np.uint8
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer.url = f'file://{layer._knossos_path}' if layer._knossos_path is not None else None
             if 'URL' in layer_conf:
@@ -835,7 +847,7 @@ class KnossosDataset(object):
                     assert info_json["num_channels"] == 1 or info_json["num_channels"] == 3, f"Expected num_channels to be 1 or 3(rgb), got {info_json['num_channels']}"
                     file_extension = ".seg.sz.zip" if info_json["scales"][0]["encoding"] == "compressed_segmentation" else f'.{info_json["scales"][0]["encoding"]}'
                     assert layer.file_extensions == [file_extension], f"Expected file extensions to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']}"
-
+                    layer._dtype = _normalize_dtype(info_json["data_type"])
                     layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
                     layer._boundary = info_json["scales"][0]["size"]
                     layer._cube_shape = info_json["scales"][0]["chunk_sizes"][0]
@@ -1246,11 +1258,12 @@ class KnossosDataset(object):
         layer: KnossosDataset,
         as_rgb: bool = False,
         shard_size: Optional[Sequence[int]] = None,
+        dtype=np.uint8,
     ):
         """Create a neuroglancer_precomputed tensorstore dataset per magnification.
 
-        Supports image layers (.raw / .png / .jpg / .jpeg, uint8) and segmentation
-        layers (.seg.sz.zip, uint64 + compressed_segmentation).
+        Supports image layers (.raw / .png/.jpg/.jpeg, uint8/uint16(only for precomputed)) and
+        segmentation layers (.seg.sz.zip, uint64 + compressed_segmentation).
 
         Sharding is configured implicitly via tensorstore's chunk_layout: the
         write_chunk drives the on-disk shard size, the read_chunk stays at
@@ -1267,6 +1280,9 @@ class KnossosDataset(object):
         if len(layer.file_extensions) != 1:
             print(f"Warning: {layer.experiment_name} has multiple file extensions: {layer.file_extensions}. Will only create a layer for the first extension: {ext}.")
 
+        dtype = _normalize_dtype(dtype)
+        layer._dtype = dtype
+
         if ext == '.seg.sz.zip':
             assert not as_rgb, "Cannot create neuroglancer layer for segmentation data with as_rgb=True"
             dtype = "uint64"
@@ -1274,17 +1290,17 @@ class KnossosDataset(object):
             encoding_level_key = None
             encoding_level_value = None
         elif ext == '.raw':
-            dtype = "uint8"
+            dtype = dtype.name
             encoding = "raw"
             encoding_level_key = None
             encoding_level_value = None
         elif ext == '.png':
-            dtype = "uint8"
+            dtype = dtype.name
             encoding = "png"
             encoding_level_key = "png_level"
             encoding_level_value = 6
         elif ext in ('.jpg', '.jpeg'):
-            dtype = "uint8"
+            dtype = dtype.name
             encoding = "jpeg"
             encoding_level_key = "jpeg_quality"
             encoding_level_value = 75
@@ -1394,7 +1410,7 @@ class KnossosDataset(object):
             ).result()
 
     @staticmethod
-    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None):
+    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None, dtype = None):
         assert server_format == "precomputed" or not as_rgb, "as_rgb=True is only supported for server_format=precomputed"
         assert server_format == "precomputed" or shard_size is None, "shard_size is only supported for server_format=precomputed"
         conf_path = Path(path) / channel / f'{experiment_name}.k.toml'
@@ -1420,13 +1436,14 @@ class KnossosDataset(object):
             if ext.lower() not in {'.raw', '.png', '.jpg', '.jpeg', '.seg.sz.zip'}:
                 raise ValueError(f'Invalid extension {ext}. Supported extensions: .raw, .png, .jpg, .jpeg, .seg.sz.zip')
             layer.file_extensions.append(ext)
+        layer._dtype = _normalize_dtype(dtype) if dtype is not None else (np.uint64 if ".seg.sz.zip" in file_extensions else np.uint8)
         layer.layers = [layer]
         layer._initialize_cache(0)
         layer._initialized = True
         layers = [layer]
 
         if server_format == "precomputed":
-            KnossosDataset.create_neuroglancer_layer(layer, as_rgb, shard_size=shard_size)
+            KnossosDataset.create_neuroglancer_layer(layer, as_rgb, shard_size=shard_size, dtype=dtype)
             if as_rgb:
                 highest_rgb_channel = 0
                 if parent_dataset:
@@ -1542,7 +1559,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None):
+    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None, dtype=None):
         if write_path and parent_dataset:
             raise ValueError(f"Specify either `write_path` (to create a new dataset) or `parent_dataset` (to add a layer to an existing dataset).")
         if parent_dataset and not parent_dataset.initialized:
@@ -1552,6 +1569,8 @@ class KnossosDataset(object):
         conf_path = f'{write_path}/{experiment_name}.k.toml'
         if not parent_dataset and Path(conf_path).exists():
             raise ValueError(f"Cannot initialize dataset at {conf_path}. File already exists.")
+
+        dtype = _normalize_dtype(dtype or data.dtype)
 
         if as_rgb:
             if server_format != "precomputed":
@@ -1576,6 +1595,7 @@ class KnossosDataset(object):
                 server_format=server_format,
                 as_rgb=True,
                 shard_size=shard_size,
+                dtype=dtype,
             )
             layers = parent.layers[number_existing_layers:]
             for idx, layer in enumerate(layers):
@@ -1596,13 +1616,14 @@ class KnossosDataset(object):
         if parent_dataset:
             number_existing_layers = len(parent_dataset.layers)
         for channel in channels:
-            ds = KnossosDataset.initialize(write_path, experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel=channel, parent_dataset=parent, server_format=server_format, shard_size=shard_size)
+            ds = KnossosDataset.initialize(write_path, experiment_name, boundary, cube_shape, scale, ds_factor, file_extensions, channel=channel, parent_dataset=parent, server_format=server_format, shard_size=shard_size, dtype=dtype)
             if parent is None:
                 parent = ds
         layers.extend(parent.layers[number_existing_layers:])
         for idx, layer in enumerate(layers):
             save_func = layer.save_seg if '.seg.sz.zip' in file_extensions else layer.save_raw
             Path(layer._conf_path).parent.mkdir(exist_ok=True)
+            print(f"Saving layer {idx} with dtype {data[...,idx].dtype} to {layer._conf_path}")
             save_func(data[...,idx], offset=(0, 0, 0), data_mag=1)
         return parent
 
@@ -2833,12 +2854,24 @@ class KnossosDataset(object):
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
     def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None):
-        datatype = np.dtype(datatype or (np.uint8 if as_raw else np.uint64))
+        if datatype is not None:
+            datatype = np.dtype(datatype)
+        else:
+            datatype = data.dtype
 
         if (as_raw and datatype not in (np.dtype(np.uint8), np.dtype(np.uint16))) or (not as_raw and datatype != np.dtype(np.uint64)):
             raise ValueError('Currently, saving only accepts destination datatypes np.uint8 or np.uint16 (raw) or np.uint64 (segmentation).')
         if as_raw and datatype == np.dtype(np.uint16) and self.server_format != "precomputed":
             raise ValueError('uint16 raw data is only supported for precomputed Tensorstore datasets; classic KNOSSOS raw cubes only support uint8.')
+
+        if as_raw and datatype != self._dtype:
+            if datatype == np.dtype(np.uint16) and self._dtype == np.dtype(np.uint8):
+                raise ValueError(f'Can not save uint16 raw data to initialized with uint8 raw data.')
+            else:
+                warnings.warn(f'Data type mismatch: will convert data(dtype={datatype}) to {self._dtype}.')
+                datatype = self._dtype
+        if not as_raw and datatype != np.dtype(np.uint64):
+            raise ValueError(f'Segmentation dataset expects np.uint64 data, got requested datatype {datatype}.')
         overwrite=True
 
         def _write_cubes(args):
@@ -3022,10 +3055,10 @@ class KnossosDataset(object):
                 with ThreadPoolExecutor() as pool:
                     list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
-    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=np.uint8):
+    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=None):
         self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype)
 
-    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=np.uint64):
+    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=None):
         self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype)
 
     def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
