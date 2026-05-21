@@ -418,15 +418,15 @@ class KnossosDataset(object):
             elif self.is_embedded:
                 regex = re.compile("mag([1-9][0-9]*)")
                 kzip_path = self._knossos_path[:self._knossos_path.find("/embedded")]
-                archive = zipfile.ZipFile(kzip_path, "r")
-                for file in archive.namelist():
-                    if (file.startswith("embedded/") and 
-                        self.experiment_name in file and 
-                        not file.endswith('/') and  # Not a directory
-                        any(ext in file for ext in ['.png', '.jpg', '.raw'])):  # Actual data files
-                        match = regex.search(file)
-                        if match is not None:
-                            self._mags.append(int(match.group(1))) # mag number
+                with zipfile.ZipFile(kzip_path, "r") as archive:
+                    for file in archive.namelist():
+                        if (file.startswith("embedded/") and
+                            self.experiment_name in file and
+                            not file.endswith('/') and  # Not a directory
+                            any(ext in file for ext in ['.png', '.jpg', '.raw'])):  # Actual data files
+                            match = regex.search(file)
+                            if match is not None:
+                                self._mags.append(int(match.group(1))) # mag number
                 self._mags = list(np.unique(self._mags))
             else:
                 regex = re.compile("mag[1-9][0-9]*$")
@@ -2427,8 +2427,6 @@ class KnossosDataset(object):
         if not self.module_wide["snappy"]:
             raise Exception("Snappy is not available - you cannot read "
                             "overlaycubes or kzips.")
-        archive = zipfile.ZipFile(path, 'r')
-
         ratio = self.scale_ratio(mag, 1)
         if expand_area_to_mag:
             if expand_area_to_mag is True:
@@ -2458,51 +2456,53 @@ class KnossosDataset(object):
         cnt = 1
         nb_cubes_to_process = (end - start).prod()
         experiment_name = kzip_experiment_name or self.experiment_name
-        for file in archive.namelist():
-            if file.endswith('.seg.sz'):
-                match = re.search(r'_mag\d+x\d+y\d+z\d+.seg.sz', file)
-                if match is None:
-                    warnings.warn(f'{path}: found seg cube with invalid name: {file}')
+        with zipfile.ZipFile(path, 'r') as archive:
+            archive_names = archive.namelist()
+            for file in archive_names:
+                if file.endswith('.seg.sz'):
+                    match = re.search(r'_mag\d+x\d+y\d+z\d+.seg.sz', file)
+                    if match is None:
+                        warnings.warn(f'{path}: found seg cube with invalid name: {file}')
+                    else:
+                        experiment_name = file[0:match.span()[0]]
+                        break
+            for z in range(start[2], end[2]):
+                for y in range(start[1], end[1]):
+                    for x in range(start[0], end[0]):
+                        current = np.array([x, y, z])
+                        if self.show_progress:
+                            progress = 100*cnt/float(nb_cubes_to_process)
+                            _stdout(f'\rProgress: {progress:.2f}% ')
+
+                        this_path = f'{experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
+                        try:
+                            self._print(f'{current}: loading from .k.zip')
+                            scube = archive.read(this_path)
+                            values = np.frombuffer(module_wide["snappy"].decompress(scube), dtype=np.uint64)
+                        except KeyError:
+                            self._print(f'{current}: {"dataset" if return_dataset_cube_if_nonexistent else self.background_label} cube assigned')
+                            if return_dataset_cube_if_nonexistent:
+                                values = self.load_seg(offset=current * ratio * self.cube_shape, size=ratio * self.cube_shape, mag=mag,
+                                                       datatype=datatype, padding=padding, expand_area_to_mag=expand_area_to_mag)
+                            else:
+                                values = np.full(self.cube_shape[::-1], self.background_label, dtype=datatype)
+
+                        out_start, out_end, incube_start, incube_end = self.get_intervals(offset, size, current)
+                        output[out_start[2]:out_end[2], out_start[1]:out_end[1], out_start[0]:out_end[0]] \
+                            = values.reshape(self.cube_shape[::-1]).astype(datatype, copy=False) \
+                                [incube_start[2]:incube_end[2], incube_start[1]:incube_end[1], incube_start[0]:incube_end[0]]
+
+                        cnt += 1
+
+            if self.show_progress and not self.verbose:
+                print() # newline after sys.stdout.writes inside loop
+
+            if apply_mergelist:
+                if "mergelist.txt" not in archive.namelist():
+                    self._print("no mergelist to apply")
                 else:
-                    experiment_name = file[0:match.span()[0]]
-                    break
-        for z in range(start[2], end[2]):
-            for y in range(start[1], end[1]):
-                for x in range(start[0], end[0]):
-                    current = np.array([x, y, z])
-                    if self.show_progress:
-                        progress = 100*cnt/float(nb_cubes_to_process)
-                        _stdout(f'\rProgress: {progress:.2f}% ')
-
-                    this_path = f'{experiment_name}_mag{mag}x{x}y{y}z{z}.seg.sz'
-                    try:
-                        self._print(f'{current}: loading from .k.zip')
-                        scube = archive.read(this_path)
-                        values = np.frombuffer(module_wide["snappy"].decompress(scube), dtype=np.uint64)
-                    except KeyError:
-                        self._print(f'{current}: {"dataset" if return_dataset_cube_if_nonexistent else self.background_label} cube assigned')
-                        if return_dataset_cube_if_nonexistent:
-                            values = self.load_seg(offset=current * ratio * self.cube_shape, size=ratio * self.cube_shape, mag=mag, 
-                                                   datatype=datatype, padding=padding, expand_area_to_mag=expand_area_to_mag)
-                        else:
-                            values = np.full(self.cube_shape[::-1], self.background_label, dtype=datatype)
-
-                    out_start, out_end, incube_start, incube_end = self.get_intervals(offset, size, current)
-                    output[out_start[2]:out_end[2], out_start[1]:out_end[1], out_start[0]:out_end[0]] \
-                        = values.reshape(self.cube_shape[::-1]).astype(datatype, copy=False) \
-                            [incube_start[2]:incube_end[2], incube_start[1]:incube_end[1], incube_start[0]:incube_end[0]]
-
-                    cnt += 1
-
-        if self.show_progress and not self.verbose:
-            print() # newline after sys.stdout.writes inside loop
-
-        if apply_mergelist:
-            if "mergelist.txt" not in archive.namelist():
-                self._print("no mergelist to apply")
-            else:
-                self._print("applying mergelist now")
-                mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
+                    self._print("applying mergelist now")
+                    mergelist_tools.apply_mergelist(output, archive.read("mergelist.txt").decode())
 
         return output
 
