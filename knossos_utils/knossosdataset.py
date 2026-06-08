@@ -396,6 +396,12 @@ class KnossosDataset(object):
         else:
             return False
 
+    def _embedded_kzip_path(self):
+        embedded_path = str(self._knossos_path or self._conf_path)
+        kzip_end = embedded_path.rfind(".k.zip")
+        assert kzip_end != -1, "Embedded dataset path does not contain a .k.zip archive."
+        return embedded_path[:kzip_end + len(".k.zip")]
+
     @property
     def shard_size(self):
         if self._shard_size is None and self._tensorstore_datasets:
@@ -437,7 +443,7 @@ class KnossosDataset(object):
                             continue
             elif self.is_embedded:
                 regex = re.compile("mag([1-9][0-9]*)")
-                kzip_path = self._knossos_path[:self._knossos_path.find("/embedded")]
+                kzip_path = self._embedded_kzip_path()
                 with zipfile.ZipFile(kzip_path, "r") as archive:
                     for file in archive.namelist():
                         if (file.startswith("embedded/") and
@@ -1994,7 +2000,7 @@ class KnossosDataset(object):
                             print(f'Reading cube failed: {path}')
                             raise e
                     elif self.is_embedded:
-                        kzip_path = self._knossos_path[:self._knossos_path.find("/embedded")]
+                        kzip_path = self._embedded_kzip_path()
                         embedded_path = f'embedded/{self.name_mag_folder}{mag}/x{cube_coord[0]:04d}/y{cube_coord[1]:04d}/z{cube_coord[2]:04d}/{filename}'
                         try:
                             if from_overlay:
