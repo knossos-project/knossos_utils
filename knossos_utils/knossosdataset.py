@@ -707,6 +707,8 @@ class KnossosDataset(object):
                     conf = zf.read(embedded_dataset_path).decode()
                     dataset_path = f"{path_to_kzip}/{embedded_dataset_path}"
                 else:
+                    if dataset_path.startswith("file://"):
+                        dataset_path = _file_url_to_path(dataset_path)
                     with open(dataset_path, "r") as conf_file:
                         conf = conf_file.read()
             else:
@@ -1996,7 +1998,7 @@ class KnossosDataset(object):
                                 flat_shape = int(np.prod(self.cube_shape))
                                 with zipfile.ZipFile(kzip_path, "r") as archive:
                                     with archive.open(embedded_path) as file:
-                                        values = np.fromfile(file, dtype=np.uint8, count=flat_shape).astype(datatype)
+                                        values = np.frombuffer(file.read(), dtype=np.uint8, count=flat_shape).astype(datatype)
                             else: # compressed
                                 with zipfile.ZipFile(kzip_path, "r") as archive:
                                     with archive.open(embedded_path) as file:
@@ -2067,7 +2069,7 @@ class KnossosDataset(object):
 
         output = np.zeros(size[::-1], dtype=datatype)
 
-        if self.server_format == "precomputed":
+        if self.server_format == "precomputed" and not self.is_embedded:
             channel = 0
             if self._rgb_channel:
                 if self._rgb_channel.startswith("r_"):
@@ -2986,7 +2988,7 @@ class KnossosDataset(object):
             self._print(f'box_offset: {offset_mag}')
             self._print(f'box_size: {size_mag}')
 
-            if self.server_format == "precomputed":
+            if self.server_format == "precomputed" and kzip_path is None:
                 channel = 0
                 if self._rgb_channel:
                     if self._rgb_channel.startswith("r_"):

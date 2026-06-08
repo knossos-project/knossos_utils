@@ -172,6 +172,27 @@ def test_KnossosDataset_initialize_from_kzip_reads_external_toml_from_annotation
     assert np.array_equal(kd.scale, [8, 8, 8])
 
 
+def test_KnossosDataset_initialize_from_kzip_reads_file_url_toml_from_annotation(tmp_path):
+    toml_path = tmp_path / "dataset.k.toml"
+    toml_path.write_text(_minimal_toml_config("FileUrlDataset"))
+    kzip_path = tmp_path / "annotation_file_url.k.zip"
+    annotation_xml = f"""<things>
+    <parameters>
+        <dataset path="{toml_path.as_uri()}" />
+    </parameters>
+</things>"""
+
+    with zipfile.ZipFile(kzip_path, "w") as zf:
+        zf.writestr("annotation.xml", annotation_xml)
+
+    kd = KnossosDataset(kzip_path)
+
+    assert kd.experiment_name == "FileUrlDataset"
+    assert kd.conf_path == str(toml_path)
+    assert kd.knossos_path == os.path.abspath(str(tmp_path))
+    assert np.array_equal(kd.boundary, [4, 3, 2])
+
+
 def test_KnossosDataset_initialize_from_kzip_reads_embedded_toml(tmp_path):
     kzip_path = tmp_path / "embedded.k.zip"
 
@@ -246,6 +267,77 @@ def test_KnossosDataset_save_raw_accepts_uint16_for_precomputed_tensorstore():
     _, written = dataset.written
     assert written.dtype == np.uint16
     assert np.array_equal(written.swapaxes(0, 2), data)
+
+
+def test_KnossosDataset_save_to_kzip_ignores_precomputed_server_format(monkeypatch, tmp_path):
+    class FakeSnappy:
+        @staticmethod
+        def compress(data):
+            return np.asarray(data, dtype=np.uint64).tobytes()
+
+    kd = KnossosDataset(show_progress=False)
+    monkeypatch.setitem(kd.module_wide, "snappy", FakeSnappy())
+    kd._initialized = True
+    kd.server_format = "precomputed"
+    kd._tensorstore_datasets = None
+    kd._rgb_channel = None
+    kd._dtype = np.uint64
+    kd.scales = [np.array([1, 1, 1])]
+    kd._ordinal_mags = True
+    kd._boundary = np.array([2, 2, 2])
+    kd._cube_shape = np.array([2, 2, 2])
+    kd._experiment_name = "precomputed"
+    kd._knossos_path = str(tmp_path)
+    kd._conf_path = str(tmp_path / "precomputed.k.toml")
+    data = np.arange(8, dtype=np.uint64).reshape((2, 2, 2))
+
+    kzip_path = tmp_path / "segmentation.k.zip"
+    kd.save_to_kzip(
+        data=data,
+        data_mag=1,
+        kzip_path=kzip_path,
+        offset=(0, 0, 0),
+        mags=[1],
+        gen_mergelist=False,
+        upsample=False,
+        downsample=False,
+    )
+
+    with zipfile.ZipFile(kzip_path, "r") as zf:
+        assert "precomputed_mag1x0y0z0.seg.sz" in zf.namelist()
+
+
+def test_KnossosDataset_load_embedded_kzip_ignores_precomputed_server_format(tmp_path):
+    data = np.arange(8, dtype=np.uint8).reshape((2, 2, 2))
+    kzip_path = tmp_path / "embedded_precomputed.k.zip"
+    cube_path = (
+        "embedded/mag1/x0000/y0000/z0000/"
+        "EmbeddedPrecomputed_mag1_x0000_y0000_z0000.raw"
+    )
+
+    with zipfile.ZipFile(kzip_path, "w") as zf:
+        zf.writestr(cube_path, data.tobytes())
+
+    kd = KnossosDataset(show_progress=False)
+    kd._initialized = True
+    kd._initialize_cache(0)
+    kd.server_format = "precomputed"
+    kd._tensorstore_datasets = None
+    kd._rgb_channel = None
+    kd._dtype = np.uint8
+    kd.scales = [np.array([1, 1, 1])]
+    kd._ordinal_mags = True
+    kd._boundary = np.array([2, 2, 2])
+    kd._cube_shape = np.array([2, 2, 2])
+    kd._experiment_name = "EmbeddedPrecomputed"
+    kd.file_extensions = [".raw"]
+    kd._conf_path = f"{kzip_path}/embedded/dataset.k.toml"
+    kd._knossos_path = f"{kzip_path}/embedded/"
+    kd.layers = [kd]
+
+    loaded = kd.load_raw(offset=(0, 0, 0), size=(2, 2, 2), mag=1)
+
+    assert np.array_equal(loaded, data)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter behavior")
