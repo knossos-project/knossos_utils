@@ -695,11 +695,12 @@ def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtri
         file_extensions=[".seg.sz.zip"],
         write_path=str(tmp_path),
         server_format="precomputed",
-        shard_size=(2, 2, 2),
+        shard_size=(4, 4, 2),
     )
 
     info = json.loads((tmp_path / "info").read_text())
     assert "sharding" in info["scales"][0]
+    assert tuple(kd.shard_size) == (4, 4, 2)
     _assert_segmentation_precomputed_roundtrip(
         kd, data, tmp_path, expected_size=[4, 3, 2]
     )

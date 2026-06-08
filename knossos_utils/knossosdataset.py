@@ -381,6 +381,7 @@ class KnossosDataset(object):
         self._tensorstore_datasets = None
         self._rgb_channel = None
         self._dtype = None
+        self._shard_size = None
 
         if path is not None:
             if str(path).endswith(".k.zip"):
@@ -394,6 +395,15 @@ class KnossosDataset(object):
             return True
         else:
             return False
+
+    @property
+    def shard_size(self):
+        if self._shard_size is None and self._tensorstore_datasets:
+            dataset = self._tensorstore_datasets[min(self._tensorstore_datasets)]
+            self._shard_size = np.asarray(
+                dataset.chunk_layout.write_chunk.shape[:3], dtype=int
+            )
+        return self._shard_size
 
     @property
     def mag(self):
