@@ -449,7 +449,7 @@ class KnossosDataset(object):
                         if (file.startswith("embedded/") and
                             self.experiment_name in file and
                             not file.endswith('/') and  # Not a directory
-                            any(ext in file for ext in ['.png', '.jpg', '.raw'])):  # Actual data files
+                            any(ext in file for ext in ['.png', '.jpg', '.jpeg', '.raw'])):  # Actual data files
                             match = regex.search(file)
                             if match is not None:
                                 self._mags.append(int(match.group(1))) # mag number
@@ -876,7 +876,9 @@ class KnossosDataset(object):
                     assert info_json["data_type"] == "uint8" or info_json["data_type"] == "uint16" or info_json["data_type"] == "uint64", f"Expected data_type to be uint8 or uint16 or uint64, got {info_json['data_type']}"
                     assert info_json["num_channels"] == 1 or info_json["num_channels"] == 3, f"Expected num_channels to be 1 or 3(rgb), got {info_json['num_channels']}"
                     file_extension = ".seg.sz.zip" if info_json["scales"][0]["encoding"] == "compressed_segmentation" else f'.{info_json["scales"][0]["encoding"]}'
-                    assert layer.file_extensions == [file_extension], f"Expected file extensions to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']}"
+                    if layer.file_extensions != [file_extension]:
+                        print(f"Expected file extensions from .toml file to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']} from info file. Using file extension from info file...")
+                        layer.file_extensions = [file_extension]
                     layer._dtype = _normalize_dtype(info_json["data_type"])
                     layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
                     layer._boundary = info_json["scales"][0]["size"]
