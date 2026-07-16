@@ -830,28 +830,24 @@ class KnossosDataset(object):
                         print(f'Failed to get CDN token: {e} for {layer.url}')
                         fail_fast_cdn = True
                 if layer.server_format is None:
-                    info_url = layer.url + "/info"
-                    headers = {}
                     auth=None
                     cdn_token = None
                     if layer._http_user and layer._http_passwd:
                         auth = (layer._http_user, layer._http_passwd)
                         cdn_token = copy.deepcopy(layer._cdn_token)
-                    response = requests.get(info_url, headers=headers, auth=auth, params=cdn_token)
+                    response = requests.get(layer.url + "/info", auth=auth, params=cdn_token)
                     if response.status_code == 200:
                         layer.server_format = "precomputed"
-                        layer.url = info_url
             elif layer._knossos_path is not None:
                 info_file_path = os.path.join(layer._knossos_path, "info")
                 if os.path.exists(info_file_path):
                     layer.server_format = "precomputed"
-                    layer.url = f'file://{layer._knossos_path}/info'
-                elif layer.server_format == "precomputed" and not os.path.exists(info_file_path):
-                    layer.url = f'file://{layer._knossos_path}/info'
 
             if layer.server_format == "precomputed":
                 import json
                 info_json = None
+                if layer.url is not None and not layer.url.endswith("info"):
+                    layer.url = layer.url + "/info"
                 if layer.url and layer.url.startswith("file://"):
                     local_path = _file_url_to_path(layer.url)
                     try:
@@ -861,13 +857,12 @@ class KnossosDataset(object):
                         print(f"Failed to load info json from local file '{local_path}': {e}")
                 elif layer.url:
                     try:
-                        headers = {}
                         auth=None
                         cdn_token = None
                         if layer._http_user and layer._http_passwd:
                             auth = (layer._http_user, layer._http_passwd)
                             cdn_token = copy.deepcopy(layer._cdn_token)
-                        response = requests.get(layer.url, headers=headers, auth=auth, params=cdn_token)
+                        response = requests.get(layer.url, auth=auth, params=cdn_token)
                         response.raise_for_status()
                         info_json = response.json()
                     except Exception as e:
