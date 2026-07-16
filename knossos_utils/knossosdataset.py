@@ -855,6 +855,8 @@ class KnossosDataset(object):
                             info_json = json.load(f)
                     except Exception as e:
                         print(f"Failed to load info json from local file '{local_path}': {e}")
+                        if os.path.exists(local_path):
+                            raise Exception(f"Failed to load info json from local file '{local_path}': {e}")
                 elif layer.url:
                     try:
                         auth=None
@@ -867,6 +869,7 @@ class KnossosDataset(object):
                         info_json = response.json()
                     except Exception as e:
                         print(f"Failed to load info json from url '{layer.url}': {e}")
+                        raise Exception(f"Failed to load info json from url '{layer.url}': {e}")
                 if info_json is not None:
                     assert info_json["data_type"] == "uint8" or info_json["data_type"] == "uint16" or info_json["data_type"] == "uint64", f"Expected data_type to be uint8 or uint16 or uint64, got {info_json['data_type']}"
                     assert info_json["num_channels"] == 1 or info_json["num_channels"] == 3, f"Expected num_channels to be 1 or 3(rgb), got {info_json['num_channels']}"
