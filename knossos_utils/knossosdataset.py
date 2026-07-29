@@ -1351,7 +1351,7 @@ class KnossosDataset(object):
             shard_size = np.asarray(shard_size, dtype=int)
 
         layer.server_format = "precomputed"
-        layer.url = f'file://{layer._knossos_path}/info' if layer._knossos_path is not None else None
+        # layer.url = f'file://{layer._knossos_path}/info' if layer._knossos_path is not None else None
         layer._tensorstore_datasets = {}
 
         num_channels = 3 if as_rgb else 1
@@ -1450,7 +1450,8 @@ class KnossosDataset(object):
         layer = KnossosDataset()
         layer._conf_path = str(conf_path)
         layer._knossos_path = str(conf_path.parent)
-        layer.url = f'file://{layer._knossos_path}/'
+        if channel != '':
+            layer.url = f'file://{layer._knossos_path}/'
         layer._experiment_name = experiment_name
         layer.server_format = server_format
         layer._boundary = boundary
