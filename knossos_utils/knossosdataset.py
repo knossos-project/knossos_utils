@@ -143,7 +143,7 @@ def _as_shapearray(x, dim=3):
 
 
 def _normalize_dtype(dtype):
-    if dtype:
+    if dtype is not None:
         _dtype = np.dtype(dtype)
         if _dtype not in (np.dtype(np.uint8), np.dtype(np.uint16), np.dtype(np.uint64)):
             raise ValueError(f"dtype must be np.uint8 or np.uint16 or np.uint64, got {_dtype}.")
@@ -420,8 +420,11 @@ class KnossosDataset(object):
     def available_mags(self):
         if self._mags is None:
             self._mags = []
-            if self.server_format == "precomputed" and self._tensorstore_datasets is not None:
-                self._mags = list(self._tensorstore_datasets.keys())
+            if self.server_format == "precomputed" and self.scales:
+                if self._ordinal_mags:
+                    self._mags = list(range(1, len(self.scales) + 1))
+                else:
+                    self._mags = [2 ** i for i in range(len(self.scales))]
             elif self.in_http_mode:
                 for mag_test_nb in range(10):
                     mag_num = mag_test_nb+1 if self._ordinal_mags else 2 ** mag_test_nb
@@ -461,6 +464,20 @@ class KnossosDataset(object):
                     if match is not None:
                         self._mags.append(int(mag_folder[match.start() + 3:])) # mag number
         return self._mags
+
+    @property
+    def existing_mags(self):
+        """Magnifications that exist on disk / in the precomputed info (may contain data).
+
+        For precomputed datasets this is the set of scales present in the info file
+        (open tensorstore handles). For classic KNOSSOS datasets it matches
+        ``available_mags`` (mag folders that were discovered).
+        """
+        if self.server_format == "precomputed":
+            if not self._tensorstore_datasets:
+                return []
+            return sorted(self._tensorstore_datasets.keys())
+        return list(self.available_mags)
 
     @property
     def name_mag_folder(self):
@@ -794,7 +811,16 @@ class KnossosDataset(object):
             layers.append(layer)
             layer._experiment_name = layer_conf['Name']
             layer.file_extensions = layer_conf['FileExtension']
-            layer._dtype = np.uint64 if ".seg.sz.zip" in layer.file_extensions else np.uint8
+            layer._dtype = _normalize_dtype(layer_conf.get('DataType', None))
+            if layer._dtype is None:
+                layer._dtype = np.uint64 if ".seg.sz.zip" in layer.file_extensions else np.uint8
+            num_channels = layer_conf.get('NumChannels', 1)
+            if num_channels == 3:
+                layer._rgb_channel = True
+            elif num_channels not in (1, None):
+                raise ValueError(
+                    f"NumChannels must be 1 or 3, got {num_channels} for layer {layer_conf['Name']}"
+                )
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer.url = f'file://{layer._knossos_path}' if layer._knossos_path is not None else None
             if 'URL' in layer_conf:
@@ -875,25 +901,73 @@ class KnossosDataset(object):
                     except Exception as e:
                         print(f"Failed to load info json from url '{layer.url}': {e}")
                         raise Exception(f"Failed to load info json from url '{layer.url}': {e}")
+
+                extent_px = layer_conf.get('Extent_px', None)
+                cube_shape_px = layer_conf.get('CubeShape_px', None)
+                # voxel_sizes = layer_conf.get('VoxelSize_nm', None)
+                voxel_sizes = None
+                if 'VoxelSize_nm' in layer_conf:
+                    voxel_sizes = [np.array(scale) for scale in layer_conf['VoxelSize_nm']]
+
                 if info_json is not None:
                     assert info_json["data_type"] == "uint8" or info_json["data_type"] == "uint16" or info_json["data_type"] == "uint64", f"Expected data_type to be uint8 or uint16 or uint64, got {info_json['data_type']}"
                     assert info_json["num_channels"] == 1 or info_json["num_channels"] == 3, f"Expected num_channels to be 1 or 3(rgb), got {info_json['num_channels']}"
                     file_extension = ".seg.sz.zip" if info_json["scales"][0]["encoding"] == "compressed_segmentation" else f'.{info_json["scales"][0]["encoding"]}'
                     if layer.file_extensions != [file_extension]:
-                        print(f"Expected file extensions from .toml file to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']} from info file. Using file extension from info file...")
+                        warnings.warn(f"Expected file extensions from .toml file to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']} from info file. Using file extension from info file...")
                         layer.file_extensions = [file_extension]
-                    layer._dtype = _normalize_dtype(info_json["data_type"])
-                    layer.scales = [np.array(scale["resolution"]) for scale in info_json["scales"]]
-                    layer._boundary = info_json["scales"][0]["size"]
-                    layer._cube_shape = info_json["scales"][0]["chunk_sizes"][0]
-                    keys = [scale["key"] for scale in info_json["scales"]]
+                    info_dtype = _normalize_dtype(info_json["data_type"])
+                    if layer._dtype is not None and layer._dtype != info_dtype:
+                        warnings.warn(
+                            f"DataType in toml ({np.dtype(layer._dtype).name}) differs from "
+                            f"info data_type ({info_json['data_type']}). Using info data_type."
+                        )
+                    layer._dtype = info_dtype
+
+                    # Prefer TOML geometry; fall back to finest info scale (legacy).
+                    finest = min(info_json["scales"], key=lambda s: float(np.prod(s["resolution"])))
+                    if finest is not None:
+                        mag = 0
+                        if finest["key"] != "mag1":
+                            warnings.warn(f"Expected finest scale key to be 'mag1', got {finest['key']}. This may cause issues with the dataset.")
+                            mag = int(finest["key"].split("mag")[1]) - 1
+                        if extent_px is None or mag == 0:
+                            extent_px_json = finest["size"]
+                            if extent_px_json is not None:
+                                if extent_px_json[2] > 1:
+                                    extent_px = [int(extent_px_json[0] * 2**mag), int(extent_px_json[1] * 2**mag), int(extent_px_json[2] * 2**mag)]
+                                else:
+                                    extent_px = [int(extent_px_json[0] * 2**mag), int(extent_px_json[1] * 2**mag), int(extent_px_json[2])]
+                        if cube_shape_px is None or mag == 0:
+                            cube_shape_px = finest["chunk_sizes"][0]
+                        if voxel_sizes is None or mag == 0:
+                            voxel_sizes = [np.array(finest["resolution"]) / 2**mag]
+
+                    # assert extent_px is not None, "Extent_px is not set"
+                    # assert cube_shape_px is not None, "CubeShape_px is not set"
+                    # assert voxel_sizes is not None, "VoxelSize_nm is not set"
+
+                    if info_json["num_channels"] == 3:
+                        toml_channels = layer_conf.get('NumChannels', 1)
+                        if toml_channels not in (None, 3) and int(toml_channels) != 3:
+                            warnings.warn(
+                                f"NumChannels in toml ({toml_channels}) differs from "
+                                f"info num_channels (3). Using info num_channels."
+                            )
+                        layer._rgb_channel = True
+                    elif layer._rgb_channel:
+                        warnings.warn(
+                            f"NumChannels in toml is 3 but info num_channels is "
+                            f"{info_json['num_channels']}. Using info num_channels."
+                        )
+                        layer._rgb_channel = None
 
                     kvstore_config = _precomputed_kvstore_config(
                         layer.url, layer._cdn_token
                     )
                     layer._tensorstore_datasets = {}
-                    for mag, key in enumerate(keys):
-                        mag += 1
+                    for idx, key in enumerate([scale["key"] for scale in info_json["scales"]]):
+                        mag = idx + 1
                         if "mag" in key:
                             mag = int(key.split("mag")[1])
                         layer._tensorstore_datasets[mag] = ts.open({
@@ -906,43 +980,37 @@ class KnossosDataset(object):
                                     "scale_metadata" : {
                                         "key" : key,
                                     },
-                                    # "scale_index": mag,
                                 }).result()
-                    
-                    if info_json["num_channels"] == 3:
-                        layer._rgb_channel = True
                 else:
                     print(f"Looking for missing information in toml file... file_extensions: {layer.file_extensions}")
-                    scales = None
-                    extent_px = layer_conf.get('Extent_px', None)
-                    cube_shape_px = layer_conf.get('CubeShape_px', None)
-                    if 'VoxelSize_nm' in layer_conf:
-                        scales = [np.array(scale) for scale in layer_conf['VoxelSize_nm']]
-                    if scales is not None and len(scales) == 1 and extent_px is not None and cube_shape_px is not None:
-                        warnings.warn("MISSING INFORMATION: Only one scale found in toml file. Assuming isotropic scale and generating scales...")
-                        layer._boundary = extent_px
-                        layer._cube_shape = cube_shape_px
-                        ds_factor = (2, 2, 2)
-                        if extent_px[2] == 1:
-                            ds_factor[2] = 1
-                        scales = layer.generate_scales(scales[0], ds_factor)
-                    
-                    if extent_px is None or cube_shape_px is None or scales is None:
+                    if extent_px is None or cube_shape_px is None or voxel_sizes is None:
                         warnings.warn("MISSING INFORMATION: Could not find all missing information in toml file. Looking for missing information in other layers...")
                         if len(layers) > 1:
                             other_layer = layers[0]
-                            extent_px = other_layer._boundary
-                            cube_shape_px = other_layer._cube_shape
-                            scales = other_layer.scales
-                    
-                    if extent_px is not None and cube_shape_px is not None and scales is not None:
-                        print("Found all missing information. Creating neuroglancer dataset...")
-                        layer.scales = scales
-                        layer._boundary = extent_px
-                        layer._cube_shape = cube_shape_px
-                        KnossosDataset.create_neuroglancer_layer(layer)
-                    else:
-                        raise ValueError(f"No info file found at {layer.url} and could not find all missing information in toml file or other layers.")
+                            if extent_px is None:
+                                extent_px = other_layer._boundary
+                            if cube_shape_px is None:
+                                cube_shape_px = other_layer._cube_shape
+                            if voxel_sizes is None and other_layer.scales:
+                                voxel_sizes = other_layer.scales
+                    layer._tensorstore_datasets = {}
+
+                if extent_px is None or cube_shape_px is None or voxel_sizes is None:
+                    raise ValueError(
+                        f"No info file found at {layer.url} and could not find all "
+                        f"missing information in toml file or other layers."
+                    )
+                
+                layer._boundary = extent_px
+                layer._cube_shape = cube_shape_px
+                if len(voxel_sizes) == 1:
+                        warnings.warn("MISSING INFORMATION: Only one scale found in toml file. Assuming isotropic scale and generating scales...")
+                        voxel_sizes = layer.generate_scales(voxel_sizes[0], KnossosDataset._default_ds_factor(layer._boundary))
+                        print(voxel_sizes)
+                layer.scales = voxel_sizes
+                print("Found all information. Creating neuroglancer dataset...")
+
+                # KnossosDataset.create_neuroglancer_layer(layer)
 
             if not layer.server_format == "precomputed":
                 layer.scales = [np.array(mag_scale) for mag_scale in layer_conf['VoxelSize_nm']]
@@ -1289,16 +1357,76 @@ class KnossosDataset(object):
         return shard_size.astype(int)
 
     @staticmethod
+    def _default_ds_factor(boundary) -> list:
+        ds_factor = [2, 2, 2]
+        if int(boundary[2]) == 1:
+            ds_factor[2] = 1
+        return ds_factor
+
+    @staticmethod
+    def _sort_precomputed_info_scales(layer: KnossosDataset):
+        """Sort info.json scales by ascending resolution (Neuroglancer requirement)."""
+        import json
+        if layer._knossos_path is None:
+            return
+        info_path = Path(layer._knossos_path) / "info"
+        if not info_path.is_file():
+            return
+        with open(info_path, "r") as f:
+            info = json.load(f)
+        scales = info.get("scales", [])
+        if len(scales) <= 1:
+            return
+        sorted_scales = sorted(
+            scales,
+            key=lambda s: (float(s["resolution"][0]), float(s["resolution"][1]), float(s["resolution"][2])),
+        )
+        if sorted_scales == scales:
+            return
+        info["scales"] = sorted_scales
+        with open(info_path, "w") as f:
+            json.dump(info, f)
+
+    def _ensure_precomputed_mag(self, mag: int, create: bool = True):
+        """Return the tensorstore handle for mag; optionally create the scale on demand."""
+        if self._tensorstore_datasets is None:
+            self._tensorstore_datasets = {}
+        if mag in self._tensorstore_datasets:
+            return self._tensorstore_datasets[mag]
+        if not create:
+            raise Exception(
+                f"No precomputed data for mag {mag}. Available scales in info: "
+                f"{sorted(self._tensorstore_datasets.keys())}."
+            )
+        if mag < 1 or mag > len(self.scales):
+            raise Exception(
+                f"Requested mag {mag} not available, only mags {self.available_mags} are available."
+            )
+        KnossosDataset.create_neuroglancer_layer(
+            self,
+            as_rgb=bool(self._rgb_channel),
+            shard_size=self._shard_size,
+            dtype=self._dtype,
+            mags=[mag],
+        )
+        return self._tensorstore_datasets[mag]
+
+    @staticmethod
     def create_neuroglancer_layer(
         layer: KnossosDataset,
         as_rgb: bool = False,
         shard_size: Optional[Sequence[int]] = None,
         dtype=np.uint8,
+        mags: Optional[Sequence[int]] = None,
     ):
-        """Create a neuroglancer_precomputed tensorstore dataset per magnification.
+        """Create neuroglancer_precomputed tensorstore dataset(s) for selected magnifications.
 
         Supports image layers (.raw / .png/.jpg/.jpeg, uint8/uint16(only for precomputed)) and
         segmentation layers (.seg.sz.zip, uint64 + compressed_segmentation).
+
+        Only the magnifications listed in `mags` are created (or all pyramid levels if
+        `mags` is None). Existing entries in `layer._tensorstore_datasets` are kept.
+        After creation, on-disk info scales are sorted by ascending resolution.
 
         Sharding is configured implicitly via tensorstore's chunk_layout: the
         write_chunk drives the on-disk shard size, the read_chunk stays at
@@ -1315,7 +1443,7 @@ class KnossosDataset(object):
         if len(layer.file_extensions) != 1:
             print(f"Warning: {layer.experiment_name} has multiple file extensions: {layer.file_extensions}. Will only create a layer for the first extension: {ext}.")
 
-        dtype = _normalize_dtype(dtype)
+        dtype = _normalize_dtype(dtype) if dtype is not None else np.dtype(np.uint8)
         layer._dtype = dtype
 
         if ext == '.seg.sz.zip':
@@ -1355,17 +1483,30 @@ class KnossosDataset(object):
                 )
             shard_size = np.asarray(shard_size, dtype=int)
 
+        layer._shard_size = np.asarray(shard_size, dtype=int)
         layer.server_format = "precomputed"
-        # layer.url = f'file://{layer._knossos_path}/info' if layer._knossos_path is not None else None
-        layer._tensorstore_datasets = {}
+        if layer._tensorstore_datasets is None:
+            layer._tensorstore_datasets = {}
 
         num_channels = 3 if as_rgb else 1
         cube_shape = [int(c) for c in layer.cube_shape]
         shard_size_int = [int(s) for s in shard_size]
         base_scale = np.asarray(layer.scales[0], dtype=float)
 
-        for mag_idx in range(len(layer.scales)):
-            mag = mag_idx + 1
+        if mags is None:
+            mags = list(range(1, len(layer.scales) + 1))
+        else:
+            mags = list(mags)
+
+        created_any = False
+        for mag in mags:
+            if mag in layer._tensorstore_datasets:
+                continue
+            mag_idx = mag - 1
+            if mag_idx < 0 or mag_idx >= len(layer.scales):
+                raise ValueError(
+                    f"Cannot create mag {mag}: only {len(layer.scales)} scales in pyramid."
+                )
             curr_scale = np.asarray(layer.scales[mag_idx], dtype=float)
             # factors is base/curr (<= 1 for higher mags); dataset_size shrinks accordingly.
             factors = base_scale / curr_scale
@@ -1443,9 +1584,13 @@ class KnossosDataset(object):
             layer._tensorstore_datasets[mag] = ts.open(
                 ts.Spec(json_spec), open=True, create=True, delete_existing=False
             ).result()
+            created_any = True
+
+        if created_any:
+            KnossosDataset._sort_precomputed_info_scales(layer)
 
     @staticmethod
-    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=(2,2,2), file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None, dtype = None):
+    def initialize(path, experiment_name, boundary, cube_shape, scale, ds_factor=None, file_extensions=['.png'], description = '', channel='', parent_dataset=None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None, dtype = None):
         assert server_format == "precomputed" or not as_rgb, "as_rgb=True is only supported for server_format=precomputed"
         assert server_format == "precomputed" or shard_size is None, "shard_size is only supported for server_format=precomputed"
         conf_path = Path(path) / channel / f'{experiment_name}.k.toml'
@@ -1462,7 +1607,7 @@ class KnossosDataset(object):
         layer._boundary = boundary
         layer._scale = scale
         layer._cube_shape = cube_shape
-        layer.scales = layer.generate_scales(scale, ds_factor)
+        layer.scales = layer.generate_scales(scale, ds_factor if ds_factor is not None else KnossosDataset._default_ds_factor(boundary))
         layer._ordinal_mags = True
         layer.description = description
         layer.file_extensions = []
@@ -1479,7 +1624,12 @@ class KnossosDataset(object):
         layers = [layer]
 
         if server_format == "precomputed":
-            KnossosDataset.create_neuroglancer_layer(layer, as_rgb, shard_size=shard_size, dtype=dtype)
+            # Defer info/tensorstore creation until the first write (on-demand).
+            layer._tensorstore_datasets = {}
+            if shard_size is not None:
+                assert int(shard_size[0]) == int(shard_size[1]), "shard_size must be equal in x and y"
+                assert int(shard_size[2]) <= int(shard_size[0]), "shard_size z must be <= x/y"
+                layer._shard_size = np.asarray(shard_size, dtype=int)
             if as_rgb:
                 highest_rgb_channel = 0
                 if parent_dataset:
@@ -2112,7 +2262,7 @@ class KnossosDataset(object):
                     channel = 1
                 elif self._rgb_channel.startswith("b_"):
                     channel = 2
-            dataset = self._tensorstore_datasets[mag]
+            dataset = self._ensure_precomputed_mag(mag, create=False)
             data = np.array(dataset[offset[0]:offset[0]+size[0], offset[1]:offset[1]+size[1], offset[2]:offset[2]+size[2], channel])
             output = data.swapaxes(0, 2)
         else:
@@ -3031,7 +3181,7 @@ class KnossosDataset(object):
                         channel = 1
                     elif self._rgb_channel.startswith("b_"):
                         channel = 2
-                dataset = self._tensorstore_datasets[mag]
+                dataset = self._ensure_precomputed_mag(mag, create=True)
                 dataset[int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), channel] = data_inter.swapaxes(0,2).astype(datatype)
             else:
                 start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])
@@ -3271,6 +3421,8 @@ class LayerConfig:
     Extent_px: List[int]
     VoxelSize_nm: List[List[float]]
     CubeShape_px: List[int]
+    DataType: Optional[str]
+    NumChannels: Optional[int]
     Description: Optional[str]
     Color: Optional[str]
     Visible: Optional[bool]
@@ -3284,9 +3436,11 @@ class LayerConfig:
         self.Name = layer.experiment_name
         self.ServerFormat = layer.server_format
         self.FileExtension = layer.file_extensions
-        self.Extent_px = list(layer.boundary) if not layer.server_format == "precomputed" else None
-        self.VoxelSize_nm = [scale.tolist() for scale in layer.scales] if not layer.server_format == "precomputed" else None
-        self.CubeShape_px = list(layer.cube_shape) if not layer.server_format == "precomputed" else None
+        self.Extent_px = list(layer.boundary)
+        self.VoxelSize_nm = [scale.tolist() for scale in layer.scales]
+        self.CubeShape_px = list(layer.cube_shape)
+        self.DataType = None if layer._dtype is None else np.dtype(layer._dtype).name
+        self.NumChannels = 3 if layer._rgb_channel else 1
         self.Description = layer.description
         self.Color = layer.color
         self.Visible = layer.visible
