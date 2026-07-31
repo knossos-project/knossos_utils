@@ -930,7 +930,8 @@ class KnossosDataset(object):
                         mag = 0
                         if finest["key"] != "mag1":
                             warnings.warn(f"Expected finest scale key to be 'mag1', got {finest['key']}. This may cause issues with the dataset.")
-                            mag = int(finest["key"].split("mag")[1]) - 1
+                            if finest["key"].startswith("mag"):
+                                mag = int(finest["key"].split("mag")[1]) - 1
                         if extent_px is None or mag == 0:
                             extent_px_json = finest["size"]
                             if extent_px_json is not None:
