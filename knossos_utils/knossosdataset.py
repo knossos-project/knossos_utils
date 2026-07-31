@@ -830,14 +830,19 @@ class KnossosDataset(object):
                         print(f'Failed to get CDN token: {e} for {layer.url}')
                         fail_fast_cdn = True
                 if layer.server_format is None:
-                    auth=None
-                    cdn_token = None
-                    if layer._http_user and layer._http_passwd:
-                        auth = (layer._http_user, layer._http_passwd)
-                        cdn_token = copy.deepcopy(layer._cdn_token)
-                    response = requests.get(layer.url + "/info", auth=auth, params=cdn_token)
-                    if response.status_code == 200:
-                        layer.server_format = "precomputed"
+                    if layer.url.startswith("file://"):
+                        local_path = _file_url_to_path(layer.url)
+                        if os.path.exists(local_path):
+                            layer.server_format = "precomputed"
+                    else:
+                        auth=None
+                        cdn_token = None
+                        if layer._http_user and layer._http_passwd:
+                            auth = (layer._http_user, layer._http_passwd)
+                            cdn_token = copy.deepcopy(layer._cdn_token)
+                        response = requests.get(layer.url + "/info", auth=auth, params=cdn_token)
+                        if response.status_code == 200:
+                            layer.server_format = "precomputed"
             elif layer._knossos_path is not None:
                 info_file_path = os.path.join(layer._knossos_path, "info")
                 if os.path.exists(info_file_path):
