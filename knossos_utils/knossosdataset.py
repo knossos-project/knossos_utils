@@ -1007,7 +1007,6 @@ class KnossosDataset(object):
                 if len(voxel_sizes) == 1:
                         warnings.warn("MISSING INFORMATION: Only one scale found in toml file. Assuming isotropic scale and generating scales...")
                         voxel_sizes = layer.generate_scales(voxel_sizes[0], KnossosDataset._default_ds_factor(layer._boundary))
-                        print(voxel_sizes)
                 layer.scales = voxel_sizes
                 print("Found all information. Creating neuroglancer dataset...")
 
