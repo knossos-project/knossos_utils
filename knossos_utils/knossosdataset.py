@@ -979,20 +979,16 @@ class KnossosDataset(object):
                     # assert cube_shape_px is not None, "CubeShape_px is not set"
                     # assert voxel_sizes is not None, "VoxelSize_nm is not set"
 
-                    if info_json["num_channels"] == 3:
-                        toml_channels = layer_conf.get('NumChannels', 1)
-                        if toml_channels not in (None, 3) and int(toml_channels) != 3:
-                            warnings.warn(
-                                f"NumChannels in toml ({toml_channels}) differs from "
-                                f"info num_channels (3). Using info num_channels."
-                            )
-                        layer._rgb_channel = True
-                    elif layer._rgb_channel:
+                    channels = info_json["num_channels"]
+                    if channels != num_channels:
                         warnings.warn(
-                            f"NumChannels in toml is 3 but info num_channels is "
-                            f"{info_json['num_channels']}. Using info num_channels."
+                            f"NumChannels in toml ({num_channels}) differs from info num_channels ({channels}). Using info num_channels."
                         )
-                        layer._rgb_channel = None
+                        num_channels = channels
+                        if channels == 3:
+                            layer._rgb_channel = True
+                        else:
+                            layer._rgb_channel = None
 
                     kvstore_config = _precomputed_kvstore_config(
                         layer.url, layer._cdn_token
@@ -1014,7 +1010,7 @@ class KnossosDataset(object):
                                     },
                                 }).result()
                 else:
-                    print(f"Looking for missing information in toml file... file_extensions: {layer.file_extensions}")
+                    _print(f"Looking for missing information in toml file... file_extensions: {layer.file_extensions}")
                     if extent_px is None or cube_shape_px is None or voxel_sizes is None:
                         warnings.warn("MISSING INFORMATION: Could not find all missing information in toml file. Looking for missing information in other layers...")
                         if len(layers) > 1:
@@ -1029,8 +1025,7 @@ class KnossosDataset(object):
 
                 if extent_px is None or cube_shape_px is None or voxel_sizes is None:
                     raise ValueError(
-                        f"No info file found at {layer.url} and could not find all "
-                        f"missing information in toml file or other layers."
+                        f"No info file found at {layer.url} and could not find all missing information in toml file or other layers."
                     )
                 
                 layer._boundary = extent_px
@@ -1041,7 +1036,7 @@ class KnossosDataset(object):
                             warnings.warn("MISSING INFORMATION: Only one scale found in toml file. Assuming isotropic scale and generating scales...")
                             voxel_sizes = generated
                 layer.scales = voxel_sizes
-                print("Found all information. Creating neuroglancer dataset...")
+                _print("Found all information. Creating neuroglancer dataset...")
 
                 # KnossosDataset.create_neuroglancer_layer(layer)
 
