@@ -408,7 +408,7 @@ Name = "TestDataset"
 ServerFormat = "precomputed"
 FileExtension = [".raw"]
 Extent_px = [4, 3, 2]
-VoxelSize_nm = [[8, 8, 8]]
+VoxelSize_nm = [[8, 8, 8], [16, 16, 16]]
 CubeShape_px = [2, 2, 2]
 Description = "test"
 
@@ -461,17 +461,18 @@ def test_KnossosDataset_initialize_from_array__raw_precomputed_uint16_roundtrip(
 def test_KnossosDataset_initialize_from_array__raw_precomputed_uint8_to_uint16_roundtrip(tmp_path):
     data = np.arange(24, dtype=np.uint8).reshape((2, 3, 4))
 
-    kd = KnossosDataset.initialize_from_array(
-        data=data,
-        experiment_name="raw16",
-        cube_shape=(2, 2, 2),
-        scale=(1, 1, 1),
-        ds_factor=(2, 2, 1),
-        file_extensions=[".raw"],
-        write_path=str(tmp_path),
-        server_format="precomputed",
-        dtype=np.uint16,
-    )
+    with pytest.warns(UserWarning, match="Data type mismatch"):
+        kd = KnossosDataset.initialize_from_array(
+            data=data,
+            experiment_name="raw16",
+            cube_shape=(2, 2, 2),
+            scale=(1, 1, 1),
+            ds_factor=(2, 2, 1),
+            file_extensions=[".raw"],
+            write_path=str(tmp_path),
+            server_format="precomputed",
+            dtype=np.uint16,
+        )
 
     loaded = kd.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
 

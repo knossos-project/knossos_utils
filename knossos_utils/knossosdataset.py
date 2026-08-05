@@ -2294,8 +2294,11 @@ class KnossosDataset(object):
 
         if self.show_progress:
             dt = time.time() - t0
-            speed = np.prod(output.shape) * 1.0/1000000/dt
-            print(f'\rSpeed: {speed:.2f} Mvx/s, time {dt}')
+            if dt > 0:
+                speed = np.prod(output.shape) * 1.0 / 1000000 / dt
+                print(f'\rSpeed: {speed:.2f} Mvx/s, time {dt}')
+            else:
+                print(f'\rSpeed: n/a (dt=0), time {dt}')
 
         if not np.all(output.shape == size[::-1]):
             raise Exception(f'Incorrect shape! Should be {size[::-1]}; got {output.shape}')
