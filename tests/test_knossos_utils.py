@@ -896,6 +896,47 @@ def test_KnossosDataset_precomputed_on_demand_mags_sorted_in_info(tmp_path):
     )
 
 
+def test_KnossosDataset_load_mag2_preserves_boundary_and_scales(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="mag2meta",
+        boundary=(4, 4, 2),
+        cube_shape=(2, 2, 2),
+        scale=(8, 8, 4),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    expected_boundary = np.array(kd.boundary)
+    expected_scales = [np.array(s, dtype=float) for s in kd.scales]
+    expected_cube_shape = np.array(kd.cube_shape)
+    assert len(expected_scales) >= 2
+    assert not np.allclose(expected_scales[0], [1, 1, 1])
+
+    mag2_data = np.arange(8, dtype=np.uint8).reshape((2, 2, 2))
+    kd.save_raw(
+        data=mag2_data,
+        data_mag=2,
+        offset=(0, 0, 0),
+        mags=[2],
+        upsample=False,
+        downsample=False,
+    )
+    assert [s["key"] for s in json.loads((tmp_path / "info").read_text())["scales"]] == ["mag2"]
+
+    reloaded = KnossosDataset(kd.conf_path)
+    loaded_mag2 = reloaded.load_raw(offset=(0, 0, 0), size=(4, 4, 2), mag=2)
+
+    assert np.array_equal(reloaded.boundary, expected_boundary)
+    assert np.array_equal(reloaded.cube_shape, expected_cube_shape)
+    assert len(reloaded.scales) == len(expected_scales)
+    for actual, expected in zip(reloaded.scales, expected_scales):
+        assert np.allclose(actual, expected)
+    assert np.allclose(reloaded.scale, expected_scales[0])
+    assert reloaded.available_mags == list(range(1, len(expected_scales) + 1))
+    assert reloaded.existing_mags == [2]
+    assert np.array_equal(loaded_mag2, mag2_data)
+
 @pytest.mark.parametrize(
     "url,cdn_token,expected",
     [

@@ -924,25 +924,56 @@ class KnossosDataset(object):
                         )
                     layer._dtype = info_dtype
 
-                    # Prefer TOML geometry; fall back to finest info scale (legacy).
+                    # Geometry: prefer TOML; fill gaps from info. With magX keys, overwrite on mismatch.
                     finest = min(info_json["scales"], key=lambda s: float(np.prod(s["resolution"])))
-                    if finest is not None:
-                        mag = 0
-                        if finest["key"] != "mag1":
-                            warnings.warn(f"Expected finest scale key to be 'mag1', got {finest['key']}. This may cause issues with the dataset.")
-                            if finest["key"].startswith("mag"):
-                                mag = int(finest["key"].split("mag")[1]) - 1
-                        if extent_px is None or mag == 0:
-                            extent_px_json = finest["size"]
-                            if extent_px_json is not None:
-                                if extent_px_json[2] > 1:
-                                    extent_px = [int(extent_px_json[0] * 2**mag), int(extent_px_json[1] * 2**mag), int(extent_px_json[2] * 2**mag)]
-                                else:
-                                    extent_px = [int(extent_px_json[0] * 2**mag), int(extent_px_json[1] * 2**mag), int(extent_px_json[2])]
-                        if cube_shape_px is None or mag == 0:
-                            cube_shape_px = finest["chunk_sizes"][0]
-                        if voxel_sizes is None or mag == 0:
-                            voxel_sizes = [np.array(finest["resolution"]) / 2**mag]
+                    uses_mag_keys = any(re.match(r"^mag\d+$", str(s["key"])) for s in info_json["scales"])
+                    finest_mag = re.match(r"^mag(\d+)$", str(finest["key"]))
+                    if finest_mag is None:
+                        warnings.warn(
+                            f"Expected finest scale key to be 'magN', got {finest['key']}. "
+                            f"Info geometry is only used when missing in toml."
+                        )
+
+                    info_voxel_sizes = [np.asarray(s["resolution"], dtype=float) for s in info_json["scales"]]
+                    info_cube = list(finest["chunk_sizes"][0])
+
+                    def _prefer(toml_val, info_val, equal, label):
+                        if toml_val is None:
+                            return info_val
+                        if uses_mag_keys and not equal(toml_val, info_val):
+                            warnings.warn(f"{label} in toml differs from info. Using info.")
+                            return info_val
+                        return toml_val
+
+                    if voxel_sizes is not None and uses_mag_keys:
+                        toml_ok = all(
+                            any(np.allclose(info_res, toml_res) for toml_res in voxel_sizes)
+                            for info_res in info_voxel_sizes
+                        )
+                        if not toml_ok:
+                            warnings.warn(
+                                "VoxelSize_nm in toml does not cover all info scale resolutions. "
+                                "Using scale resolutions from info."
+                            )
+                            voxel_sizes = None
+                    voxel_sizes = np.asarray(finest["resolution"], dtype=float) if voxel_sizes is None else voxel_sizes
+
+                    mag1_res = np.asarray(voxel_sizes[0], dtype=float)
+                    info_extent = np.ceil(
+                        np.asarray(finest["size"], dtype=float)
+                        * np.asarray(finest["resolution"], dtype=float)
+                        / mag1_res
+                    ).astype(int).tolist()
+                    extent_px = _prefer(
+                        extent_px, info_extent,
+                        lambda a, b: np.array_equal(np.asarray(a, dtype=int), np.asarray(b, dtype=int)),
+                        "Extent_px",
+                    )
+                    cube_shape_px = _prefer(
+                        cube_shape_px, info_cube,
+                        lambda a, b: list(a) == list(b),
+                        "CubeShape_px",
+                    )
 
                     # assert extent_px is not None, "Extent_px is not set"
                     # assert cube_shape_px is not None, "CubeShape_px is not set"
