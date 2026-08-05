@@ -3028,6 +3028,10 @@ class KnossosDataset(object):
             boundary_mag = np.ceil(
                     np.asarray(self.boundary, dtype=float) / self.scale_ratio(mag, 1)
                 ).astype(int)
+            dataset = None
+            if self.server_format == "precomputed" and kzip_path is None:
+                dataset = self._ensure_precomputed_mag(mag, create=True)
+                boundary_mag = np.asarray(dataset.domain.shape[:3], dtype=int)
 
             write_end = np.minimum(offset_mag + size_mag, boundary_mag)
             if np.any(write_end <= offset_mag):
@@ -3053,7 +3057,7 @@ class KnossosDataset(object):
             self._print(f'box_offset: {offset_mag}')
             self._print(f'box_size: {size_mag}')
 
-            if self.server_format == "precomputed" and kzip_path is None:
+            if dataset is not None:
                 channel = 0
                 if self._rgb_channel:
                     if self._rgb_channel.startswith("r_"):
@@ -3062,7 +3066,6 @@ class KnossosDataset(object):
                         channel = 1
                     elif self._rgb_channel.startswith("b_"):
                         channel = 2
-                dataset = self._tensorstore_datasets[mag]
                 dataset[int(offset_mag[0]):int(offset_mag[0]+size_mag[0]), int(offset_mag[1]):int(offset_mag[1]+size_mag[1]), int(offset_mag[2]):int(offset_mag[2]+size_mag[2]), channel] = data_inter.swapaxes(0,2).astype(datatype)
             else:
                 start = np.array([get_first_block(dim, offset_mag, self._cube_shape) for dim in range(3)])

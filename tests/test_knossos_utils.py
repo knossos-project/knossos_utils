@@ -233,9 +233,13 @@ def test_KnossosDataset_save_raw_rejects_uint16_for_classic_knossos_cubes(tmp_pa
 
 
 def test_KnossosDataset_save_raw_accepts_uint16_for_precomputed_tensorstore():
+    class FakeDomain:
+        shape = (4, 3, 2, 1)
+
     class FakeTensorstoreDataset:
         def __init__(self):
             self.written = None
+            self.domain = FakeDomain()
 
         def __setitem__(self, key, value):
             self.written = (key, value)
