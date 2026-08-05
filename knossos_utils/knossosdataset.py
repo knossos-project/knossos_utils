@@ -3022,7 +3022,10 @@ class KnossosDataset(object):
             size_mag = np.array(data_inter.shape[::-1], dtype=int)
 
             # Clip write region to dataset boundary from metadata (offset is assumed >= 0)
-            boundary_mag = (np.array(self.boundary, dtype=int) // self.scale_ratio(mag, 1)).astype(int)
+            boundary_mag = np.ceil(
+                    np.asarray(self.boundary, dtype=float) / self.scale_ratio(mag, 1)
+                ).astype(int)
+
             write_end = np.minimum(offset_mag + size_mag, boundary_mag)
             if np.any(write_end <= offset_mag):
                 warnings.warn(
