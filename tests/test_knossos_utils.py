@@ -661,6 +661,34 @@ def test_KnossosDataset_save_seg_load_seg_classic_knossos_roundtrip(tmp_path):
     assert np.array_equal(loaded, expected)
 
 
+def test_KnossosDataset_save_raw_clips_to_dataset_boundary(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="clip_boundary",
+        boundary=(4, 3, 2),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="knossos",
+    )
+    # data extends 2 voxels past the boundary in x
+    data = np.arange(2 * 3 * 6, dtype=np.uint8).reshape((2, 3, 6))
+
+    with pytest.warns(UserWarning, match="clipping write region"):
+        kd.save_raw(
+            data=data,
+            data_mag=1,
+            offset=(0, 0, 0),
+            mags=[1],
+            upsample=False,
+            downsample=False,
+        )
+
+    loaded = kd.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+    assert np.array_equal(loaded, data[:, :, :4])
+
+
 def test_KnossosDataset_save_seg_rejects_non_uint64_data(tmp_path):
     kd = KnossosDataset.initialize(
         str(tmp_path),

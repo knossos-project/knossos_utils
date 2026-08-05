@@ -3045,6 +3045,8 @@ class KnossosDataset(object):
         else:
             datatype = data.dtype
 
+        assert np.all(offset >= 0), f'offset must be >= 0, got {offset.tolist()}'
+
         if (as_raw and datatype not in (np.dtype(np.uint8), np.dtype(np.uint16))) or (not as_raw and datatype != np.dtype(np.uint64)):
             raise ValueError('Currently, saving only accepts destination datatypes np.uint8 or np.uint16 (raw) or np.uint64 (segmentation).')
         if as_raw and datatype == np.dtype(np.uint16) and self.server_format != "precomputed":
@@ -3167,6 +3169,28 @@ class KnossosDataset(object):
 
             offset_mag = np.array(offset, dtype=int) // self.scale_ratio(mag, 1)
             size_mag = np.array(data_inter.shape[::-1], dtype=int)
+
+            # Clip write region to dataset boundary from metadata (offset is assumed >= 0)
+            boundary_mag = (np.array(self.boundary, dtype=int) // self.scale_ratio(mag, 1)).astype(int)
+            write_end = np.minimum(offset_mag + size_mag, boundary_mag)
+            if np.any(write_end <= offset_mag):
+                warnings.warn(
+                    f'mag {mag}: write region is completely outside dataset boundary '
+                    f'{boundary_mag.tolist()}, skipping'
+                )
+                continue
+            if np.any(write_end != offset_mag + size_mag):
+                warnings.warn(
+                    f'mag {mag}: clipping write region from offset {offset_mag.tolist()} '
+                    f'size {size_mag.tolist()} to fit dataset boundary {boundary_mag.tolist()}'
+                )
+                data_slice_end = (write_end - offset_mag).astype(int)
+                data_inter = data_inter[
+                    :data_slice_end[2],
+                    :data_slice_end[1],
+                    :data_slice_end[0],
+                ]
+                size_mag = np.array(data_inter.shape[::-1], dtype=int)
 
             self._print(f'mag: {mag}')
             self._print(f'box_offset: {offset_mag}')
