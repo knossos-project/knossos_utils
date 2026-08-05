@@ -3030,7 +3030,7 @@ class KnossosDataset(object):
                 ).astype(int)
             dataset = None
             if self.server_format == "precomputed" and kzip_path is None:
-                dataset = self._ensure_precomputed_mag(mag, create=True)
+                dataset = self._tensorstore_datasets[mag]
                 boundary_mag = np.asarray(dataset.domain.shape[:3], dtype=int)
 
             write_end = np.minimum(offset_mag + size_mag, boundary_mag)
