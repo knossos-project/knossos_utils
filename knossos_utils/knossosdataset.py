@@ -2895,6 +2895,7 @@ class KnossosDataset(object):
         else:
             datatype = data.dtype
 
+        offset = np.asarray(offset, dtype=int)
         assert np.all(offset >= 0), f'offset must be >= 0, got {offset.tolist()}'
 
         if (as_raw and datatype not in (np.dtype(np.uint8), np.dtype(np.uint16))) or (not as_raw and datatype != np.dtype(np.uint64)):
@@ -3017,7 +3018,7 @@ class KnossosDataset(object):
                     up_chunk_channel = scipy.ndimage.zoom((data == value).astype(np.uint8), inv_mag_ratio, order=1)
                     data_inter += (up_chunk_channel * value).astype(datatype, copy=False)
 
-            offset_mag = np.array(offset, dtype=int) // self.scale_ratio(mag, 1)
+            offset_mag = offset // self.scale_ratio(mag, 1)
             size_mag = np.array(data_inter.shape[::-1], dtype=int)
 
             # Clip write region to dataset boundary from metadata (offset is assumed >= 0)
