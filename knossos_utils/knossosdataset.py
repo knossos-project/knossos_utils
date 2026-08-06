@@ -420,7 +420,7 @@ class KnossosDataset(object):
     def available_mags(self):
         if self._mags is None:
             self._mags = []
-            if self.server_format == "precomputed" and self.scales:
+            if self.server_format == "precomputed" and len(self.scales) > 0:
                 if self._ordinal_mags:
                     self._mags = list(range(1, len(self.scales) + 1))
                 else:
