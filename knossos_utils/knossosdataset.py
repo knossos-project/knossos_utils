@@ -812,8 +812,6 @@ class KnossosDataset(object):
             layer._experiment_name = layer_conf['Name']
             layer.file_extensions = layer_conf['FileExtension']
             layer._dtype = _normalize_dtype(layer_conf.get('DataType', None))
-            if layer._dtype is None:
-                layer._dtype = np.uint64 if ".seg.sz.zip" in layer.file_extensions else np.uint8
             num_channels = layer_conf.get('NumChannels', 1)
             assert num_channels in (1, 3), f"NumChannels must be 1 or 3, got {num_channels} for layer {layer_conf['Name']}"
 
@@ -892,7 +890,9 @@ class KnossosDataset(object):
                         warnings.warn(f"Expected file extensions from .toml file to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']} from info file. Using file extension from info file...")
                         layer.file_extensions = [file_extension]
                     info_dtype = _normalize_dtype(info_json["data_type"])
-                    if layer._dtype is not None and layer._dtype != info_dtype:
+                    if info_dtype is None:
+                        layer._dtype = info_dtype
+                    elif layer._dtype != info_dtype:
                         warnings.warn(f"DataType in toml ({np.dtype(layer._dtype).name}) differs from info data_type ({info_json['data_type']}). Using info data_type.")
                         layer._dtype = info_dtype
 
@@ -972,7 +972,7 @@ class KnossosDataset(object):
                             warnings.warn("MISSING INFORMATION: Only one scale found in toml file. Assuming isotropic scale and generating scales...")
                             voxel_sizes = generated
                 layer.scales = voxel_sizes
-                _print("Found all information. Creating neuroglancer dataset...")
+                _print("Found all information!")
 
                 if num_channels == 3:
                     layer._rgb_channel = True
@@ -988,6 +988,9 @@ class KnossosDataset(object):
             layer.description = layer_conf.get('Description', layer.description)
             layer.color = layer_conf.get('Color')
             layer.visible = layer_conf.get('Visible')
+
+            if layer._dtype is None:
+                layer._dtype = np.uint64 if ".seg.sz.zip" in layer.file_extensions else np.uint8
 
             if layer._rgb_channel:
                 rgb_numbers = []
