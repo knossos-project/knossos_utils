@@ -918,7 +918,7 @@ class KnossosDataset(object):
                         if not all(any(np.allclose(info_res, toml_res) for toml_res in voxel_sizes) for info_res in info_voxel_sizes):
                             warnings.warn("VoxelSize_nm in toml does not cover all info scale resolutions. Using scale resolutions from info.")
                             voxel_sizes = None
-                    voxel_sizes = np.asarray(finest["resolution"], dtype=float) if voxel_sizes is None else voxel_sizes
+                    voxel_sizes = [np.asarray(finest["resolution"], dtype=float)] if voxel_sizes is None else voxel_sizes
 
                     mag1_res = np.asarray(voxel_sizes[0], dtype=float)
                     info_extent = np.ceil(np.asarray(finest["size"], dtype=float) * np.asarray(finest["resolution"], dtype=float) / mag1_res).astype(int).tolist()
