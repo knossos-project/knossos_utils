@@ -3097,10 +3097,13 @@ class KnossosDataset(object):
         if not mags:
             start_mag = 1 if upsample else data_mag
             end_mag = self.highest_mag if downsample else data_mag
-            if self._ordinal_mags:
-                mags = np.arange(start_mag, end_mag, dtype=int)
-            else: # power of 2 mags (KNOSSOS style)
-                mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=int))
+            if start_mag == end_mag:
+                mags = [start_mag] if self._ordinal_mags else [np.power(2, start_mag)]
+            else:
+                if self._ordinal_mags:
+                    mags = np.arange(start_mag, end_mag, dtype=int)
+                else: # power of 2 mags (KNOSSOS style)
+                    mags = np.power(2, np.arange(np.log2(start_mag), np.log2(end_mag), dtype=int))
         self._print(f'mags to write: {mags}')
 
         if kzip_path is not None:
