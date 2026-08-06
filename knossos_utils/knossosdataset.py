@@ -890,7 +890,7 @@ class KnossosDataset(object):
                         warnings.warn(f"Expected file extensions from .toml file to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']} from info file. Using file extension from info file...")
                         layer.file_extensions = [file_extension]
                     info_dtype = _normalize_dtype(info_json["data_type"])
-                    if info_dtype is None:
+                    if layer._dtype is None:
                         layer._dtype = info_dtype
                     elif layer._dtype != info_dtype:
                         warnings.warn(f"DataType in toml ({np.dtype(layer._dtype).name}) differs from info data_type ({info_json['data_type']}). Using info data_type.")
