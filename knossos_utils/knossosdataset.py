@@ -929,8 +929,6 @@ class KnossosDataset(object):
                     if channels != num_channels:
                         warnings.warn(f"NumChannels in toml ({num_channels}) differs from info num_channels ({channels}). Using info num_channels.")
                         num_channels = channels
-                    if num_channels == 3:
-                        layer._rgb_channel = True
 
                     kvstore_config = _precomputed_kvstore_config(layer.url, layer._cdn_token)
                     layer._tensorstore_datasets = {}
@@ -975,6 +973,9 @@ class KnossosDataset(object):
                             voxel_sizes = generated
                 layer.scales = voxel_sizes
                 _print("Found all information. Creating neuroglancer dataset...")
+
+                if num_channels == 3:
+                    layer._rgb_channel = True
 
                 # KnossosDataset.create_neuroglancer_layer(layer)
 
