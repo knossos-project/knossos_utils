@@ -829,24 +829,6 @@ class KnossosDataset(object):
                     except Exception as e:
                         print(f'Failed to get CDN token: {e} for {layer.url}')
                         fail_fast_cdn = True
-                if layer.server_format is None:
-                    if layer.url.startswith("file://"):
-                        local_path = _file_url_to_path(layer.url)
-                        if os.path.exists(local_path):
-                            layer.server_format = "precomputed"
-                    else:
-                        auth=None
-                        cdn_token = None
-                        if layer._http_user and layer._http_passwd:
-                            auth = (layer._http_user, layer._http_passwd)
-                            cdn_token = copy.deepcopy(layer._cdn_token)
-                        response = requests.get(layer.url + "/info", auth=auth, params=cdn_token)
-                        if response.status_code == 200:
-                            layer.server_format = "precomputed"
-            elif layer._knossos_path is not None:
-                info_file_path = os.path.join(layer._knossos_path, "info")
-                if os.path.exists(info_file_path):
-                    layer.server_format = "precomputed"
 
             if layer.server_format == "precomputed":
                 import json
@@ -855,12 +837,11 @@ class KnossosDataset(object):
                     layer.url = layer.url + "/info"
                 if layer.url and layer.url.startswith("file://"):
                     local_path = _file_url_to_path(layer.url)
-                    try:
-                        with open(local_path, 'r') as f:
-                            info_json = json.load(f)
-                    except Exception as e:
-                        print(f"Failed to load info json from local file '{local_path}': {e}")
-                        if os.path.exists(local_path):
+                    if os.path.exists(local_path):
+                        try:
+                            with open(local_path, 'r') as f:
+                                info_json = json.load(f)
+                        except Exception as e:
                             raise Exception(f"Failed to load info json from local file '{local_path}': {e}")
                 elif layer.url:
                     try:
@@ -873,7 +854,6 @@ class KnossosDataset(object):
                         response.raise_for_status()
                         info_json = response.json()
                     except Exception as e:
-                        print(f"Failed to load info json from url '{layer.url}': {e}")
                         raise Exception(f"Failed to load info json from url '{layer.url}': {e}")
                 if info_json is not None:
                     assert info_json["data_type"] == "uint8" or info_json["data_type"] == "uint16" or info_json["data_type"] == "uint64", f"Expected data_type to be uint8 or uint16 or uint64, got {info_json['data_type']}"
