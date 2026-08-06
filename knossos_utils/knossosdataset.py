@@ -815,12 +815,8 @@ class KnossosDataset(object):
             if layer._dtype is None:
                 layer._dtype = np.uint64 if ".seg.sz.zip" in layer.file_extensions else np.uint8
             num_channels = layer_conf.get('NumChannels', 1)
-            if num_channels == 3:
-                layer._rgb_channel = True
-            elif num_channels not in (1, None):
-                raise ValueError(
-                    f"NumChannels must be 1 or 3, got {num_channels} for layer {layer_conf['Name']}"
-                )
+            assert num_channels in (1, 3), f"NumChannels must be 1 or 3, got {num_channels} for layer {layer_conf['Name']}"
+
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer.url = f'file://{layer._knossos_path}' if layer._knossos_path is not None else None
             if 'URL' in layer_conf:
@@ -904,7 +900,6 @@ class KnossosDataset(object):
 
                 extent_px = layer_conf.get('Extent_px', None)
                 cube_shape_px = layer_conf.get('CubeShape_px', None)
-                # voxel_sizes = layer_conf.get('VoxelSize_nm', None)
                 voxel_sizes = None
                 if 'VoxelSize_nm' in layer_conf:
                     voxel_sizes = [np.array(scale) for scale in layer_conf['VoxelSize_nm']]
@@ -918,21 +913,15 @@ class KnossosDataset(object):
                         layer.file_extensions = [file_extension]
                     info_dtype = _normalize_dtype(info_json["data_type"])
                     if layer._dtype is not None and layer._dtype != info_dtype:
-                        warnings.warn(
-                            f"DataType in toml ({np.dtype(layer._dtype).name}) differs from "
-                            f"info data_type ({info_json['data_type']}). Using info data_type."
-                        )
-                    layer._dtype = info_dtype
+                        warnings.warn(f"DataType in toml ({np.dtype(layer._dtype).name}) differs from info data_type ({info_json['data_type']}). Using info data_type.")
+                        layer._dtype = info_dtype
 
                     # Geometry: prefer TOML; fill gaps from info. With magX keys, overwrite on mismatch.
                     finest = min(info_json["scales"], key=lambda s: float(np.prod(s["resolution"])))
                     uses_mag_keys = any(re.match(r"^mag\d+$", str(s["key"])) for s in info_json["scales"])
                     finest_mag = re.match(r"^mag(\d+)$", str(finest["key"]))
                     if finest_mag is None:
-                        warnings.warn(
-                            f"Expected finest scale key to be 'magN', got {finest['key']}. "
-                            f"Info geometry is only used when missing in toml."
-                        )
+                        warnings.warn(f"Expected finest scale key to be 'magN', got {finest['key']}. Info geometry is only used when missing in toml.")
 
                     info_voxel_sizes = [np.asarray(s["resolution"], dtype=float) for s in info_json["scales"]]
                     info_cube = list(finest["chunk_sizes"][0])
@@ -946,53 +935,24 @@ class KnossosDataset(object):
                         return toml_val
 
                     if voxel_sizes is not None and uses_mag_keys:
-                        toml_ok = all(
-                            any(np.allclose(info_res, toml_res) for toml_res in voxel_sizes)
-                            for info_res in info_voxel_sizes
-                        )
-                        if not toml_ok:
-                            warnings.warn(
-                                "VoxelSize_nm in toml does not cover all info scale resolutions. "
-                                "Using scale resolutions from info."
-                            )
+                        if not all(any(np.allclose(info_res, toml_res) for toml_res in voxel_sizes) for info_res in info_voxel_sizes):
+                            warnings.warn("VoxelSize_nm in toml does not cover all info scale resolutions. Using scale resolutions from info.")
                             voxel_sizes = None
                     voxel_sizes = np.asarray(finest["resolution"], dtype=float) if voxel_sizes is None else voxel_sizes
 
                     mag1_res = np.asarray(voxel_sizes[0], dtype=float)
-                    info_extent = np.ceil(
-                        np.asarray(finest["size"], dtype=float)
-                        * np.asarray(finest["resolution"], dtype=float)
-                        / mag1_res
-                    ).astype(int).tolist()
-                    extent_px = _prefer(
-                        extent_px, info_extent,
-                        lambda a, b: np.array_equal(np.asarray(a, dtype=int), np.asarray(b, dtype=int)),
-                        "Extent_px",
-                    )
-                    cube_shape_px = _prefer(
-                        cube_shape_px, info_cube,
-                        lambda a, b: list(a) == list(b),
-                        "CubeShape_px",
-                    )
-
-                    # assert extent_px is not None, "Extent_px is not set"
-                    # assert cube_shape_px is not None, "CubeShape_px is not set"
-                    # assert voxel_sizes is not None, "VoxelSize_nm is not set"
+                    info_extent = np.ceil(np.asarray(finest["size"], dtype=float) * np.asarray(finest["resolution"], dtype=float) / mag1_res).astype(int).tolist()
+                    extent_px = _prefer(extent_px, info_extent, lambda a, b: np.array_equal(np.asarray(a, dtype=int), np.asarray(b, dtype=int)), "Extent_px")
+                    cube_shape_px = _prefer(cube_shape_px, info_cube, lambda a, b: list(a) == list(b), "CubeShape_px")
 
                     channels = info_json["num_channels"]
                     if channels != num_channels:
-                        warnings.warn(
-                            f"NumChannels in toml ({num_channels}) differs from info num_channels ({channels}). Using info num_channels."
-                        )
+                        warnings.warn(f"NumChannels in toml ({num_channels}) differs from info num_channels ({channels}). Using info num_channels.")
                         num_channels = channels
-                        if channels == 3:
-                            layer._rgb_channel = True
-                        else:
-                            layer._rgb_channel = None
+                    if num_channels == 3:
+                        layer._rgb_channel = True
 
-                    kvstore_config = _precomputed_kvstore_config(
-                        layer.url, layer._cdn_token
-                    )
+                    kvstore_config = _precomputed_kvstore_config(layer.url, layer._cdn_token)
                     layer._tensorstore_datasets = {}
                     for idx, key in enumerate([scale["key"] for scale in info_json["scales"]]):
                         mag = idx + 1
@@ -1024,9 +984,7 @@ class KnossosDataset(object):
                     layer._tensorstore_datasets = {}
 
                 if extent_px is None or cube_shape_px is None or voxel_sizes is None:
-                    raise ValueError(
-                        f"No info file found at {layer.url} and could not find all missing information in toml file or other layers."
-                    )
+                    raise ValueError(f"No info file found at {layer.url} and could not find all missing information in toml file or other layers.")
                 
                 layer._boundary = extent_px
                 layer._cube_shape = cube_shape_px
