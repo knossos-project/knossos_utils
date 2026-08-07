@@ -887,8 +887,7 @@ class KnossosDataset(object):
                     assert info_json["num_channels"] == 1 or info_json["num_channels"] == 3, f"Expected num_channels to be 1 or 3(rgb), got {info_json['num_channels']}"
                     file_extension = ".seg.sz.zip" if info_json["scales"][0]["encoding"] == "compressed_segmentation" else f'.{info_json["scales"][0]["encoding"]}'
                     if layer.file_extensions != [file_extension]:
-                        warnings.warn(f"Expected file extensions from .toml file to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']} from info file. Using file extension from info file...")
-                        layer.file_extensions = [file_extension]
+                        raise ValueError(f"Expected file extensions from .toml file to be {layer.file_extensions}, got {info_json['scales'][0]['encoding']} from info file!!!")
                     info_dtype = _normalize_dtype(info_json["data_type"])
                     if layer._dtype is None:
                         layer._dtype = info_dtype
@@ -3098,7 +3097,7 @@ class KnossosDataset(object):
             start_mag = 1 if upsample else data_mag
             end_mag = self.highest_mag if downsample else data_mag
             if start_mag == end_mag:
-                mags = [start_mag] if self._ordinal_mags else [np.power(2, start_mag)]
+                mags = [start_mag] if self._ordinal_mags else [np.power(2, start_mag - 1)]
             else:
                 if self._ordinal_mags:
                     mags = np.arange(start_mag, end_mag, dtype=int)
