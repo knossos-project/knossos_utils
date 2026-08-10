@@ -812,8 +812,8 @@ class KnossosDataset(object):
             layer._experiment_name = layer_conf['Name']
             layer.file_extensions = layer_conf['FileExtension']
             layer._dtype = _normalize_dtype(layer_conf.get('DataType', None))
-            num_channels = layer_conf.get('NumChannels', 1)
-            assert num_channels in (1, 3), f"NumChannels must be 1 or 3, got {num_channels} for layer {layer_conf['Name']}"
+            num_channels = layer_conf.get('NumChannels', None)
+            assert num_channels in (None, 1, 3), f"NumChannels must be None, 1 or 3, got {num_channels} for layer {layer_conf['Name']}"
 
             layer.server_format = layer_conf.get('ServerFormat', layer.server_format)
             layer.url = f'file://{layer._knossos_path}' if layer._knossos_path is not None else None
@@ -925,8 +925,10 @@ class KnossosDataset(object):
                     cube_shape_px = _prefer(cube_shape_px, info_cube, lambda a, b: list(a) == list(b), "CubeShape_px")
 
                     channels = info_json["num_channels"]
-                    if channels != num_channels:
+                    if num_channels is not None and channels != num_channels:
                         warnings.warn(f"NumChannels in toml ({num_channels}) differs from info num_channels ({channels}). Using info num_channels.")
+                        num_channels = channels
+                    if num_channels is None:
                         num_channels = channels
 
                     kvstore_config = _precomputed_kvstore_config(layer.url, layer._cdn_token)
@@ -973,7 +975,7 @@ class KnossosDataset(object):
                 layer.scales = voxel_sizes
                 _print("Found all information!")
 
-                if num_channels == 3:
+                if num_channels is not None and num_channels == 3:
                     layer._rgb_channel = True
 
                 # KnossosDataset.create_neuroglancer_layer(layer)
