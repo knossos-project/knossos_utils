@@ -397,11 +397,13 @@ Description = "test"
     assert kd.layers[0].experiment_name == kd.experiment_name
     assert kd.conf_path is None
     assert kd.url is None
-    assert len(kd._tensorstore_datasets) > 0
+    assert kd._tensorstore_datasets == {}
     assert np.array_equal(kd.boundary, [128, 128, 128])
     assert np.array_equal(kd.cube_shape, [128, 128, 128])
     assert np.array_equal(kd.scale, [8, 8, 8])
     assert np.array_equal(kd.scales[0], [8, 8, 8])
+    assert kd.available_mags == list(range(1, len(kd.scales) + 1))
+    assert kd.existing_mags == []
 
 
 def test_KnossosDataset_from_toml_string_precomputed_without_conf_path_roundtrip():
@@ -505,9 +507,52 @@ def test_KnossosDataset_initialize_from_array__as_rgb_precomputed(tmp_path):
     assert kd.layers[0]._tensorstore_datasets is kd.layers[1]._tensorstore_datasets
     assert kd.layers[0]._tensorstore_datasets is kd.layers[2]._tensorstore_datasets
     assert json.loads((tmp_path / "info").read_text())["num_channels"] == 3
+    assert "NumChannels = 3" in (tmp_path / "rgb.k.toml").read_text()
 
     reloaded = KnossosDataset(kd.conf_path)
     assert len(reloaded.layers) == 3
+    for idx, layer in enumerate(reloaded.layers):
+        loaded = layer.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+        assert np.array_equal(loaded, data[..., idx])
+
+
+def test_KnossosDataset_initialize_as_rgb_reopen_without_info(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="rgb_deferred",
+        boundary=(4, 3, 2),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+        as_rgb=True,
+    )
+    assert not (tmp_path / "info").exists()
+    assert len(kd.layers) == 3
+    assert "NumChannels = 3" in (tmp_path / "rgb_deferred.k.toml").read_text()
+
+    reloaded = KnossosDataset(str(tmp_path / "rgb_deferred.k.toml"))
+    assert len(reloaded.layers) == 3
+    assert [layer._rgb_channel for layer in reloaded.layers] == ["r_1", "g_1", "b_1"]
+    assert reloaded.layers[0]._tensorstore_datasets is reloaded.layers[1]._tensorstore_datasets
+    assert reloaded.existing_mags == []
+
+    data = np.zeros((2, 3, 4, 3), dtype=np.uint8)
+    data[..., 0] = 11
+    data[..., 1] = 22
+    data[..., 2] = 33
+    for idx, layer in enumerate(reloaded.layers):
+        layer.save_raw(
+            data=data[..., idx],
+            data_mag=1,
+            offset=(0, 0, 0),
+            mags=[1],
+            upsample=False,
+            downsample=False,
+        )
+
+    assert json.loads((tmp_path / "info").read_text())["num_channels"] == 3
     for idx, layer in enumerate(reloaded.layers):
         loaded = layer.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
         assert np.array_equal(loaded, data[..., idx])
@@ -738,6 +783,163 @@ def test_KnossosDataset_initialize_from_array__segmentation_precomputed_roundtri
         kd, data, tmp_path, expected_size=[4, 3, 2]
     )
 
+
+def test_KnossosDataset_initialize_precomputed_creates_no_info(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="deferred",
+        boundary=(4, 3, 2),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+        dtype="uint16",
+    )
+
+    assert not (tmp_path / "info").exists()
+    assert kd._tensorstore_datasets == {}
+    assert kd.available_mags == list(range(1, len(kd.scales) + 1))
+    assert kd.existing_mags == []
+    assert kd._dtype == np.dtype(np.uint16)
+
+    toml_text = (tmp_path / "deferred.k.toml").read_text()
+    assert "Extent_px" in toml_text
+    assert "VoxelSize_nm" in toml_text
+    assert "CubeShape_px" in toml_text
+    assert "DataType = 'uint16'" in toml_text
+
+    reloaded = KnossosDataset(str(tmp_path / "deferred.k.toml"))
+    assert reloaded._dtype == np.dtype(np.uint16)
+    assert reloaded.existing_mags == []
+
+
+def test_KnossosDataset_precomputed_reopen_without_info_then_write(tmp_path):
+    KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="reopen",
+        boundary=(4, 3, 2),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    assert not (tmp_path / "info").exists()
+
+    kd = KnossosDataset(str(tmp_path / "reopen.k.toml"))
+    assert np.array_equal(kd.boundary, [4, 3, 2])
+    assert kd._tensorstore_datasets == {}
+    assert kd.available_mags == list(range(1, len(kd.scales) + 1))
+    assert kd.existing_mags == []
+
+    data = np.arange(24, dtype=np.uint8).reshape((2, 3, 4))
+    kd.save_raw(
+        data=data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1],
+        upsample=False,
+        downsample=False,
+    )
+
+    info = json.loads((tmp_path / "info").read_text())
+    assert [s["key"] for s in info["scales"]] == ["mag1"]
+    assert kd.existing_mags == [1]
+    loaded = kd.load_raw(offset=(0, 0, 0), size=(4, 3, 2), mag=1)
+    assert np.array_equal(loaded, data)
+
+
+def test_KnossosDataset_precomputed_on_demand_mags_sorted_in_info(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="ondemand",
+        boundary=(4, 4, 2),
+        cube_shape=(2, 2, 2),
+        scale=(1, 1, 1),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    assert len(kd.available_mags) >= 2
+
+    mag2_data = np.arange(8, dtype=np.uint8).reshape((2, 2, 2))
+    kd.save_raw(
+        data=mag2_data,
+        data_mag=2,
+        offset=(0, 0, 0),
+        mags=[2],
+        upsample=False,
+        downsample=False,
+    )
+    info = json.loads((tmp_path / "info").read_text())
+    assert [s["key"] for s in info["scales"]] == ["mag2"]
+    assert 1 in kd.available_mags
+    assert kd.existing_mags == [2]
+
+    with pytest.raises(Exception, match="No precomputed data for mag 1"):
+        kd.load_raw(offset=(0, 0, 0), size=(4, 4, 2), mag=1)
+
+    mag1_data = np.arange(32, dtype=np.uint8).reshape((2, 4, 4))
+    kd.save_raw(
+        data=mag1_data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1],
+        upsample=False,
+        downsample=False,
+    )
+    info = json.loads((tmp_path / "info").read_text())
+    keys = [s["key"] for s in info["scales"]]
+    assert keys == ["mag1", "mag2"]
+    assert kd.existing_mags == [1, 2]
+    resolutions = [s["resolution"] for s in info["scales"]]
+    assert resolutions == sorted(resolutions)
+    assert np.array_equal(
+        kd.load_raw(offset=(0, 0, 0), size=(4, 4, 2), mag=1), mag1_data
+    )
+
+
+def test_KnossosDataset_load_mag2_preserves_boundary_and_scales(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="mag2meta",
+        boundary=(4, 4, 2),
+        cube_shape=(2, 2, 2),
+        scale=(8, 8, 4),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    expected_boundary = np.array(kd.boundary)
+    expected_scales = [np.array(s, dtype=float) for s in kd.scales]
+    expected_cube_shape = np.array(kd.cube_shape)
+    assert len(expected_scales) >= 2
+    assert not np.allclose(expected_scales[0], [1, 1, 1])
+
+    mag2_data = np.arange(8, dtype=np.uint8).reshape((2, 2, 2))
+    kd.save_raw(
+        data=mag2_data,
+        data_mag=2,
+        offset=(0, 0, 0),
+        mags=[2],
+        upsample=False,
+        downsample=False,
+    )
+    assert [s["key"] for s in json.loads((tmp_path / "info").read_text())["scales"]] == ["mag2"]
+
+    reloaded = KnossosDataset(kd.conf_path)
+    loaded_mag2 = reloaded.load_raw(offset=(0, 0, 0), size=(4, 4, 2), mag=2)
+
+    assert np.array_equal(reloaded.boundary, expected_boundary)
+    assert np.array_equal(reloaded.cube_shape, expected_cube_shape)
+    assert len(reloaded.scales) == len(expected_scales)
+    for actual, expected in zip(reloaded.scales, expected_scales):
+        assert np.allclose(actual, expected)
+    assert np.allclose(reloaded.scale, expected_scales[0])
+    assert reloaded.available_mags == list(range(1, len(expected_scales) + 1))
+    assert reloaded.existing_mags == [2]
+    assert np.array_equal(loaded_mag2, mag2_data)
 
 @pytest.mark.parametrize(
     "url,cdn_token,expected",
