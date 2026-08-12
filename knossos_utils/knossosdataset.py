@@ -151,6 +151,31 @@ def _normalize_dtype(dtype):
     return dtype
 
 
+def _parse_mag_scale_key(key):
+    """Return mag number from 'magN', or None."""
+    match = re.match(r"^mag(\d+)$", str(key))
+    return int(match.group(1)) if match else None
+
+
+def _parse_resolution_scale_key(key):
+    """Return [x, y, z] from neuroglancer-style '<sx>_<sy>_<sz>', or None."""
+    match = re.match(r"^(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)$", str(key))
+    if match is None:
+        return None
+    return np.array([float(match.group(1)), float(match.group(2)), float(match.group(3))])
+
+
+def _mag_from_resolution_key(key, voxel_sizes):
+    """Match a neuroglancer resolution key against toml VoxelSize_nm; return ordinal mag or None."""
+    key_res = _parse_resolution_scale_key(key)
+    if key_res is None or voxel_sizes is None:
+        return None
+    for idx, toml_res in enumerate(voxel_sizes):
+        if np.allclose(key_res, np.asarray(toml_res, dtype=float)):
+            return idx + 1
+    return None
+
+
 def _file_url_to_path(url: str):
     # Do not pass Windows drive paths through urlparse; it treats "C:" as a URL scheme.
     url_path = url[7:]
@@ -895,12 +920,26 @@ class KnossosDataset(object):
                         warnings.warn(f"DataType in toml ({np.dtype(layer._dtype).name}) differs from info data_type ({info_json['data_type']}). Using info data_type.")
                         layer._dtype = info_dtype
 
-                    # Geometry: prefer TOML; fill gaps from info. With magX keys, overwrite on mismatch.
+                    # Geometry: prefer TOML; fill gaps from info. With known mag keys, overwrite on mismatch.
                     finest = min(info_json["scales"], key=lambda s: float(np.prod(s["resolution"])))
-                    uses_mag_keys = any(re.match(r"^mag\d+$", str(s["key"])) for s in info_json["scales"])
-                    finest_mag = re.match(r"^mag(\d+)$", str(finest["key"]))
+                    uses_mag_keys = any(_parse_mag_scale_key(s["key"]) is not None for s in info_json["scales"])
+                    uses_resolution_keys = any(_parse_resolution_scale_key(s["key"]) is not None for s in info_json["scales"])
+                    finest_mag = _parse_mag_scale_key(finest["key"])
+                    if finest_mag is None and uses_resolution_keys:
+                        # Neuroglancer-style keys encode resolution as "<sx>_<sy>_<sz>"; match against toml mag1.
+                        matched_mag = _mag_from_resolution_key(finest["key"], voxel_sizes)
+                        if matched_mag == 1:
+                            finest_mag = 1
+                        elif matched_mag is None:
+                            finest_key_res = _parse_resolution_scale_key(finest["key"])
+                            finest_info_res = np.asarray(finest["resolution"], dtype=float)
+                            # No toml match: if key equals the finest info resolution, treat as mag1.
+                            if finest_key_res is not None and np.allclose(finest_key_res, finest_info_res) and voxel_sizes is None:
+                                finest_mag = 1
+                        if finest_mag == 1:
+                            uses_mag_keys = True
                     if finest_mag is None:
-                        warnings.warn(f"Expected finest scale key to be 'magN', got {finest['key']}. Info geometry is only used when missing in toml.")
+                        warnings.warn(f"Expected finest scale key to be 'magN' or a resolution key matching mag1, got {finest['key']}. Info geometry is only used when missing in toml.")
 
                     info_voxel_sizes = [np.asarray(s["resolution"], dtype=float) for s in info_json["scales"]]
                     info_cube = list(finest["chunk_sizes"][0])
@@ -934,9 +973,11 @@ class KnossosDataset(object):
                     kvstore_config = _precomputed_kvstore_config(layer.url, layer._cdn_token)
                     layer._tensorstore_datasets = {}
                     for idx, key in enumerate([scale["key"] for scale in info_json["scales"]]):
-                        mag = idx + 1
-                        if "mag" in key:
-                            mag = int(key.split("mag")[1])
+                        mag = _parse_mag_scale_key(key)
+                        if mag is None:
+                            mag = _mag_from_resolution_key(key, voxel_sizes)
+                        if mag is None:
+                            mag = idx + 1
                         layer._tensorstore_datasets[mag] = ts.open({
                                     "driver": "neuroglancer_precomputed",
                                     "kvstore": {
