@@ -936,10 +936,16 @@ class KnossosDataset(object):
                             # No toml match: if key equals the finest info resolution, treat as mag1.
                             if finest_key_res is not None and np.allclose(finest_key_res, finest_info_res) and voxel_sizes is None:
                                 finest_mag = 1
+                                warnings.warn(f"No scales in toml file and no magN key, expected mag1. Potentially problematic behavior!!!!! Please update toml file!")
+                            else:
+                                raise ValueError(f"Finest scale key '{finest['key']}' matched toml VoxelSize_nm at mag{matched_mag}, expected mag1.")
                         if finest_mag == 1:
                             uses_mag_keys = True
                     if finest_mag is None:
-                        warnings.warn(f"Expected finest scale key to be 'magN' or a resolution key matching mag1, got {finest['key']}. Info geometry is only used when missing in toml.")
+                        raise ValueError(
+                            f"Could not uniquely identify mag for finest scale key '{finest['key']}'. "
+                            f"Expected 'magN' or a resolution key matching mag1."
+                        )
 
                     info_voxel_sizes = [np.asarray(s["resolution"], dtype=float) for s in info_json["scales"]]
                     info_cube = list(finest["chunk_sizes"][0])
@@ -956,7 +962,17 @@ class KnossosDataset(object):
                         if not all(any(np.allclose(info_res, toml_res) for toml_res in voxel_sizes) for info_res in info_voxel_sizes):
                             warnings.warn("VoxelSize_nm in toml does not cover all info scale resolutions. Using scale resolutions from info.")
                             voxel_sizes = None
-                    voxel_sizes = [np.asarray(finest["resolution"], dtype=float)] if voxel_sizes is None else voxel_sizes
+                    if voxel_sizes is None:
+                        finest_res = np.asarray(finest["resolution"], dtype=float).copy()
+                        if finest_mag > 1:
+                            mag_factor = float(2 ** (finest_mag - 1))
+                            extent_z = extent_px[2] if extent_px is not None else finest["size"][2]
+                            if int(extent_z) == 1:
+                                finest_res[0] /= mag_factor
+                                finest_res[1] /= mag_factor
+                            else:
+                                finest_res = finest_res / mag_factor
+                        voxel_sizes = [finest_res]
 
                     mag1_res = np.asarray(voxel_sizes[0], dtype=float)
                     info_extent = np.ceil(np.asarray(finest["size"], dtype=float) * np.asarray(finest["resolution"], dtype=float) / mag1_res).astype(int).tolist()
