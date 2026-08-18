@@ -697,13 +697,14 @@ class KnossosDataset(object):
 
     def initialize_from_conf(self, path_to_conf: str):
 
-        if path_to_conf.startswith("http") and path_to_conf.endswith(".k.toml"):
+        path_to_conf_str = str(path_to_conf)
+        if path_to_conf_str.startswith("http") and path_to_conf_str.endswith(".k.toml"):
             try:
-                response = requests.get(path_to_conf)
+                response = requests.get(path_to_conf_str)
                 response.raise_for_status()
                 self._initialize_from_dict(tomli.loads(response.text))
             except Exception as e:
-                raise NotImplementedError(f"Could not read .conf from url {path_to_conf}: {e}")
+                raise NotImplementedError(f"Could not read .conf from url {path_to_conf_str}: {e}")
         else:
             path_to_conf = Path(path_to_conf)
             if path_to_conf.name.endswith('.k.toml'):
