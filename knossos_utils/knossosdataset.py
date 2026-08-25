@@ -47,7 +47,7 @@ import sys
 import tempfile
 import time
 import tomli
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Sequence, Union
 import urllib
 import warnings
 import zipfile
@@ -59,9 +59,7 @@ from multiprocessing import Pool
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from threading import Lock
-from typing import Optional, Sequence
 from xml.etree import ElementTree as ET
-import warnings
 
 import imageio
 import h5py
@@ -93,6 +91,46 @@ def our_glob(s):
     for g in glob.glob(s):
         l.append(g.replace(os.path.sep, "/"))
     return l
+
+
+DownsampleMode = Literal["stride", "max", "mean"]
+
+
+def _downsample_blocks(data: np.ndarray, ratio_zyx, mode: DownsampleMode) -> np.ndarray:
+    """Downsample a ZYX array by an integer block factor.
+
+    Trailing voxels that do not fill a complete block are dropped, matching
+    the effective coverage of ``data[::rz, ::ry, ::rx]`` striding.
+    """
+    rz, ry, rx = (int(r) for r in ratio_zyx)
+    if rz < 1 or ry < 1 or rx < 1:
+        raise ValueError(f'downsample block ratio must be >= 1 on each axis, got {ratio_zyx}')
+    if mode == "stride":
+        return np.array(data[::rz, ::ry, ::rx])
+
+    z_end = (data.shape[0] // rz) * rz
+    y_end = (data.shape[1] // ry) * ry
+    x_end = (data.shape[2] // rx) * rx
+    if z_end == 0 or y_end == 0 or x_end == 0:
+        raise ValueError(
+            f'data shape {data.shape} is smaller than downsample block {rz, ry, rx}'
+        )
+    cropped = data[:z_end, :y_end, :x_end]
+    blocks = cropped.reshape(
+        z_end // rz, rz,
+        y_end // ry, ry,
+        x_end // rx, rx,
+    )
+    if mode == "max":
+        return blocks.max(axis=(1, 3, 5))
+    if mode == "mean":
+        out = blocks.mean(axis=(1, 3, 5))
+        if np.issubdtype(data.dtype, np.integer):
+            return np.rint(out).astype(data.dtype, copy=False)
+        return out
+    raise ValueError(
+        f'Unknown downsample_mode={mode!r}. Expected one of "stride", "max", "mean".'
+    )
 
 
 def _print(*args, **kwargs):
@@ -1774,7 +1812,7 @@ class KnossosDataset(object):
         self._initialized = True
 
     @staticmethod
-    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None, dtype=None):
+    def initialize_from_array(data: np.ndarray, experiment_name: str, cube_shape: Sequence[int], scale: Sequence[int], ds_factor: Sequence[int], file_extensions: Sequence[str] = ['.png'], channels: Optional[Sequence[str]] = ('',), write_path: Optional[str] = None, parent_dataset: Optional[KnossosDataset] = None, server_format="precomputed", as_rgb: bool = False, shard_size: Optional[Sequence[int]] = None, dtype=None, downsample_mode: DownsampleMode = "stride"):
         if write_path and parent_dataset:
             raise ValueError(f"Specify either `write_path` (to create a new dataset) or `parent_dataset` (to add a layer to an existing dataset).")
         if parent_dataset and not parent_dataset.initialized:
@@ -1815,7 +1853,7 @@ class KnossosDataset(object):
             layers = parent.layers[number_existing_layers:]
             for idx, layer in enumerate(layers):
                 Path(layer._conf_path).parent.mkdir(exist_ok=True)
-                layer.save_raw(data[..., idx], offset=(0, 0, 0), data_mag=1)
+                layer.save_raw(data[..., idx], offset=(0, 0, 0), data_mag=1, downsample_mode=downsample_mode)
             return parent
 
         if len(channels) > 1 and (data.ndim < len(cube_shape) + 1 or data.shape[-1] != len(channels)):
@@ -1839,7 +1877,7 @@ class KnossosDataset(object):
             save_func = layer.save_seg if '.seg.sz.zip' in file_extensions else layer.save_raw
             Path(layer._conf_path).parent.mkdir(exist_ok=True)
             print(f"Saving layer {idx} with dtype {data[...,idx].dtype} to {layer._conf_path}")
-            save_func(data[...,idx], offset=(0, 0, 0), data_mag=1)
+            save_func(data[...,idx], offset=(0, 0, 0), data_mag=1, downsample_mode=downsample_mode)
         return parent
 
 
@@ -3071,11 +3109,16 @@ class KnossosDataset(object):
         else:
             self._save(data, data_mag, offset, mags, as_raw, None, upsample, downsample, fast_downsampling)
 
-    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None):
+    def _save(self, data, data_mag, offset, mags, as_raw, kzip_path, upsample, downsample, fast_resampling, datatype=None, downsample_mode: DownsampleMode = "stride"):
         if datatype is not None:
             datatype = np.dtype(datatype)
         else:
             datatype = data.dtype
+
+        if downsample_mode not in ("stride", "max", "mean"):
+            raise ValueError(
+                f'Unknown downsample_mode={downsample_mode!r}. Expected one of "stride", "max", "mean".'
+            )
 
         offset = np.asarray(offset, dtype=int)
         assert np.all(offset >= 0), f'offset must be >= 0, got {offset.tolist()}'
@@ -3187,10 +3230,25 @@ class KnossosDataset(object):
             ratio = self.scale_ratio(mag, data_mag)[::-1]
             inv_mag_ratio = 1.0/np.array(ratio)
             fast = fast_resampling or (not as_raw and mag > data_mag)
-            if fast and all(mag_ratio.is_integer() for mag_ratio in ratio):
+            integer_ratio = all(mag_ratio.is_integer() for mag_ratio in ratio)
+            # Block pooling (max/mean) only applies when downsampling with integer ratios.
+            # It takes precedence over fast_resampling so callers need only set downsample_mode.
+            if (
+                downsample_mode in ("max", "mean")
+                and mag > data_mag
+                and integer_ratio
+            ):
+                data_inter = _downsample_blocks(data, ratio, downsample_mode).astype(datatype, copy=False)
+            elif fast and integer_ratio:
                 data_inter = np.array(data[::int(ratio[0]), ::int(ratio[1]), ::int(ratio[2])])
             elif all(mag_ratio == 1 for mag_ratio in ratio):
                 data_inter = data
+            elif downsample_mode in ("max", "mean") and mag > data_mag:
+                warnings.warn(
+                    f'downsample_mode={downsample_mode!r} requires integer scale ratios; '
+                    f'got {ratio.tolist()} for mag={mag}. Falling back to nearest-neighbor zoom.'
+                )
+                data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
             elif fast:
                 data_inter = scipy.ndimage.zoom(data, inv_mag_ratio, order=0).astype(datatype, copy=False)
             elif as_raw:
@@ -3307,24 +3365,36 @@ class KnossosDataset(object):
                 with ThreadPoolExecutor() as pool:
                     list(pool.map(_write_cubes, multithreading_params)) # convert generator to list to unsilence errors
 
-    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=None):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype)
+    def save_raw(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=None, downsample_mode: DownsampleMode = "stride"):
+        """Save raw data, optionally generating coarser/finer mags.
 
-    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=None):
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype)
+        :param downsample_mode: ``"stride"`` (default, pick one voxel per block),
+            ``"max"`` (block max-pool), or ``"mean"`` (block mean-pool).
+            Pooling only applies when downsampling with integer scale ratios.
+        """
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=True, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype, downsample_mode=downsample_mode)
 
-    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+    def save_seg(self, data, data_mag, offset, mags=[], upsample=True, downsample=True, fast_resampling=True, datatype=None, downsample_mode: DownsampleMode = "stride"):
+        """Save segmentation data, optionally generating coarser/finer mags.
+
+        :param downsample_mode: see :meth:`save_raw`. For label IDs, ``"max"``/
+            ``"mean"`` are usually not semantically meaningful (prefer stride
+            or majority vote outside this helper).
+        """
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=None, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, datatype=datatype, downsample_mode=downsample_mode)
+
+    def save_to_kzip(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True, downsample_mode: DownsampleMode = "stride"):
         kzip_path = str(kzip_path)
         kzip_dir_path = kzip_path[:-6] if kzip_path.endswith('.k.zip') else kzip_path
         assert not Path(kzip_dir_path).exists(), f'the folder used for kzip compression already exists: {kzip_dir_path}'
-        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=mags, gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+        self.save_to_kzip_path_only(data=data, data_mag=data_mag, kzip_path=kzip_path, offset=offset, mags=mags, gen_mergelist=gen_mergelist, annotation_str=annotation_str, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, downsample_mode=downsample_mode)
         self.compress_kzip(kzip_path=kzip_path)
 
-    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True):
+    def save_to_kzip_path_only(self, data, data_mag, kzip_path, offset, mags=[], gen_mergelist=True, annotation_str=None, upsample=True, downsample=True, fast_resampling=True, downsample_mode: DownsampleMode = "stride"):
         kzip_path = str(kzip_path)
         if kzip_path.endswith('.k.zip'):
             kzip_path = kzip_path[:-6]
-        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling)
+        self._save(data=data, data_mag=data_mag, offset=offset, mags=mags, as_raw=False, kzip_path=kzip_path, upsample=upsample, downsample=downsample, fast_resampling=fast_resampling, downsample_mode=downsample_mode)
         if gen_mergelist:
             with open(os.path.join(kzip_path, 'mergelist.txt'), 'w') as mergelist:
                 start = time.time();

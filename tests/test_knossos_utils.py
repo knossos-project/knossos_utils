@@ -980,3 +980,98 @@ def test_KnossosDataset_load_mag2_preserves_boundary_and_scales(tmp_path):
 )
 def test_precomputed_kvstore_config__http_urls(url, cdn_token, expected):
     assert _precomputed_kvstore_config(url, cdn_token) == expected
+
+
+def test_downsample_blocks_max_preserves_peak():
+    from knossos_utils.knossosdataset import _downsample_blocks
+
+    # 2x2x2 blocks; peak sits off the stride index so stride would drop it.
+    data = np.zeros((2, 4, 4), dtype=np.uint8)
+    data[0, 1, 1] = 42
+    data[0, 3, 3] = 7
+
+    strode = _downsample_blocks(data, (1, 2, 2), "stride")
+    pooled = _downsample_blocks(data, (1, 2, 2), "max")
+
+    assert strode.shape == (2, 2, 2)
+    assert pooled.shape == (2, 2, 2)
+    assert strode[0, 0, 0] == 0  # stride picks [0,0]
+    assert pooled[0, 0, 0] == 42
+    assert pooled[0, 1, 1] == 7
+
+
+def test_downsample_blocks_mean_rounds_integers():
+    from knossos_utils.knossosdataset import _downsample_blocks
+
+    data = np.array([[[1, 1], [3, 3]]], dtype=np.uint8)  # (1, 2, 2), mean=2
+    out = _downsample_blocks(data, (1, 2, 2), "mean")
+    assert out.shape == (1, 1, 1)
+    assert out.dtype == np.uint8
+    assert out[0, 0, 0] == 2
+
+
+def test_KnossosDataset_save_raw_downsample_mode_max():
+    class FakeDomain:
+        def __init__(self, shape):
+            self.shape = shape
+
+    class FakeTensorstoreDataset:
+        def __init__(self, shape):
+            self.written = None
+            self.domain = FakeDomain(shape)
+
+        def __setitem__(self, key, value):
+            self.written = value
+
+    mag1 = FakeTensorstoreDataset((4, 4, 2, 1))
+    mag2 = FakeTensorstoreDataset((2, 2, 1, 1))
+    kd = KnossosDataset()
+    kd._initialized = True
+    kd.server_format = "precomputed"
+    kd._tensorstore_datasets = {1: mag1, 2: mag2}
+    kd._rgb_channel = None
+    kd._dtype = np.uint8
+    kd.scales = [np.array([1, 1, 1]), np.array([2, 2, 2])]
+    kd._ordinal_mags = True
+    kd._boundary = np.array([4, 4, 2])
+    kd._cube_shape = np.array([2, 2, 2])
+    data = np.zeros((2, 4, 4), dtype=np.uint8)
+    data[0, 1, 1] = 42
+
+    kd.save_raw(
+        data=data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1, 2],
+        upsample=False,
+        downsample=True,
+        downsample_mode="max",
+    )
+
+    assert mag2.written is not None
+    written_zyx = mag2.written.swapaxes(0, 2)
+    assert written_zyx.shape == (1, 2, 2)
+    assert written_zyx[0, 0, 0] == 42
+
+
+def test_KnossosDataset_save_raw_rejects_unknown_downsample_mode():
+    kd = KnossosDataset()
+    kd._initialized = True
+    kd.server_format = "precomputed"
+    kd._tensorstore_datasets = {}
+    kd._rgb_channel = None
+    kd._dtype = np.uint8
+    kd.scales = [np.array([1, 1, 1])]
+    kd._ordinal_mags = True
+    kd._boundary = np.array([2, 2, 2])
+    kd._cube_shape = np.array([2, 2, 2])
+    with pytest.raises(ValueError, match="Unknown downsample_mode"):
+        kd.save_raw(
+            data=np.zeros((2, 2, 2), dtype=np.uint8),
+            data_mag=1,
+            offset=(0, 0, 0),
+            mags=[1],
+            upsample=False,
+            downsample=False,
+            downsample_mode="median",
+        )
