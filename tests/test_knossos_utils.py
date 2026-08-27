@@ -1075,3 +1075,110 @@ def test_KnossosDataset_save_raw_rejects_unknown_downsample_mode():
             downsample=False,
             downsample_mode="median",
         )
+
+
+def test_save_seg_recreates_inconsistent_2d_precomputed_scale(tmp_path):
+    """A leftover info scale with the wrong size (mag3 stored as mag4 geometry)
+    must be recreated so downsample writes are not skipped as out-of-bounds."""
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="seg2d_fix",
+        boundary=(27840, 63360, 1),
+        cube_shape=(1024, 1024, 1),
+        scale=(506.0, 506.0, 506.0),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".seg.sz.zip"],
+        server_format="precomputed",
+    )
+    kd.save_seg(
+        data=np.ones((1, 32, 32), dtype=np.uint64),
+        data_mag=2,
+        offset=(0, 0, 0),
+        mags=[2, 4],
+        upsample=False,
+        downsample=True,
+        fast_resampling=True,
+    )
+    info_path = tmp_path / "info"
+    info = json.loads(info_path.read_text())
+    for scale in info["scales"]:
+        if scale["key"] == "mag4":
+            scale["key"] = "mag3"
+            break
+    info_path.write_text(json.dumps(info))
+
+    reloaded = KnossosDataset(str(tmp_path / "seg2d_fix.k.toml"))
+    mag3 = reloaded._tensorstore_datasets[3]
+    assert list(mag3.domain.shape[:3]) == [3480, 7920, 1]
+
+    offset = np.array([16384, 49152, 0])
+    data = np.ones((1, 64, 64), dtype=np.uint64)
+    with pytest.warns(UserWarning, match="recreating"):
+        reloaded.save_seg(
+            data=data,
+            data_mag=2,
+            offset=offset,
+            mags=[3],
+            upsample=False,
+            downsample=True,
+            fast_resampling=True,
+        )
+
+    info = json.loads(info_path.read_text())
+    mag3_info = next(s for s in info["scales"] if s["key"] == "mag3")
+    assert mag3_info["resolution"] == [2024.0, 2024.0, 506.0]
+    assert mag3_info["size"] == [6960, 15840, 1]
+    loaded = reloaded.load_seg(
+        offset=offset,
+        size=(128, 128, 1),
+        mag=3,
+    )
+    assert loaded.shape == (1, 32, 32)
+    assert np.all(loaded == 1)
+
+
+def test_concurrent_precomputed_info_writes_only_requested_mags(tmp_path):
+    """Two writers can add different mags without corrupting info; mag1 stays absent."""
+    from threading import Thread
+
+    KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="seg_lock",
+        boundary=(256, 256, 1),
+        cube_shape=(64, 64, 1),
+        scale=(1.0, 1.0, 1.0),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".seg.sz.zip"],
+        server_format="precomputed",
+    )
+    toml = str(tmp_path / "seg_lock.k.toml")
+    errors = []
+
+    def write_mag(mag):
+        try:
+            ds = KnossosDataset(toml)
+            ds.save_seg(
+                data=np.ones((1, 32, 32), dtype=np.uint64),
+                data_mag=2,
+                offset=(0, 0, 0),
+                mags=[mag],
+                upsample=False,
+                downsample=True,
+                fast_resampling=True,
+            )
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [Thread(target=write_mag, args=(mag,)) for mag in (2, 3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    info = json.loads((tmp_path / "info").read_text())
+    keys = {scale["key"]: scale for scale in info["scales"]}
+    assert set(keys) == {"mag2", "mag3"}
+    assert keys["mag2"]["size"] == [128, 128, 1]
+    assert keys["mag3"]["size"] == [64, 64, 1]
+    assert not (tmp_path / "info.lock").exists()

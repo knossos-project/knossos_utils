@@ -53,6 +53,7 @@ import warnings
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from contextlib import contextmanager
 from enum import Enum
 from io import BytesIO
 from multiprocessing import Pool
@@ -84,6 +85,8 @@ module_wide = {"init": False, "noprint": False, "snappy": None, "fadvise": None}
 # Note: tensorstore needs roughly 2-3x MAX_SHARD_SIZE as temporary memory while writing a shard.
 MAX_NUMBER_OF_SHARDS = 200
 MAX_SHARD_SIZE = 10**10  # 10 GB
+# Directory lock next to info.json; removed if older than this (crashed writer).
+PRECOMPUTED_INFO_LOCK_STALE_S = 120
 
 
 def our_glob(s):
@@ -1430,6 +1433,73 @@ class KnossosDataset(object):
             ds_factor[2] = 1
         return ds_factor
 
+    @contextmanager
+    def _lock_precomputed_info(self):
+        """Exclusive lock for info.json, shared by all processes writing this dataset.
+
+        `os.makedirs` of `info.lock` is atomic. If the directory exists, another writer
+        holds the lock and we wait. A leftover directory from a crashed writer is removed
+        after PRECOMPUTED_INFO_LOCK_STALE_S.
+        """
+        if self._knossos_path is None:
+            yield
+            return
+        lock_dir = Path(self._knossos_path) / "info.lock"
+        Path(self._knossos_path).mkdir(parents=True, exist_ok=True)
+        while True:
+            try:
+                os.makedirs(lock_dir)
+                break
+            except FileExistsError:
+                try:
+                    age = time.time() - os.stat(lock_dir).st_mtime
+                    if age > PRECOMPUTED_INFO_LOCK_STALE_S:
+                        warnings.warn(
+                            f"Removing stale precomputed info lock {lock_dir} "
+                            f"(age {age:.1f}s)"
+                        )
+                        os.rmdir(lock_dir)
+                    else:
+                        time.sleep(random.uniform(0.05, 0.2))
+                except FileNotFoundError:
+                    pass
+            except PermissionError:
+                time.sleep(random.uniform(0.05, 0.2))
+        try:
+            yield
+        finally:
+            try:
+                os.rmdir(lock_dir)
+            except FileNotFoundError:
+                pass
+
+    def _open_precomputed_mag_from_info(self, mag: int):
+        """Open mag from on-disk info into _tensorstore_datasets. Return handle or None."""
+        import json
+        if self._knossos_path is None:
+            return None
+        info_path = Path(self._knossos_path) / "info"
+        if not info_path.is_file():
+            return None
+        with open(info_path, "r") as f:
+            info = json.load(f)
+        key = f"mag{mag}"
+        if not any(scale.get("key") == key for scale in info.get("scales", [])):
+            return None
+        if self._tensorstore_datasets is None:
+            self._tensorstore_datasets = {}
+        self._tensorstore_datasets[mag] = ts.open(
+            {
+                "driver": "neuroglancer_precomputed",
+                "kvstore": {
+                    "driver": "file",
+                    "path": str(self._knossos_path),
+                },
+                "scale_metadata": {"key": key},
+            }
+        ).result()
+        return self._tensorstore_datasets[mag]
+
     @staticmethod
     def _sort_precomputed_info_scales(layer: KnossosDataset):
         """Sort info.json scales by ascending resolution (Neuroglancer requirement)."""
@@ -1454,29 +1524,84 @@ class KnossosDataset(object):
         with open(info_path, "w") as f:
             json.dump(info, f)
 
+    def _precomputed_mag_size(self, mag: int) -> np.ndarray:
+        """Dataset size [x, y, z] of mag, derived from mag1 boundary and pyramid scales."""
+        mag_idx = mag - 1
+        if mag_idx < 0 or mag_idx >= len(self.scales):
+            raise ValueError(
+                f"Cannot compute size for mag {mag}: only {len(self.scales)} scales in pyramid."
+            )
+        base_scale = np.asarray(self.scales[0], dtype=float)
+        curr_scale = np.asarray(self.scales[mag_idx], dtype=float)
+        factors = base_scale / curr_scale
+        return np.array(
+            [
+                int(np.ceil(float(self.boundary[i]) * float(factors[i])))
+                for i in range(3)
+            ],
+            dtype=int,
+        )
+
+    def _drop_precomputed_mag(self, mag: int) -> None:
+        """Drop an on-disk precomputed scale so it can be recreated with correct metadata."""
+        import json
+        if self._tensorstore_datasets is not None:
+            self._tensorstore_datasets.pop(mag, None)
+        if self._knossos_path is None:
+            return
+        info_path = Path(self._knossos_path) / "info"
+        if info_path.is_file():
+            with open(info_path, "r") as f:
+                info = json.load(f)
+            key = f"mag{mag}"
+            scales = [s for s in info.get("scales", []) if s.get("key") != key]
+            if len(scales) != len(info.get("scales", [])):
+                info["scales"] = scales
+                with open(info_path, "w") as f:
+                    json.dump(info, f)
+        mag_dir = Path(self._knossos_path) / f"mag{mag}"
+        if mag_dir.is_dir():
+            shutil.rmtree(mag_dir)
+
     def _ensure_precomputed_mag(self, mag: int, create: bool = True):
         """Return the tensorstore handle for mag; optionally create the scale on demand."""
         if self._tensorstore_datasets is None:
             self._tensorstore_datasets = {}
-        if mag in self._tensorstore_datasets:
+        with self._lock_precomputed_info():
+            if mag not in self._tensorstore_datasets:
+                self._open_precomputed_mag_from_info(mag)
+            if mag in self._tensorstore_datasets:
+                actual_size = np.asarray(self._tensorstore_datasets[mag].domain.shape[:3], dtype=int)
+                expected_size = self._precomputed_mag_size(mag)
+                if np.array_equal(actual_size, expected_size):
+                    return self._tensorstore_datasets[mag]
+                if not create:
+                    raise Exception(
+                        f"Precomputed mag {mag} size {actual_size.tolist()} does not match "
+                        f"expected {expected_size.tolist()}."
+                    )
+                warnings.warn(
+                    f"mag {mag}: existing scale size {actual_size.tolist()} does not match "
+                    f"expected {expected_size.tolist()}, recreating"
+                )
+                self._drop_precomputed_mag(mag)
+            if not create:
+                raise Exception(
+                    f"No precomputed data for mag {mag}. Available scales in info: "
+                    f"{sorted(self._tensorstore_datasets.keys())}."
+                )
+            if mag < 1 or mag > len(self.scales):
+                raise Exception(
+                    f"Requested mag {mag} not available, only mags {self.available_mags} are available."
+                )
+            KnossosDataset.create_neuroglancer_layer(
+                self,
+                as_rgb=bool(self._rgb_channel),
+                shard_size=self._shard_size,
+                dtype=self._dtype,
+                mags=[mag],
+            )
             return self._tensorstore_datasets[mag]
-        if not create:
-            raise Exception(
-                f"No precomputed data for mag {mag}. Available scales in info: "
-                f"{sorted(self._tensorstore_datasets.keys())}."
-            )
-        if mag < 1 or mag > len(self.scales):
-            raise Exception(
-                f"Requested mag {mag} not available, only mags {self.available_mags} are available."
-            )
-        KnossosDataset.create_neuroglancer_layer(
-            self,
-            as_rgb=bool(self._rgb_channel),
-            shard_size=self._shard_size,
-            dtype=self._dtype,
-            mags=[mag],
-        )
-        return self._tensorstore_datasets[mag]
 
     @staticmethod
     def create_neuroglancer_layer(
@@ -1558,7 +1683,6 @@ class KnossosDataset(object):
         num_channels = 3 if as_rgb else 1
         cube_shape = [int(c) for c in layer.cube_shape]
         shard_size_int = [int(s) for s in shard_size]
-        base_scale = np.asarray(layer.scales[0], dtype=float)
 
         if mags is None:
             mags = list(range(1, len(layer.scales) + 1))
@@ -1569,18 +1693,15 @@ class KnossosDataset(object):
         for mag in mags:
             if mag in layer._tensorstore_datasets:
                 continue
+            if layer._open_precomputed_mag_from_info(mag) is not None:
+                continue
             mag_idx = mag - 1
             if mag_idx < 0 or mag_idx >= len(layer.scales):
                 raise ValueError(
                     f"Cannot create mag {mag}: only {len(layer.scales)} scales in pyramid."
                 )
             curr_scale = np.asarray(layer.scales[mag_idx], dtype=float)
-            # factors is base/curr (<= 1 for higher mags); dataset_size shrinks accordingly.
-            factors = base_scale / curr_scale
-            dataset_size = [
-                int(np.ceil(float(layer.boundary[i]) * float(factors[i])))
-                for i in range(3)
-            ]
+            dataset_size = layer._precomputed_mag_size(mag).tolist()
             resolution = [float(s) for s in curr_scale]
 
             spec_seed = {
