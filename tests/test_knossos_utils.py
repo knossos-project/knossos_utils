@@ -1137,6 +1137,66 @@ def test_save_seg_recreates_inconsistent_2d_precomputed_scale(tmp_path):
     assert np.all(loaded == 1)
 
 
+def test_precomputed_sizes_within_tolerance():
+    assert KnossosDataset._precomputed_sizes_within_tolerance([5, 5, 1], [5, 6, 1])
+    assert not KnossosDataset._precomputed_sizes_within_tolerance([5, 5, 1], [5, 7, 1])
+    assert not KnossosDataset._precomputed_sizes_within_tolerance([5, 5, 1], [7, 5, 1])
+
+
+def test_load_raw_tolerates_one_voxel_precomputed_size_mismatch(tmp_path):
+    """Reading accepts ±1 voxel per axis when metadata and on-disk pyramid disagree."""
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="roundtrip",
+        boundary=(8, 10, 1),
+        cube_shape=(4, 4, 1),
+        scale=(8.0, 8.0, 8.0),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    mag1_data = np.arange(80, dtype=np.uint8).reshape((1, 10, 8))
+    kd.save_raw(
+        data=mag1_data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1, 2],
+        upsample=False,
+        downsample=True,
+    )
+    # Simulate metadata from another writer that rounds mag sizes differently.
+    layer, _ = kd.preferred_raw_layer()
+    layer._boundary = np.array([8, 11, 1])
+    with pytest.warns(UserWarning, match="likely rounding"):
+        loaded = kd.load_raw(offset=(0, 0, 0), size=(8, 10, 1), mag=2)
+    assert loaded.shape == (1, 5, 4)
+
+
+def test_load_raw_rejects_large_precomputed_size_mismatch(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="mismatch",
+        boundary=(8, 10, 1),
+        cube_shape=(4, 4, 1),
+        scale=(8.0, 8.0, 8.0),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    kd.save_raw(
+        data=np.arange(80, dtype=np.uint8).reshape((1, 10, 8)),
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1, 2],
+        upsample=False,
+        downsample=True,
+    )
+    layer, _ = kd.preferred_raw_layer()
+    layer._boundary = np.array([8, 13, 1])
+    with pytest.raises(Exception, match="does not match expected"):
+        kd.load_raw(offset=(0, 0, 0), size=(4, 5, 1), mag=2)
+
+
 def test_concurrent_precomputed_info_writes_only_requested_mags(tmp_path):
     """Two writers can add different mags without corrupting info; mag1 stays absent."""
     from threading import Thread

@@ -1542,6 +1542,19 @@ class KnossosDataset(object):
             dtype=int,
         )
 
+    @staticmethod
+    def _precomputed_sizes_within_tolerance(
+        actual: Sequence[int],
+        expected: Sequence[int],
+        tolerance: int = 1,
+    ) -> bool:
+        """True if actual and expected differ by at most `tolerance` voxels per axis."""
+        actual_arr = np.asarray(actual, dtype=int)
+        expected_arr = np.asarray(expected, dtype=int)
+        if actual_arr.shape != expected_arr.shape:
+            return False
+        return bool(np.all(np.abs(actual_arr - expected_arr) <= tolerance))
+
     def _drop_precomputed_mag(self, mag: int) -> None:
         """Drop an on-disk precomputed scale so it can be recreated with correct metadata."""
         import json
@@ -1576,6 +1589,13 @@ class KnossosDataset(object):
                 if np.array_equal(actual_size, expected_size):
                     return self._tensorstore_datasets[mag]
                 if not create:
+                    if self._precomputed_sizes_within_tolerance(actual_size, expected_size):
+                        warnings.warn(
+                            f"Precomputed mag {mag} size {actual_size.tolist()} differs from "
+                            f"expected {expected_size.tolist()} by at most 1 voxel per axis "
+                            f"(likely rounding from another writer); using on-disk size."
+                        )
+                        return self._tensorstore_datasets[mag]
                     raise Exception(
                         f"Precomputed mag {mag} size {actual_size.tolist()} does not match "
                         f"expected {expected_size.tolist()}."
