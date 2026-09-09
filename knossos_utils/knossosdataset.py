@@ -445,6 +445,7 @@ class KnossosDataset(object):
         self.visible = None # unspecified
         self.write_empty_cubes = False
         self._tensorstore_datasets = None
+        self._precomputed_mag_sizes = {}
         self._rgb_channel = None
         self._dtype = None
         self._shard_size = None
@@ -859,6 +860,7 @@ class KnossosDataset(object):
         layer.color = copy.deepcopy(source_layer.color)
         layer.visible = copy.deepcopy(source_layer.visible)
         layer._tensorstore_datasets = source_layer._tensorstore_datasets
+        layer._precomputed_mag_sizes = copy.deepcopy(source_layer._precomputed_mag_sizes)
         layer._rgb_channel = copy.deepcopy(source_layer._rgb_channel)
         layer._dtype = copy.deepcopy(source_layer._dtype)
         return layer
@@ -1072,6 +1074,8 @@ class KnossosDataset(object):
                             warnings.warn("MISSING INFORMATION: Only one scale found in toml file. Assuming isotropic scale and generating scales...")
                             voxel_sizes = generated
                 layer.scales = voxel_sizes
+                if info_json is not None:
+                    layer._apply_info_precomputed_mag_sizes(info_json["scales"])
                 _print("Found all information!")
 
                 if num_channels is not None and num_channels == 3:
@@ -1524,7 +1528,16 @@ class KnossosDataset(object):
         with open(info_path, "w") as f:
             json.dump(info, f)
 
-    def _precomputed_mag_size(self, mag: int) -> np.ndarray:
+    @staticmethod
+    def _parse_precomputed_scale_mag(key, idx: int, voxel_sizes) -> int:
+        mag = _parse_mag_scale_key(key)
+        if mag is None:
+            mag = _mag_from_resolution_key(key, voxel_sizes)
+        if mag is None:
+            mag = idx + 1
+        return mag
+
+    def _computed_precomputed_mag_size(self, mag: int) -> np.ndarray:
         """Dataset size [x, y, z] of mag, derived from mag1 boundary and pyramid scales."""
         mag_idx = mag - 1
         if mag_idx < 0 or mag_idx >= len(self.scales):
@@ -1541,6 +1554,40 @@ class KnossosDataset(object):
             ],
             dtype=int,
         )
+
+    def _precomputed_mag_size(self, mag: int) -> np.ndarray:
+        """On-disk or info size if known; otherwise size derived from boundary and scales."""
+        if self._precomputed_mag_sizes and mag in self._precomputed_mag_sizes:
+            return np.asarray(self._precomputed_mag_sizes[mag], dtype=int)
+        return self._computed_precomputed_mag_size(mag)
+
+    def _register_precomputed_mag_size(self, mag: int, size: Sequence[int]) -> None:
+        """Store a mag size from info after validating against computed metadata."""
+        size_arr = np.asarray(size, dtype=int)
+        computed = self._computed_precomputed_mag_size(mag)
+        if not self._precomputed_sizes_within_tolerance(size_arr, computed):
+            warnings.warn(
+                f"Precomputed mag {mag} size {size_arr.tolist()} in info differs from "
+                f"computed {computed.tolist()} by more than 1 voxel per axis; "
+                f"ignoring info size."
+            )
+            return
+        if not np.array_equal(size_arr, computed):
+            warnings.warn(
+                f"Precomputed mag {mag} size {size_arr.tolist()} in info differs from "
+                f"computed {computed.tolist()} by at most 1 voxel per axis; using info size."
+            )
+        self._precomputed_mag_sizes[mag] = size_arr
+
+    def _apply_info_precomputed_mag_sizes(self, info_scales: Sequence[dict]) -> None:
+        """Load mag sizes from info.json into local metadata; align mag1 boundary."""
+        if self._precomputed_mag_sizes is None:
+            self._precomputed_mag_sizes = {}
+        for idx, scale in enumerate(info_scales):
+            mag = self._parse_precomputed_scale_mag(scale["key"], idx, self.scales)
+            self._register_precomputed_mag_size(mag, scale["size"])
+        if 1 in self._precomputed_mag_sizes:
+            self._boundary = np.asarray(self._precomputed_mag_sizes[1], dtype=int)
 
     @staticmethod
     def _precomputed_sizes_within_tolerance(
@@ -1560,6 +1607,8 @@ class KnossosDataset(object):
         import json
         if self._tensorstore_datasets is not None:
             self._tensorstore_datasets.pop(mag, None)
+        if self._precomputed_mag_sizes is not None:
+            self._precomputed_mag_sizes.pop(mag, None)
         if self._knossos_path is None:
             return
         info_path = Path(self._knossos_path) / "info"
@@ -1588,14 +1637,17 @@ class KnossosDataset(object):
                 expected_size = self._precomputed_mag_size(mag)
                 if np.array_equal(actual_size, expected_size):
                     return self._tensorstore_datasets[mag]
+                if self._precomputed_sizes_within_tolerance(actual_size, expected_size):
+                    warnings.warn(
+                        f"Precomputed mag {mag} on-disk size {actual_size.tolist()} differs from "
+                        f"metadata {expected_size.tolist()} by at most 1 voxel per axis; "
+                        f"using on-disk size."
+                    )
+                    self._precomputed_mag_sizes[mag] = actual_size
+                    if mag == 1:
+                        self._boundary = np.asarray(actual_size, dtype=int)
+                    return self._tensorstore_datasets[mag]
                 if not create:
-                    if self._precomputed_sizes_within_tolerance(actual_size, expected_size):
-                        warnings.warn(
-                            f"Precomputed mag {mag} size {actual_size.tolist()} differs from "
-                            f"expected {expected_size.tolist()} by at most 1 voxel per axis "
-                            f"(likely rounding from another writer); using on-disk size."
-                        )
-                        return self._tensorstore_datasets[mag]
                     raise Exception(
                         f"Precomputed mag {mag} size {actual_size.tolist()} does not match "
                         f"expected {expected_size.tolist()}."
@@ -2439,7 +2491,10 @@ class KnossosDataset(object):
         else:
             size = (np.array(size, dtype=int) // ratio).astype(int)
             offset = (np.array(offset, dtype=int) // ratio).astype(int)
-            boundary = (np.array(self.boundary, dtype=int) // ratio).astype(int)
+            if self.server_format == "precomputed" and not self.is_embedded:
+                boundary = np.asarray(self._precomputed_mag_size(mag), dtype=int)
+            else:
+                boundary = (np.array(self.boundary, dtype=int) // ratio).astype(int)
         orig_size = np.copy(size)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]

@@ -1107,7 +1107,8 @@ def test_save_seg_recreates_inconsistent_2d_precomputed_scale(tmp_path):
             break
     info_path.write_text(json.dumps(info))
 
-    reloaded = KnossosDataset(str(tmp_path / "seg2d_fix.k.toml"))
+    with pytest.warns(UserWarning, match="ignoring info size"):
+        reloaded = KnossosDataset(str(tmp_path / "seg2d_fix.k.toml"))
     mag3 = reloaded._tensorstore_datasets[3]
     assert list(mag3.domain.shape[:3]) == [3480, 7920, 1]
 
@@ -1143,8 +1144,8 @@ def test_precomputed_sizes_within_tolerance():
     assert not KnossosDataset._precomputed_sizes_within_tolerance([5, 5, 1], [7, 5, 1])
 
 
-def test_load_raw_tolerates_one_voxel_precomputed_size_mismatch(tmp_path):
-    """Reading accepts ±1 voxel per axis when metadata and on-disk pyramid disagree."""
+def test_load_raw_uses_info_precomputed_mag_sizes_over_boundary(tmp_path):
+    """Cached info sizes drive read clipping even if boundary metadata is wrong."""
     kd = KnossosDataset.initialize(
         str(tmp_path),
         experiment_name="roundtrip",
@@ -1164,18 +1165,18 @@ def test_load_raw_tolerates_one_voxel_precomputed_size_mismatch(tmp_path):
         upsample=False,
         downsample=True,
     )
-    # Simulate metadata from another writer that rounds mag sizes differently.
-    layer, _ = kd.preferred_raw_layer()
+    reloaded = KnossosDataset(str(tmp_path / "roundtrip.k.toml"))
+    layer, _ = reloaded.preferred_raw_layer()
+    assert list(layer._precomputed_mag_sizes[2]) == [4, 5, 1]
     layer._boundary = np.array([8, 11, 1])
-    with pytest.warns(UserWarning, match="likely rounding"):
-        loaded = kd.load_raw(offset=(0, 0, 0), size=(8, 10, 1), mag=2)
+    loaded = reloaded.load_raw(offset=(0, 0, 0), size=(8, 10, 1), mag=2)
     assert loaded.shape == (1, 5, 4)
 
 
-def test_load_raw_rejects_large_precomputed_size_mismatch(tmp_path):
+def test_apply_info_precomputed_mag_sizes_accepts_one_voxel_difference(tmp_path):
     kd = KnossosDataset.initialize(
         str(tmp_path),
-        experiment_name="mismatch",
+        experiment_name="info_tol",
         boundary=(8, 10, 1),
         cube_shape=(4, 4, 1),
         scale=(8.0, 8.0, 8.0),
@@ -1191,10 +1192,47 @@ def test_load_raw_rejects_large_precomputed_size_mismatch(tmp_path):
         upsample=False,
         downsample=True,
     )
-    layer, _ = kd.preferred_raw_layer()
-    layer._boundary = np.array([8, 13, 1])
-    with pytest.raises(Exception, match="does not match expected"):
-        kd.load_raw(offset=(0, 0, 0), size=(4, 5, 1), mag=2)
+    info_path = tmp_path / "info"
+    info = json.loads(info_path.read_text())
+    mag2 = next(s for s in info["scales"] if s["key"] == "mag2")
+    mag2["size"] = [4, 6, 1]
+    info_path.write_text(json.dumps(info))
+
+    with pytest.warns(UserWarning, match="using info size"):
+        reloaded = KnossosDataset(str(tmp_path / "info_tol.k.toml"))
+    layer, _ = reloaded.preferred_raw_layer()
+    assert list(layer._precomputed_mag_sizes[2]) == [4, 6, 1]
+
+
+def test_apply_info_precomputed_mag_sizes_rejects_large_difference(tmp_path):
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="info_bad",
+        boundary=(8, 10, 1),
+        cube_shape=(4, 4, 1),
+        scale=(8.0, 8.0, 8.0),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    kd.save_raw(
+        data=np.arange(80, dtype=np.uint8).reshape((1, 10, 8)),
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1, 2],
+        upsample=False,
+        downsample=True,
+    )
+    info_path = tmp_path / "info"
+    info = json.loads(info_path.read_text())
+    mag2 = next(s for s in info["scales"] if s["key"] == "mag2")
+    mag2["size"] = [4, 7, 1]
+    info_path.write_text(json.dumps(info))
+
+    with pytest.warns(UserWarning, match="ignoring info size"):
+        reloaded = KnossosDataset(str(tmp_path / "info_bad.k.toml"))
+    layer, _ = reloaded.preferred_raw_layer()
+    assert 2 not in layer._precomputed_mag_sizes
 
 
 def test_concurrent_precomputed_info_writes_only_requested_mags(tmp_path):
