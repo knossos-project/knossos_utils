@@ -2491,10 +2491,9 @@ class KnossosDataset(object):
         else:
             size = (np.array(size, dtype=int) // ratio).astype(int)
             offset = (np.array(offset, dtype=int) // ratio).astype(int)
-            if self.server_format == "precomputed" and not self.is_embedded:
-                boundary = np.asarray(self._precomputed_mag_size(mag), dtype=int)
-            else:
-                boundary = (np.array(self.boundary, dtype=int) // ratio).astype(int)
+            boundary = (np.array(self.boundary, dtype=int) // ratio).astype(int)
+        if self.server_format == "precomputed" and not self.is_embedded:
+            boundary = np.asarray(self._precomputed_mag_size(mag), dtype=int)
         orig_size = np.copy(size)
 
         mirror_overlap = [[0, 0], [0, 0], [0, 0]]

@@ -1173,6 +1173,39 @@ def test_load_raw_uses_info_precomputed_mag_sizes_over_boundary(tmp_path):
     assert loaded.shape == (1, 5, 4)
 
 
+def test_load_raw_expand_area_to_mag_uses_info_precomputed_mag_sizes(tmp_path):
+    """expand_area_to_mag must clip to cached info sizes, not ceil(boundary / ratio)."""
+    kd = KnossosDataset.initialize(
+        str(tmp_path),
+        experiment_name="expand_mag",
+        boundary=(8, 10, 1),
+        cube_shape=(4, 4, 1),
+        scale=(8.0, 8.0, 8.0),
+        ds_factor=(2, 2, 1),
+        file_extensions=[".raw"],
+        server_format="precomputed",
+    )
+    mag1_data = np.arange(80, dtype=np.uint8).reshape((1, 10, 8))
+    kd.save_raw(
+        data=mag1_data,
+        data_mag=1,
+        offset=(0, 0, 0),
+        mags=[1, 2],
+        upsample=False,
+        downsample=True,
+    )
+    reloaded = KnossosDataset(str(tmp_path / "expand_mag.k.toml"))
+    layer, _ = reloaded.preferred_raw_layer()
+    layer._boundary = np.array([8, 11, 1])
+    loaded = reloaded.load_raw(
+        offset=(0, 6, 0),
+        size=(8, 6, 1),
+        mag=2,
+        expand_area_to_mag=True,
+    )
+    assert loaded.shape == (1, 3, 4)
+
+
 def test_apply_info_precomputed_mag_sizes_accepts_one_voxel_difference(tmp_path):
     kd = KnossosDataset.initialize(
         str(tmp_path),
